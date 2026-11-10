@@ -1,8 +1,6 @@
 # Code Standards
 
-Binding rules for all code in Artemis: strict TypeScript, ES modules, Node 22+. They come from the owner's standards in Project Millennium Falcon (its `docs/frontend/CODE_STANDARDS.md`), which
-follow the dotCMS frontend standards the owner wrote. The React, mobile and native parts are left out; the rest
-applies as written.
+Binding rules for all code in Artemis: strict TypeScript, ES modules, Node 22+.
 
 **A review comment is a rule for the whole codebase, not a note on one file.** When one is found, fix every
 occurrence.
@@ -43,7 +41,7 @@ Allowed literals: `0`, `1`, `-1` as index/identity, `100` for percent conversion
 
 ## 4. Readability
 
-- **No nested loops.** Index or group first (`Map`, `groupBy`), then do one pass.
+- **No nested loops.** Index or group first (a lookup keyed by id), then do one pass.
 - **Name conditions.** A boolean with more than two terms becomes a well-named helper (`isTopicOnly(words, length)`).
 - **No dense one-liners.** Break chained ternaries into an early-return helper.
 - **Pass objects, not spread fields.**
@@ -52,8 +50,7 @@ Allowed literals: `0`, `1`, `-1` as index/identity, `100` for percent conversion
 
 ## 5. Performance
 
-- Don't rebuild `Map`s, arrays or objects in a loop or per call when the input is static: compute once at module
-  level.
+- Don't rebuild static data in a loop or on every call: compute it once at module level.
 - Index once, then look up; don't filter a list per item.
 - Load heavy or optional dependencies lazily (`await import('prompts')` only when a command prompts).
 
@@ -144,8 +141,8 @@ Prettier, enforced by ESLint (`eslint-plugin-prettier`):
 }
 ```
 
-**Code reads in paragraphs.** Prettier keeps blank lines but never adds them, so ESLint adds them (the owner's
-`eslint.spacing.cjs` from Project Millennium Falcon, copied as is) and `eslint --fix` applies them:
+**Code reads in paragraphs.** Prettier keeps blank lines but never adds them, so ESLint adds them
+(`eslint.spacing.cjs`) and `eslint --fix` applies them:
 
 - a blank line before a `return` that isn't alone in its block;
 - a blank line after a run of `const`/`let` declarations;
