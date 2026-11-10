@@ -1,0 +1,159 @@
+# Handoff
+
+State on 2026-11-10. Moved from the scripts repo's README (its "Future: Artemis as its own library" section),
+where Artemis lived as `command/` until this repo existed. Paths like `command/`, `lib/` and `data/` below are
+the scripts repo's. The TypeScript rewrite and npm plan is now [spec 01](../specs/01-typescript-rewrite.spec.md);
+the rest is backlog for later specs.
+
+## What moved and what stayed
+
+Artemis is kept separate from the dotCMS commands so it can move to its own repo later.
+
+**Reusable as is**
+
+-   `command/`: the whole framework. It imports nothing from `lib/`, `commands/` or `data/`.
+-   `command/kits/`: opt-in pieces an app imports only if it needs them, still free of dotCMS:
+    -   `worktrees.js`: one instance per checkout (which checkout am I in, stable slots, ports
+        shifted per slot, colors, an env override, refusing unregistered worktrees). The app
+        passes where the registry lives, what counts as a checkout and the base ports
+        (`lib/instances.js` is that configuration for dotCMS).
+    -   `terminal.js`: terminal tabs as data (`{ id, name, title, color, panes }`, or a `layout`
+        tree of nested splits) with a Warp
+        adapter. tmux (CLI) or iTerm (AppleScript commands) adapters could follow; neither has a
+        Warp-style layout file of its own.
+-   Public API: `defineCommand`, `defineTopic`, `CommandError`, `UsageError`, `run` (`command/index.js`).
+-   `test/artemis.test.js` and `test/fixtures/`: the framework's tests. They use their own sample
+    commands, not the dotCMS ones.
+-   `bin/art.js`: the pattern for any CLI built on it: call `run(argv, { bin, commandsDir })` and
+    set the exit code.
+-   The "Adding a command" section above, as the start of the library docs.
+
+**Stays here (dotCMS-specific)**
+
+-   `commands/`, `lib/`, `data/`: the dotCMS commands, the REST client, saved state.
+-   The `step: { order, enabled }` convention lives in `lib/steps.js`, not in Artemis. Artemis only
+    passes extra definition fields through untouched; that passthrough is what lets a project
+    build conventions like this on top.
+
+**To change when extracting**
+
+-   `prompts` is the only dependency, loaded in `command/context.js` only when a command prompts.
+    Make it a dependency (or optional peer) of the library.
+-   `run()` defaults `bin` to `"art"` (`command/run.js`); the library should require it or read it
+    from the consumer's `package.json`.
+-   Pick a published name (`artemis` is likely taken on npm) and ship `command/` as `src/`.
+
+**Plan: TypeScript, tests, npm (to do on the personal account)**
+
+Only Artemis goes public; this repo (the dotCMS commands and the machine setup) stays private
+and later depends on the published package instead of `command/`.
+
+1. **New public repo** (e.g. `zJaaal/artemis`) holding only `command/`, its kits and tests. A
+   fresh history: nothing from this repo's commits (paths, machine setup) comes along.
+2. **Rewrite in strict TypeScript**, ESM only, Node 20+, built with `tsup` (JS plus `.d.ts`).
+   Port the 36 existing tests first (Vitest), then rewrite against them so behaviour stays the
+   same.
+3. **Package** `@zjaaal/artemis` (plain names are taken). Core from the main entry; the kits as
+   subpath exports (`@zjaaal/artemis/worktrees`, `/terminal`) so apps that do not need them do
+   not load them. `prompts` becomes a dependency.
+4. **CI (GitHub Actions)**: on every PR, typecheck, lint, test and build on Node 20 and 22.
+5. **Releases**, options to pick from:
+    - _Changesets_: each PR adds a change note; CI opens a "version packages" PR and merging
+      it publishes with a changelog (common for libraries).
+    - _Tag-triggered_: bump the version, push `v1.2.0`, CI tests and publishes.
+    - _semantic-release_: version and changelog from conventional commits on every merge.
+6. **npm auth**: prefer _trusted publishing_ (npm trusts the GitHub Actions workflow through
+   OIDC: no token to store or rotate, and the package gets provenance). The alternative is an
+   `NPM_TOKEN` automation token stored as a GitHub secret.
+7. **Switch this repo** to the package: replace `command/` imports with `@zjaaal/artemis`,
+   delete `command/` and its tests here.
+
+**Plan: a store kit for state (handoff)**
+
+Today every piece of state is read and written ad hoc: `data/instances.json` (written by the
+worktrees kit through its `stateFile`), `data/initialized.json` (`lib/marks.js`),
+`data/steps.json` (`lib/steps.js`), `data/feature-flags.json` and the generated
+`data/compose-*.yml`, all through `lib/store.js` (`readData` / `writeData`) or plain `fs`.
+
+**Race (fixed in the meantime):** every read-modify-write used to race, e.g. two `art dotcms start`
+at the same moment could pick the same slot. The worktrees kit now holds a lock file
+(`<stateFile>.lock`, taken over from dead processes) around every registry write, and
+`lib/marks.js` uses `art`'s `withLock`. The store kit would generalize this into `update(fn)` for
+every document.
+
+Build it as an opt-in Artemis kit (`command/kits/store.js`, later `@zjaaal/artemis/store`), not in
+the core, and free of dotCMS:
+
+1. **Named documents in a folder the app chooses**: `defineStore({ dir })` then
+   `store.doc('instances')`. Artemis holds no data of its own; the app says where it lives.
+2. **Atomic writes**: write a temporary file, then rename, so a crash never leaves half-written
+   JSON.
+3. **`doc.update(fn)` under a lock**: read, change and write as one step while other processes
+   wait (generalize `lib/lock.js`'s `withLock`, including taking over locks left by dead
+   processes). This is what fixes the slot race.
+4. **Versions and migrations**: each document stores a version; the app passes upgrade functions
+   (e.g. the `coreDir` -> `root` change in the instance registry, done by hand once).
+5. **One clear error** for a corrupt file, with a hint (today copied between `lib/store.js` and
+   the worktrees kit).
+6. **An in-memory store** with the same API, for tests, so commands that use state can finally be
+   tested without touching disk.
+
+Then: the worktrees kit takes a store document instead of `stateFile`; `lib/store.js`,
+`lib/marks.js` and `lib/steps.js` move onto it; slot allocation and the other read-modify-writes
+use `update`. Add `art state [doc] [--reset]` to show or reset a document. Tests first (a test
+that starts two concurrent `ensure` calls and checks they get different slots; see the kit's lock tests).
+Keep separate files per document; do not merge them into one or add a database.
+
+
+**Store kit: findings from a first draft (2026-11-10, not kept)**
+
+-   Today's two lock implementations differ: the scripts repo's `lib/lock.js` treats `EPERM` from
+    `process.kill(pid, 0)` as dead (wrong: the process exists but is someone else's); the worktrees kit treats it
+    as alive (right). Unify on alive.
+-   Both take over a lock whose file is empty or unparseable, but `writeFileSync(..., { flag: 'wx' })` creates
+    the file before writing the pid, so a reader can see it empty for a moment and steal a live lock. Treat an
+    unreadable lock as "being written" until it is older than a short grace period.
+-   `update(fn)` calls `write()`, which also locks: make the store's lock reentrant within the process (safe
+    because the work is synchronous), or `write()` inside `update()` deadlocks.
+-   A change function that returns `undefined` should throw (a forgotten `return`), not write `undefined` or
+    "skip": for read-modify-writes that may write nothing, offer `doc.locked(fn)` instead.
+-   Versioning without touching existing files: unversioned documents stay plain JSON (version 0); from version 1
+    on, store `{ "$version": n, "data": ... }`; a file newer than the code is an error with a hint.
+-   The fallback must be a copy (`structuredClone`): the scripts repo's `flags apply` mutates what `readData`
+    returns, which is `DEFAULT_FLAGS` itself when the file is missing.
+
+**Ideas worth building**
+
+-   An MCP adapter: `help --json` already lists every command with its args and flags, which maps directly to
+    MCP tools (name, description, input schema), so the same command folder could serve both people and agents.
+-   Shell completion generated from the same data.
+-   Topic aliases (e.g. `exp` for `experiments`) and per-topic default commands.
+-   For agents writing their own tools: `scaffold` and `check` commands, result schemas in the manifest, and
+    TypeScript command files.
+
+## Name and metaphor (draft, to polish)
+
+**Artemis**, goddess of the hunt: the framework hunts down your commands. It walks a folder and
+finds every command in it, with no list to keep up to date.
+
+-   **Arrow** = a command: one file, one arrow (`commands/uve/config/set.js`).
+-   **Quiver** = a folder: it holds arrows and other quivers (what the code calls a topic).
+-   **`art`** = the CLI this repo builds on it.
+
+Tagline ideas: "Drop an arrow in the quiver, get a command." / "Artemis: drop a file, get a
+command."
+
+Naming notes:
+
+-   The plain npm names are taken (`artemis`, `art`, `artemis-cli`, `quiver`), so publish as
+    `@zjaaal/artemis`; a scoped name cannot clash.
+-   "Artemis" is crowded in search: the NASA program, and Apache ActiveMQ Artemis (a Java message
+    broker), which matters if it is ever pitched to Java people. A clear tagline carries the
+    meaning the name does not.
+-   Use the metaphor for branding only: the README intro, the tagline, a logo. The API, help and
+    error text keep plain terms (`command`, `topic`, `_topic.js`, "Unknown command"). People
+    already know those from other CLIs and frameworks, so they need no translating. Those
+    messages are read by someone who is already confused. The metaphor breaks on nesting (a
+    quiver does not hold quivers, but topics nest). And agents reading `help --json` understand
+    the plain terms without explanation.
+
