@@ -1,0 +1,10 @@
+node_modules
+dist
+pnpm-lock.yaml
+# copied as is from the owner (CODE_STANDARDS §8)
+eslint.spacing.cjs
+# test fixtures are plain .js command files, formatted as the user would write them
+src/test/fixtures
+# specs and agent skills are prose; they are not formatted by the code rules
+specs
+.claude

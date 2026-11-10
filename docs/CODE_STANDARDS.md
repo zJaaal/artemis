@@ -9,13 +9,13 @@ occurrence.
 
 ## 1. Files have one job
 
-| Kind                                                          | Where                                                     | Never                                        |
-| ------------------------------------------------------------- | --------------------------------------------------------- | -------------------------------------------- |
-| Types and interfaces                                          | `models.ts` (module or root)                              | Inline in a logic file                       |
-| Constants                                                     | `constants.ts` (module or root)                           | Inline literals in logic                     |
-| Pure logic                                                    | `utils/<topic>` or a module's pure file                   | Mixed with I/O                               |
-| Side effects (files, processes, git, terminal, clock, prompts) | One small edge module each (see §7)                      | Called directly from logic                   |
-| The public API                                                | `src/index.ts` and each kit's entry: re-exports only      | Logic in an entry file                       |
+| Kind                                                           | Where                                                | Never                      |
+| -------------------------------------------------------------- | ---------------------------------------------------- | -------------------------- |
+| Types and interfaces                                           | `models.ts` (module or root)                         | Inline in a logic file     |
+| Constants                                                      | `constants.ts` (module or root)                      | Inline literals in logic   |
+| Pure logic                                                     | `utils/<topic>` or a module's pure file              | Mixed with I/O             |
+| Side effects (files, processes, git, terminal, clock, prompts) | One small edge module each (see §7)                  | Called directly from logic |
+| The public API                                                 | `src/index.ts` and each kit's entry: re-exports only | Logic in an entry file     |
 
 An entry file only re-exports. A module that both decides and does I/O is two modules.
 
@@ -24,10 +24,10 @@ An entry file only re-exports. A module that both decides and does I/O is two mo
 - **Reuse types.** One shape, one declaration; derive the rest (`Pick`, `Omit`, `Parameters`).
 - **No enums.** Use `as const` objects and derive the union:
 
-  ```ts
-  export const EXIT_CODE = { OK: 0, FAILED: 1, USAGE: 2 } as const;
-  export type ExitCode = (typeof EXIT_CODE)[keyof typeof EXIT_CODE];
-  ```
+    ```ts
+    export const EXIT_CODE = { OK: 0, FAILED: 1, USAGE: 2 } as const;
+    export type ExitCode = (typeof EXIT_CODE)[keyof typeof EXIT_CODE];
+    ```
 
 - No `any`. Use `unknown` and narrow. No `as unknown as` to force a type.
 - Let TypeScript infer obvious types; annotate parameters, return types of exported functions and the public
