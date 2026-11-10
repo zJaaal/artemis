@@ -1,5 +1,5 @@
-// TypeScript lint, as in Falcon's packages/protocol: typescript-eslint, prettier, the owner's spacing rules
-// and the test rules of CODE_STANDARDS §7.
+// TypeScript lint: typescript-eslint, prettier, the spacing rules (CODE_STANDARDS §8) and the test rules of
+// CODE_STANDARDS §7.
 import vitest from '@vitest/eslint-plugin';
 import eslintPluginPrettierRecommended from 'eslint-plugin-prettier/recommended';
 import { defineConfig, globalIgnores } from 'eslint/config';
