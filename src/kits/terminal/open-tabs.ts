@@ -1,6 +1,7 @@
 import type { OpenTabsFn } from '../models.js';
 
-// Stub: implemented in step 12.
-export const openTabs: OpenTabsFn = () => {
-    throw new Error('not implemented');
+/** Writes every tab, then opens them in order. */
+export const openTabs: OpenTabsFn = (terminal, tabs) => {
+    tabs.forEach((tab) => terminal.write(tab));
+    tabs.forEach((tab) => terminal.open(tab.id));
 };

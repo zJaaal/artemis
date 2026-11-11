@@ -249,6 +249,10 @@ export type WalkContext = { registry: Registry; root: string };
 
 export type ListDirectoryFn = (dir: string) => DirectoryEntry[];
 export type PathExistsFn = (path: string) => boolean;
+export type MakeDirectoryFn = (dir: string) => void;
+export type WriteTextFn = (file: string, text: string) => void;
+export type RemoveFileFn = (file: string) => void;
+export type HomeDirectoryFn = () => string;
 export type ImportDefaultFn = (file: string) => Promise<unknown>;
 export type MessageOfFn = (error: unknown) => string;
 
