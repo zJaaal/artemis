@@ -69,24 +69,19 @@ Return a value from `run` to give the command a result. Throw `CommandError(mess
 
 ## Running the CLI
 
-Artemis is a library: your project owns the `bin` file.
+You do not write a `bin` file. Installing the package gives the commands `art` and `artemis` (the same command): run `npx art` in a project, or `art` if it is installed globally.
 
-```js
-#!/usr/bin/env node
-import path from 'node:path';
-import { fileURLToPath } from 'node:url';
-import { run } from '@zjaaal/artemis';
+- **The project is the nearest `package.json`**, looking in the current folder and then each parent. Its `commands/` folder next to it holds the commands. Two projects never see each other's commands, and in a monorepo the package you stand in wins.
+- **Settings, all optional**, under the `artemis` key of that `package.json`: `"artemis": { "commandsDir": "tools/commands", "bin": "mytool" }`. `commandsDir` is relative to the folder of that `package.json` (default `commands`). `bin` is the name help and usage lines show (default: the single key of the project's own `bin` field, else `art`).
+- **Command files are ES modules**: set `"type": "module"` in the project's `package.json`, or Node prints a warning for each file.
+- **A global `art` needs no copy of Artemis in the project.** `import ... from '@zjaaal/artemis'` in a command file resolves to the running copy; a copy the project installed itself wins.
+- **When it cannot find what to run** (no `package.json` upwards, no commands folder, a bad `artemis` key) it exits `1` with a hint that says what to create or set; under `--json` that is `{ "ok": false, "command": null, "error", "hint" }`.
 
-const commandsDir = path.join(path.dirname(fileURLToPath(import.meta.url)), '../commands');
-
-process.exitCode = await run(process.argv.slice(2), { bin: 'art', commandsDir });
-```
-
-`bin` is required (it names the CLI in help and usage lines). `run` never calls `process.exit`: it returns the exit code.
+To ship the same CLI under its own name, a project adds a bin file with one line, `import '@zjaaal/artemis/cli';`, and a `bin` field in its `package.json` (`"bin": { "mytool": "bin/mytool.js" }`); help then shows `mytool`. To control everything yourself, call `run(argv, { bin, commandsDir })` from your own bin file: `bin` is required, and `run` returns the exit code without calling `process.exit`.
 
 ## Working on Artemis itself
 
 - Read `docs/CODE_STANDARDS.md` first. It is binding: types in `models.ts`, constants in `constants.ts`, no magic numbers, no enums, no `any`, pure logic with side effects at the edges (`src/edges/`), no nested loops, JSDoc on exports, tests per section 7.
-- `pnpm run test:all` runs `tsc`, `eslint`, `prettier --check` and `vitest` (type tests included). It must pass before a change is done. `pnpm run build` emits `dist/`, and `pnpm run check-exports` verifies the package entry points after a build.
+- `pnpm run test:all` runs `tsc`, `eslint`, `prettier --check` and `vitest` (type tests included). It must pass before a change is done. `pnpm run build` emits `dist/`, and `pnpm run check-exports` verifies the package entry points after a build, `pnpm run check-bin` runs the packed `art` and `artemis` in temporary projects, and `pnpm run check-lock` races real processes for the registry lock.
 - Specs live in `specs/`. Work follows the spec: if something looks wrong, change the spec, not the code by surprise.
 - Tests sit beside their source (`foo.ts` and `foo.test.ts`). Test helpers and the fixture command trees are in `src/test/` and only tests import from there. One case per test, no branching around assertions, no snapshots, fake only the edges (clock, prompts, terminal), never our own modules.

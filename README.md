@@ -1,6 +1,6 @@
 <h1 align="center">🏹 Artemis</h1>
 
-<p align="center"><strong>Drop an arrow in the quiver, get a command.</strong></p>
+<p align="center"><strong>Every file an arrow. Every folder a quiver.</strong></p>
 
 <p align="center">
   <a href="https://github.com/zJaaal/artemis/actions/workflows/ci.yml"><img alt="CI" src="https://github.com/zJaaal/artemis/actions/workflows/ci.yml/badge.svg"></a>
@@ -27,12 +27,12 @@ commands/
 
 The metaphor is branding. In the API, the help text and the errors, things keep their plain names.
 
-| In the story   | In the code                                                 |
-| -------------- | ----------------------------------------------------------- |
-| An **arrow**   | A command: one `.js` file                                   |
-| The **quiver** | A topic: a folder of commands (and of other topics)         |
-| **The hunt**   | Discovery: Artemis walks the folder and finds every command |
-| **`art`**      | The CLI you build on it (the name is yours)                 |
+| In the story | In the code                                                 |
+| ------------ | ----------------------------------------------------------- |
+| An **arrow** | A command: one `.js` file                                   |
+| A **quiver** | A folder: `commands/` itself, or a topic inside it          |
+| **The hunt** | Discovery: Artemis walks the folder and finds every command |
+| **`art`**    | The CLI you build on it (the name is yours)                 |
 
 ## Why it is built this way
 
@@ -46,29 +46,25 @@ The metaphor is branding. In the API, the help text and the errors, things keep 
 ## Install
 
 ```sh
-pnpm add @zjaaal/artemis
-# or: npm install @zjaaal/artemis
+pnpm add -D @zjaaal/artemis      # in a project: run it with `npx art`
+# or: npm install --save-dev @zjaaal/artemis
+
+npm install --global @zjaaal/artemis   # anywhere: run it as `art` (or `artemis`, the same command)
 ```
 
-Artemis is a library: your project owns its CLI, so your CLI gets your name. TypeScript users who use the types of `ctx.prompt` can add `@types/prompts` (an optional peer dependency; plain JavaScript never needs it).
+Installing the package puts two commands on your path, `art` and `artemis`. They are the same file, so use whichever you like. TypeScript users who use the types of `ctx.prompt` can add `@types/prompts` (an optional peer dependency; plain JavaScript never needs it).
 
 ## Quick start
 
-**1. A bin file runs the CLI.** `bin` is required: it is the name help and usage lines show.
+No bin file, no boilerplate: a project is a `package.json` and a `commands/` folder next to it.
 
-```js
-#!/usr/bin/env node
-// bin/art.js
-import path from 'node:path';
-import { fileURLToPath } from 'node:url';
-import { run } from '@zjaaal/artemis';
+**1. Make sure your `package.json` says `"type": "module"`.** Command files are ES modules, and without it Node prints a warning about each one on stderr.
 
-const commandsDir = path.join(path.dirname(fileURLToPath(import.meta.url)), '../commands');
-
-process.exitCode = await run(process.argv.slice(2), { bin: 'art', commandsDir });
+```json
+{ "name": "my-project", "type": "module" }
 ```
 
-**2. A command is a file in the commands folder.**
+**2. Drop a command in `commands/`.**
 
 ```js
 // commands/hello.js
@@ -92,16 +88,61 @@ export default defineCommand({
 **3. Run it.**
 
 ```console
-$ node bin/art.js hello ana --shout
+$ npx art hello ana --shout
 HELLO ANA
 
-$ node bin/art.js hello ana --json
+$ npx art hello ana --json
 {"ok":true,"command":"hello","result":{"greeting":"hello ana"}}
 
-$ node bin/art.js help
+$ npx art help
 ```
 
-To type `art` instead of `node bin/art.js`, add `"bin": { "art": "bin/art.js" }` to your `package.json` and run `npm link` (or publish the package and install it globally).
+If you installed it globally, drop the `npx` and run `art hello` from the project or any folder inside it. A globally installed `art` does not need a copy of Artemis in the project: it makes `import ... from '@zjaaal/artemis'` in your command files resolve to the copy that is running them (a copy the project installed itself always wins).
+
+### How `art` finds your project
+
+`art` looks for the **nearest `package.json`**, starting in the current folder and then each parent. That folder is the project, even when its `package.json` has no `artemis` key (in a monorepo, the package you stand in wins), and its `commands/` folder holds the commands. Two projects on one machine never see each other's commands.
+
+Both settings are optional, under the `artemis` key of that `package.json`:
+
+```json
+{ "artemis": { "commandsDir": "tools/commands", "bin": "mytool" } }
+```
+
+| Setting       | What it does                                                        | Default                                                     |
+| ------------- | ------------------------------------------------------------------- | ----------------------------------------------------------- |
+| `commandsDir` | The commands folder, relative to the folder of that `package.json`. | `commands`                                                  |
+| `bin`         | The name help and usage lines show.                                 | the single key of the project's own `bin` field, else `art` |
+
+When it cannot find what to run, `art` exits `1` and says what to create or set, and with `--json` it prints the usual failure object with `command: null`:
+
+| Problem                             | What the hint tells you                                                          |
+| ----------------------------------- | -------------------------------------------------------------------------------- |
+| no `package.json` from here upwards | run `art` inside a project, or create a `package.json` with a `commands/` folder |
+| the commands folder does not exist  | create it, or set `"artemis": { "commandsDir" }` in your `package.json`          |
+| the `artemis` key has a bad shape   | the shape it should have                                                         |
+
+### Your own command name
+
+To ship the same CLI under your own name, give your package a bin file with one line:
+
+```js
+#!/usr/bin/env node
+// bin/mytool.js
+import '@zjaaal/artemis/cli';
+```
+
+and point `package.json` at it. Help and usage lines then show `mytool`, because it is the single key of your `bin` field (or set `"artemis": { "bin": "mytool" }`):
+
+```json
+{ "name": "my-project", "type": "module", "bin": { "mytool": "bin/mytool.js" } }
+```
+
+`@zjaaal/artemis/cli` is only meant to be imported by a bin file: importing it runs the CLI.
+
+### Full control
+
+If you want to decide the commands folder, the streams or the exit code yourself, call `run()` from your own bin file. See [`run(argv, options)`](#fully-in-control-runargv-options) below.
 
 ## The quiver: how files become commands
 
@@ -339,12 +380,22 @@ async run({ ctx }) {
 
 ## For agents
 
-Everything an agent needs to add a command and call one is in [AGENTS.md](AGENTS.md). The short version: read `art help --json` to learn what exists, call with `--json` to get one object back, branch on the exit code, and pass `--yes` when nobody can answer.
+Everything an agent needs to add a command and call one is in [AGENTS.md](AGENTS.md), and `npx art help --json` from the project folder is where it starts. The short version: read `art help --json` to learn what exists, call with `--json` to get one object back, branch on the exit code, and pass `--yes` when nobody can answer.
 
-## `run(argv, options)`
+## Fully in control: `run(argv, options)`
+
+A bin file that calls `run()` decides everything itself. `bin` is required: it is the name help and usage lines show.
 
 ```js
-const exitCode = await run(process.argv.slice(2), { bin: 'art', commandsDir });
+#!/usr/bin/env node
+// bin/art.js
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
+import { run } from '@zjaaal/artemis';
+
+const commandsDir = path.join(path.dirname(fileURLToPath(import.meta.url)), '../commands');
+
+process.exitCode = await run(process.argv.slice(2), { bin: 'art', commandsDir });
 ```
 
 `run` resolves to the exit code and **never calls `process.exit`**, so you can embed it and test it.
@@ -477,6 +528,7 @@ pnpm install
 pnpm run test:all      # tsc, eslint, prettier, vitest (including the type tests)
 pnpm run build         # emits dist/ (JS and .d.ts)
 pnpm run check-exports # after a build: the entry points resolve, nothing else does
+pnpm run check-bin     # after a build: the packed art and artemis, run in temporary projects
 pnpm run check-lock    # after a build: real processes racing for the registry lock
 ```
 
