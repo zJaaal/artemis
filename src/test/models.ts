@@ -1,3 +1,5 @@
+import type { LockEdges } from '../kits/models.js';
+
 /** Types of the test helpers. Only tests import from `src/test`. */
 
 /** An in-memory stand-in for stdout or stderr: collects every chunk written to it. */
@@ -35,3 +37,16 @@ export type LooseDefineFn = (definition: unknown) => unknown;
 
 /** Runs `work` and returns what it threw, or undefined. Keeps try/catch out of test bodies. */
 export type ThrownByFn = (work: () => unknown) => unknown;
+
+export type FakeLockEdgesOptions = {
+    isProcessAlive: (pid: number) => boolean;
+    timeoutMs: number;
+    /** Runs on every pause: what the other process did while we waited. */
+    onPause?: () => void;
+};
+
+export type FakeLockEdges = {
+    edges: LockEdges;
+    /** Every pause the lock asked for, in ms. */
+    pauses: number[];
+};
