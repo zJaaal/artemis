@@ -72,11 +72,11 @@ Created /work/my-project/commands/hello.js
 **2. Run the sample, then write your own.**
 
 ```console
-$ npx art hello ana
-hello ana
+$ npx art hello
+hello world
 
-$ npx art hello ana --json
-{"ok":true,"command":"hello","result":{"greeting":"hello ana"}}
+$ npx art hello --json
+{"ok":true,"command":"hello","result":{"greeting":"hello world"}}
 
 $ npx art help
 ```
