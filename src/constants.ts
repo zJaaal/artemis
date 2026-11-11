@@ -89,5 +89,15 @@ export const NO_COMMAND = null;
 export const ERROR_CODE = {
     EXISTS: 'EEXIST',
     MISSING: 'ENOENT',
-    PERMISSION_DENIED: 'EPERM'
+    PERMISSION_DENIED: 'EPERM',
+    MODULE_NOT_FOUND: 'ERR_MODULE_NOT_FOUND'
 } as const;
+
+/** The package a command file imports the framework from. */
+export const PACKAGE_NAME = '@zjaaal/artemis';
+
+/** The shipped binary finds its project through the nearest package.json. */
+export const MANIFEST_FILE = 'package.json';
+export const CONFIG_KEY = 'artemis';
+export const DEFAULT_COMMANDS_FOLDER = 'commands';
+export const DEFAULT_BIN_NAME = 'art';

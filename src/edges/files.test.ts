@@ -11,6 +11,7 @@ import {
     makeDirectory,
     modifiedAt,
     pathExists,
+    readManifest,
     readTextIfExists,
     realPathOrResolve,
     removeFile,
@@ -165,5 +166,40 @@ describe('modifiedAt', () => {
 
     test('is undefined for a file that is not there', () => {
         expect(modifiedAt(path.join(folders.make('artemis-files-'), 'gone'))).toBeUndefined();
+    });
+});
+
+describe('readManifest', () => {
+    test('reads the package.json of a folder as an object', () => {
+        const dir = folders.make('artemis-files-');
+
+        writeText(path.join(dir, 'package.json'), '{ "name": "app" }');
+
+        expect(readManifest(dir)).toEqual({ name: 'app' });
+    });
+
+    test('is undefined for a folder with no package.json', () => {
+        expect(readManifest(folders.make('artemis-files-'))).toBeUndefined();
+    });
+
+    test('a package.json that is not valid JSON is an error naming the file', () => {
+        const dir = folders.make('artemis-files-');
+
+        writeText(path.join(dir, 'package.json'), '{ nope');
+
+        expect(thrownBy(() => readManifest(dir))).toMatchObject({
+            message: expect.stringContaining(`${path.join(dir, 'package.json')} is not valid JSON`)
+        });
+    });
+
+    test('a package.json that is not an object is an error with a hint', () => {
+        const dir = folders.make('artemis-files-');
+
+        writeText(path.join(dir, 'package.json'), '["app"]');
+
+        expect(thrownBy(() => readManifest(dir))).toMatchObject({
+            message: expect.stringContaining('must contain a JSON object'),
+            hint: expect.stringContaining('"name"')
+        });
     });
 });

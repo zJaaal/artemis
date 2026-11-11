@@ -2,7 +2,10 @@ import { randomUUID } from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
 
-import { ERROR_CODE } from '../constants.js';
+import { ERROR_CODE, MANIFEST_FILE } from '../constants.js';
+import { CommandError } from '../errors/errors.js';
+import { messageOf } from '../utils/error-message.js';
+import { isRecord } from '../utils/is-record.js';
 import { codeOf } from '../utils/error-code.js';
 
 import type {
@@ -11,6 +14,7 @@ import type {
     MakeDirectoryFn,
     ModifiedAtFn,
     PathExistsFn,
+    ReadManifestFn,
     ReadTextIfExistsFn,
     RealPathFn,
     RemoveFileFn,
@@ -88,4 +92,33 @@ export const realPathOrResolve: RealPathFn = (folder) => {
         // Nothing to lose: a folder that does not exist yet is used by its resolved path.
         return path.resolve(folder);
     }
+};
+
+/**
+ * The package.json of a folder as an object, or undefined when the folder has none. One that is not
+ * valid JSON, or not an object, is an error: the nearest package.json defines the project.
+ */
+export const readManifest: ReadManifestFn = (dir) => {
+    const file = path.join(dir, MANIFEST_FILE);
+    const text = readTextIfExists(file);
+
+    if (text === undefined) {
+        return undefined;
+    }
+
+    try {
+        const parsed: unknown = JSON.parse(text);
+
+        if (isRecord(parsed)) {
+            return parsed;
+        }
+    } catch (error) {
+        throw new CommandError(`${file} is not valid JSON: ${messageOf(error)}`, {
+            hint: 'Fix the file, or run from a folder whose package.json is valid.'
+        });
+    }
+
+    throw new CommandError(`${file} must contain a JSON object`, {
+        hint: 'A package.json is an object, such as { "name": "my-project" }.'
+    });
 };

@@ -1,3 +1,4 @@
+import type { ResolveHook } from 'node:module';
 import type { ParseArgsConfig } from 'node:util';
 
 import type { PromptObject } from 'prompts';
@@ -355,13 +356,13 @@ export type RunOptions = {
     bin: string;
     /** Folder to discover commands in. */
     commandsDir: string;
-    stdout?: OutputSink;
-    stderr?: OutputSink;
+    stdout?: OutputSink | undefined;
+    stderr?: OutputSink | undefined;
     /** Whether prompts may be shown. Default: stdin and stdout are terminals. */
-    interactive?: boolean;
+    interactive?: boolean | undefined;
     /** Default: stdout is a terminal and NO_COLOR is unset. */
-    color?: boolean;
-    env?: NodeJS.ProcessEnv;
+    color?: boolean | undefined;
+    env?: NodeJS.ProcessEnv | undefined;
 };
 
 export type RunCliFn = (argv: string[], options: RunOptions) => Promise<number>;
@@ -413,3 +414,56 @@ export type ReportContext = {
 };
 
 export type ReportErrorFn = (error: unknown, context: ReportContext) => number;
+
+// ---------------------------------------------------------------------------------------------
+// The shipped binary: which project it runs, and with what settings
+// ---------------------------------------------------------------------------------------------
+
+/** What a project may put under the "artemis" key of its package.json. Both fields are optional. */
+export type ArtemisConfig = {
+    /** Relative to the folder of that package.json. Default "commands". */
+    commandsDir?: string;
+    /** The name help and usage lines show. */
+    bin?: string;
+};
+
+/** The folder holding the nearest package.json, and what that file says. */
+export type Project = { root: string; manifest: Record<string, unknown> };
+
+/** The settings a run uses, after defaults. `commandsDir` is absolute. */
+export type CliSettings = { bin: string; commandsDir: string };
+
+/** Reads the package.json of a folder; undefined when the folder has none. An edge. */
+export type ReadManifestFn = (dir: string) => Record<string, unknown> | undefined;
+
+/** Pure: files are read only through `readManifest`. */
+export type FindProjectFn = (cwd: string, readManifest: ReadManifestFn) => Project | undefined;
+
+/** Throws a CommandError with a hint when the "artemis" key has a bad shape. */
+export type ResolveSettingsFn = (project: Project) => CliSettings;
+
+/**
+ * "artemis".bin when set; else the single key of the project's own "bin" field when it has exactly
+ * one (so a project that ships `mytool` through @zjaaal/artemis/cli shows `mytool`); else "art".
+ */
+export type ResolveBinNameFn = (manifest: Record<string, unknown>) => string;
+
+export type IsRecordFn = (value: unknown) => value is Record<string, unknown>;
+
+/** What the binary reads from the machine; every field defaults to the real thing. */
+export type CliOptions = {
+    cwd?: string | undefined;
+    env?: NodeJS.ProcessEnv | undefined;
+    stdout?: OutputSink | undefined;
+    stderr?: OutputSink | undefined;
+    interactive?: boolean | undefined;
+    color?: boolean | undefined;
+};
+
+export type CliFn = (argv: string[], options?: CliOptions) => Promise<number>;
+
+/** Finds the settings for a folder, or throws a CommandError that says what to create or set. */
+export type SettingsForFn = (cwd: string) => CliSettings;
+
+/** The module resolution hook that falls back to the running copy of the package. */
+export type ResolveHookFn = ResolveHook;
