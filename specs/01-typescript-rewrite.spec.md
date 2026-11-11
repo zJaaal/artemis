@@ -193,7 +193,7 @@ export type CliFn = (options?: CliOptions) => Promise<number>; // resolves to th
 Conventions:
 
 - Exit codes live in one constant: `EXIT_CODE = { OK: 0, FAILED: 1, USAGE: 2 }`.
-- The `help --json` manifest keeps its current shape, field names and order. A test pins it (asserting the fields a caller depends on, no snapshot).
+- The `help --json` manifest keeps its current shape, field names and order. Owner, 2026-11-11: `help <topic> --json` returns that same shape narrowed to the topic (the topic and its sub-topics, every command under it), instead of the whole manifest. A test pins it (asserting the fields a caller depends on, no snapshot).
 - `Symbol.for('artemis.command')` and `Symbol.for('artemis.topic')` are kept at runtime, so two loaded copies still recognize each other's definitions, and discovery's bad-definition check behaves as in the JS. They are not part of the TypeScript types.
 - Types and function typings live only in `models.ts` (core) and `kits/models.ts` (kits), per CODE_STANDARDS; no logic file declares a `type` or `interface`, and no function signature spells an inline function type. A lint rule or the review-standards pass checks it.
 - Exported types of `src/index.ts`: `defineCommand`, `defineTopic`, `CommandError`, `UsageError`, `run`, `EXIT_CODE`, plus the definition and options types above.

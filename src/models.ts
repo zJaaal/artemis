@@ -356,6 +356,9 @@ export type Manifest = {
 
 export type ManifestFn = (bin: string, registry: Registry) => Manifest;
 
+/** The manifest narrowed to one topic: the topic and its sub-topics, and every command under it. Same shape. */
+export type TopicManifestFn = (everything: Manifest, topicId: string) => Manifest;
+
 // ---------------------------------------------------------------------------------------------
 // Running
 // ---------------------------------------------------------------------------------------------

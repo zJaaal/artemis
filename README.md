@@ -336,6 +336,7 @@ Global flags may be typed before or after the command name: `art --json math add
 | `art <topic>` or `art <topic> help` | every command inside the topic                                          |
 | `art <command> --help`              | the command's arguments, flags, defaults, choices, aliases and examples |
 | `art help --json`                   | the manifest of every command, as data                                  |
+| `art help <topic> --json`           | the manifest narrowed to one topic: same shape, only its commands       |
 | `art help <command> --json`         | the manifest entry of one command                                       |
 
 ### The JSON contract

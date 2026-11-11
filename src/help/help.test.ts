@@ -67,6 +67,32 @@ describe('help: text', () => {
 });
 
 describe('help --json: the manifest', () => {
+    test('help <topic> --json lists only the commands under that topic', async () => {
+        const manifest = await manifestOf('help', 'math');
+
+        expect(manifest.commands.map((command) => command.id)).toEqual(
+            expect.arrayContaining(['math add'])
+        );
+
+        expect(manifest.commands.every((command) => command.id.startsWith('math '))).toBe(true);
+    });
+
+    test('help <topic> --json leaves out the other topics', async () => {
+        const manifest = await manifestOf('help', 'math');
+
+        expect(manifest.topics.map((topic) => topic.id)).toEqual(['math']);
+    });
+
+    test('help <topic> --json keeps the shape of the whole manifest', async () => {
+        const manifest = await manifestOf('help', 'math');
+
+        expect(Object.keys(manifest)).toEqual(['bin', 'topics', 'commands', 'globalFlags']);
+    });
+
+    test('<topic> --help --json gives the same manifest as help <topic> --json', async () => {
+        expect(await manifestOf('math', '--help')).toEqual(await manifestOf('help', 'math'));
+    });
+
     test('help --json returns a manifest an agent can read', async () => {
         const manifest = await manifestOf('help');
         const add = manifest.commands.find((command) => command.id === 'math add');

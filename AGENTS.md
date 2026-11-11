@@ -58,7 +58,7 @@ Return a value from `run` to give the command a result. Throw `CommandError(mess
 
 ## Calling a command (the contract an agent relies on)
 
-- **`art help --json`** prints one JSON manifest of every command: its `id`, `description`, `usage`, `aliases`, `args` (name, description, required, default, choices), `flags` (name, type, short, multiple, description, default, choices) and `examples`, plus the global flags. Read it first to learn what exists. `art help <command> --json` gives one command's entry.
+- **`art help --json`** prints one JSON manifest of every command: its `id`, `description`, `usage`, `aliases`, `args` (name, description, required, default, choices), `flags` (name, type, short, multiple, description, default, choices) and `examples`, plus the global flags. Read it first to learn what exists. `art help <topic> --json` narrows it to that topic's commands (same shape), and `art help <command> --json` gives one command's entry.
 - **`--json` on any call** prints exactly one object on stdout and nothing else:
     - success: `{ "ok": true, "command": "math add", "result": { "sum": 3 } }`
     - failure: `{ "ok": false, "command": "math add", "error": "Both arguments must be numbers", "hint": "Try: math add 1 2" }` (`hint` is omitted when there is none; `command` is `null` when no command was resolved)

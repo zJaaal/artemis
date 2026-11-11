@@ -2,7 +2,7 @@ import { createContext } from '../context/context.js';
 import { EXIT_CODE, FLAG_PREFIX, HELP_WORD, ID_SEPARATOR } from '../constants.js';
 import { discover } from '../discover/discover.js';
 import { CommandError, UsageError, isUsageError } from '../errors/errors.js';
-import { commandHelp, manifest, rootHelp, topicHelp, usage } from '../help/help.js';
+import { commandHelp, manifest, rootHelp, topicHelp, topicManifest, usage } from '../help/help.js';
 import type {
     CommandEntry,
     GlobalFlags,
@@ -133,7 +133,10 @@ function helpFor(session: Session, target: Exclude<Resolution, { kind: 'unknown'
     const everything = manifest(bin, registry);
 
     if (target.kind === 'topic') {
-        return { text: topicHelp(bin, registry, target.topic, style), data: everything };
+        return {
+            text: topicHelp(bin, registry, target.topic, style),
+            data: topicManifest(everything, target.topic.id)
+        };
     }
 
     return {
