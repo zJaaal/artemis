@@ -250,6 +250,13 @@ export type WalkContext = { registry: Registry; root: string };
 export type ListDirectoryFn = (dir: string) => DirectoryEntry[];
 export type PathExistsFn = (path: string) => boolean;
 export type MakeDirectoryFn = (dir: string) => void;
+export type ReadTextIfExistsFn = (file: string) => string | undefined;
+/** Creates the file only if it does not exist yet; false means someone else has it. */
+export type CreateExclusiveFn = (file: string, text: string) => boolean;
+export type RealPathFn = (path: string) => string;
+export type WorkingDirectoryFn = () => string;
+export type ErrorCodeFn = (error: unknown) => string | undefined;
+export type GitRootFn = (cwd: string) => string | null;
 export type WriteTextFn = (file: string, text: string) => void;
 export type RemoveFileFn = (file: string) => void;
 export type HomeDirectoryFn = () => string;

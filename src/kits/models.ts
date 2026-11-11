@@ -78,6 +78,8 @@ export type PauseFn = (ms: number) => void;
 
 /** The clock, process liveness and waiting, injected so lock tests never sleep. */
 export type LockEdges = {
+    /** The process id written into the lock file. */
+    pid: number;
     now: NowFn;
     isProcessAlive: IsProcessAliveFn;
     pause: PauseFn;
@@ -134,3 +136,44 @@ export type WithLockFn = <TResult>(
     work: () => TResult,
     edges: LockEdges
 ) => TResult;
+
+/** Options with their defaults applied, and the registry store they work on. */
+export type KitConfig = {
+    stateFile: string;
+    mainRoot: string;
+    ports: Record<string, number>;
+    isCheckout: IsCheckoutFn;
+    envVar: string | undefined;
+    slotStep: number;
+    colors: readonly string[];
+    mainName: string;
+    env: NodeJS.ProcessEnv;
+    store: RegistryStore;
+    lock: LockEdges;
+};
+
+/** What turns a record into an instance. */
+export type InstanceConfig = Pick<KitConfig, 'ports' | 'slotStep' | 'colors'>;
+
+export type RegistryStore = {
+    read: () => WorktreeRecords;
+    write: (records: WorktreeRecords) => void;
+};
+
+export type CreateRegistryStoreFn = (stateFile: string) => RegistryStore;
+
+export type DescribeInstanceFn = (
+    config: InstanceConfig,
+    name: string,
+    record: WorktreeRecord
+) => WorktreeInstance;
+
+export type NextFreeSlotFn = (records: WorktreeRecords) => number;
+
+/** A name that is not taken by a registered worktree or by the main checkout. */
+export type UniqueNameFn = (wanted: string, base: string, taken: NameCheck) => string;
+export type NameCheck = (name: string) => boolean;
+export type IsValidNameFn = (name: string) => boolean;
+
+/** Something that runs with its own arguments, such as a registry operation. */
+export type Operation<TArgs extends unknown[], TResult> = (...args: TArgs) => TResult;

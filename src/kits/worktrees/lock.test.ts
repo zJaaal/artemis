@@ -4,7 +4,7 @@ import path from 'node:path';
 import { afterEach, describe, expect, test } from 'vitest';
 
 import { CommandError } from '../../errors.js';
-import { createFakeLockEdges } from '../../test/lock-edges.js';
+import { createFakeLockEdges, FAKE_PID } from '../../test/lock-edges.js';
 import { createTempFolders } from '../../test/temp.js';
 import { thrownBy } from '../../test/thrown.js';
 import { LOCK_POLL_MS, LOCK_SUFFIX } from '../constants.js';
@@ -54,7 +54,7 @@ describe('withLock', () => {
         });
 
         expect(withLock(stateFile, () => fs.readFileSync(lock, 'utf8'), edges)).toBe(
-            String(process.pid)
+            String(FAKE_PID)
         );
     });
 

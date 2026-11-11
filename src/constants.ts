@@ -73,3 +73,10 @@ export const SECTION_SEPARATOR = '\n\n';
 export const NOTE_SEPARATOR = '; ';
 
 export const NO_COMMAND = null;
+
+/** Node system error codes the framework reacts to. */
+export const ERROR_CODE = {
+    EXISTS: 'EEXIST',
+    MISSING: 'ENOENT',
+    PERMISSION_DENIED: 'EPERM'
+} as const;

@@ -10,6 +10,10 @@ export const DEFAULT_COLORS = ['blue', 'green', 'magenta', 'cyan', 'yellow', 're
 
 /** An instance name is a lowercase letter or digit, then letters, digits and dashes. */
 export const MAX_INSTANCE_NAME_LENGTH = 31;
+export const VALID_NAME = new RegExp(`^[a-z0-9][a-z0-9-]{0,${MAX_INSTANCE_NAME_LENGTH - 1}}$`);
+export const INVALID_NAME_RUN = /[^a-z0-9-]+/g;
+export const EDGE_DASHES = /^-+|-+$/g;
+export const FIRST_SUFFIX = 2;
 export const FALLBACK_WORKTREE_NAME = 'worktree';
 
 export const STATE_INDENT_SPACES = 4;
@@ -20,8 +24,6 @@ export const INT32_BYTES = 4;
 
 /** Signal 0 only asks whether the process exists. */
 export const PROBE_SIGNAL = 0;
-export const PERMISSION_DENIED = 'EPERM';
-export const FILE_EXISTS = 'EEXIST';
 
 // ---- Terminal kit -----------------------------------------------------------------------------
 

@@ -39,6 +39,8 @@ export type LooseDefineFn = (definition: unknown) => unknown;
 export type ThrownByFn = (work: () => unknown) => unknown;
 
 export type FakeLockEdgesOptions = {
+    /** The process id the lock file will carry. */
+    pid?: number;
     isProcessAlive: (pid: number) => boolean;
     timeoutMs: number;
     /** Runs on every pause: what the other process did while we waited. */
