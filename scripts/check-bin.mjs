@@ -269,10 +269,11 @@ try {
 
     assert.equal(bareRun.code, EXIT_FAILED, 'a tool with no commands fails');
 
-    assert.match(
+    // The folder named is the TOOL's own: a climb out of the tool would name the consumer's commands folder instead.
+    assert.equal(
         json(bareRun).error,
-        /^Commands folder not found: /,
-        'and says so, not running the consumer’s commands'
+        `Commands folder not found: ${path.join(fs.realpathSync(bare), 'commands')}`,
+        'it names the tool’s own commands folder, never the consumer’s'
     );
 
     assert.match(json(bareRun).hint, /author has to ship the commands folder/);
@@ -297,7 +298,13 @@ try {
     const unnamedRun = execute(process.execPath, [unnamedBin, 'hello', '--json'], consumer);
 
     assert.equal(unnamedRun.code, EXIT_FAILED, 'an unnamed tool with no commands fails');
-    assert.match(json(unnamedRun).error, /^Commands folder not found: /);
+
+    assert.equal(
+        json(unnamedRun).error,
+        `Commands folder not found: ${path.join(fs.realpathSync(unnamed), 'commands')}`,
+        'it names the tool’s own commands folder'
+    );
+
     console.log('ok   an unnamed private tool that does not ship its commands fails too');
 
     // A root that is not a file URL or a path is a reported failure, not a crash.

@@ -48,16 +48,34 @@ const noProjectError = (start: string, route: CliRoute): CommandError =>
                 : `A project is the nearest ${MANIFEST_FILE} that says more than "type" (a bare { "type": "module" } is a marker, not a project). Run it inside one, with a ${DEFAULT_COMMANDS_FOLDER}/ folder next to it.`
     });
 
-/** The commands folder is missing: say what to create or point at, and for a published tool, who has to. */
-const missingCommandsError = (commandsDir: string, manifestPath: string, route: CliRoute) =>
-    new CommandError(`Commands folder not found: ${commandsDir}`, {
-        hint:
-            `Create ${commandsDir}, or set "${CONFIG_KEY}": { "commandsDir" } in ${manifestPath}. ` +
-            `If the commands live in a parent folder, point commandsDir at them, for example "../commands".` +
-            (route === 'own'
-                ? ` If this is a published tool, its author has to ship the commands folder (add it to "files" in ${MANIFEST_FILE}).`
-                : '')
+/** Whether the commands folder is already outside the project, so pointing it at a parent is no news. */
+const pointsOutside = (commandsDir: string, projectRoot: string): boolean =>
+    path.relative(projectRoot, commandsDir).startsWith('..');
+
+/**
+ * The commands folder is missing. For a person running a project: create it, or point `commandsDir`
+ * at a parent's (unless it already points outside). For a published tool the end user cannot fix
+ * anything, so the hint is for its author, and never suggests running another package's commands.
+ */
+const missingCommandsError = (commandsDir: string, projectRoot: string, route: CliRoute) => {
+    const manifestPath = path.join(projectRoot, MANIFEST_FILE);
+    const create = `Create ${commandsDir}, or set "${CONFIG_KEY}": { "commandsDir" } in ${manifestPath}.`;
+
+    const parent =
+        ' If the commands live in a parent folder, point commandsDir at them, for example "../commands".';
+
+    const author = ` If this is a published tool, its author has to ship the commands folder (add it to "files" in ${MANIFEST_FILE}).`;
+
+    if (route === 'own') {
+        return new CommandError(`Commands folder not found: ${commandsDir}`, {
+            hint: create + author
+        });
+    }
+
+    return new CommandError(`Commands folder not found: ${commandsDir}`, {
+        hint: pointsOutside(commandsDir, projectRoot) ? create : create + parent
     });
+};
 
 /** The project of a folder and where its commands are, or a CommandError that says what to create. */
 const settingsFor: SettingsForFn = (start, route) => {
@@ -71,11 +89,7 @@ const settingsFor: SettingsForFn = (start, route) => {
     const settings = resolveSettings(project, route);
 
     if (!isFolder(settings.commandsDir)) {
-        throw missingCommandsError(
-            settings.commandsDir,
-            path.join(project.root, MANIFEST_FILE),
-            route
-        );
+        throw missingCommandsError(settings.commandsDir, project.root, route);
     }
 
     return settings;

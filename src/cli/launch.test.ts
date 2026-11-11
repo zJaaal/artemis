@@ -495,6 +495,41 @@ describe('cli: a project’s own bin file', () => {
         expect(envelope(result.out).hint).toContain('its author has to ship the commands folder');
     });
 
+    test('a published tool is never told to point its commands at another package', async () => {
+        const tool = folders.make('artemis-tool-');
+
+        fs.writeFileSync(path.join(tool, 'package.json'), '{ "name": "mytool" }');
+
+        const result = await ownArt(['hello', '--json'], path.join(tool, 'bin', 'mytool.js'));
+
+        expect(envelope(result.out).hint).not.toContain('parent folder');
+    });
+
+    test('the parent-folder advice is not given when commandsDir already points outside the project', async () => {
+        const root = folders.make('artemis-cli-');
+
+        fs.writeFileSync(
+            path.join(root, 'package.json'),
+            JSON.stringify({ name: 'app', artemis: { commandsDir: '../commands' } })
+        );
+
+        const result = await art(['hello', '--json'], root);
+
+        expect(envelope(result.out).hint).not.toContain('parent folder');
+    });
+
+    test('the parent-folder advice is given when commandsDir stays inside the project', async () => {
+        const root = folders.make('artemis-cli-');
+
+        fs.writeFileSync(path.join(root, 'package.json'), JSON.stringify({ name: 'app' }));
+
+        const result = await art(['hello', '--json'], root);
+
+        expect(envelope(result.out).hint).toContain(
+            'point commandsDir at them, for example "../commands"'
+        );
+    });
+
     test('the same failure for the shipped route does not blame an author', async () => {
         const root = folders.make('artemis-cli-');
 
