@@ -4,8 +4,9 @@ on:
   push:
     tags: ['v*']
 
-# The npm token is the repository secret NPM_TOKEN (never written in the repo). id-token is only for the
-# provenance statement the published package gets.
+# Releases are staged, not published. The npm token is the repository secret NPM_TOKEN (never written in
+# the repo) and it can only stage: nothing is public until the owner approves the staged package with 2FA
+# (`npm stage approve`). id-token is only for the provenance statement.
 permissions:
   contents: read
   id-token: write
@@ -46,7 +47,8 @@ jobs:
             exit 1
           fi
 
-      # Publishing stays on the npm CLI: provenance is an npm feature
-      - run: npm publish --provenance --access public
+      # `npm stage` needs npm 12 (Node 24 ships npm 11), so it runs through a pinned npx. It also creates the
+      # package when it does not exist yet, so the very first release is staged this way too.
+      - run: npx -y npm@12.2.1 stage publish --provenance --access public
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}

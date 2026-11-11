@@ -101,7 +101,7 @@ If you installed it globally, drop the `npx` and run `art hello` from the projec
 
 ### How `art` finds your project
 
-`art` looks for the **nearest project**, starting in the current folder and then each parent. A project is a folder whose `package.json` has an `artemis` key, or has a `commands/` folder next to it. That folder's `commands/` holds the commands. A `package.json` that is neither (a `{ "type": "module" }` marker inside `src/`, or a monorepo package without commands) is skipped and the search goes on upwards, so `art` works from any folder inside your project. Two projects on one machine never see each other's commands.
+`art` looks for the **nearest project**, starting in the current folder and then each parent. A project is the nearest `package.json` that is a real package: it has a `name`, an `artemis` key, or a `commands/` folder next to it. Its `commands/` folder holds the commands. A `package.json` that is only a marker, such as `{ "type": "module" }` inside `src/` or `dist/`, has none of those and is skipped, so `art` works from any folder inside your project. A named package without a `commands/` folder is still the project, and `art` tells you so instead of quietly running a parent project's commands. Two projects on one machine never see each other's commands.
 
 Both settings are optional, under the `artemis` key of that `package.json`:
 
@@ -118,12 +118,12 @@ Both settings are optional, under the `artemis` key of that `package.json`:
 
 When it cannot find what to run, `art` exits `1` and says what to create or set, and with `--json` it prints the usual failure object with `command: null`:
 
-| Problem                                                        | What the hint tells you                                                                                                           |
-| -------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------- |
-| no project from here upwards                                   | a project is a `package.json` with a `commands/` folder next to it, or an `artemis` key; run it inside one, or create `commands/` |
-| the commands folder does not exist                             | create it, or set `"artemis": { "commandsDir" }` in your `package.json`                                                           |
-| the `artemis` key has a bad shape                              | the shape it should have                                                                                                          |
-| the project's `package.json` is not valid JSON or not readable | the file, and what is wrong with it (one that is not the project, such as a template with `{{name}}` in it, is skipped)           |
+| Problem                                                            | What the hint tells you                                                                                                  |
+| ------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------ |
+| no project from here upwards                                       | a project is a folder with a `package.json` that has a `name`, and a `commands/` folder next to it (or an `artemis` key) |
+| the commands folder does not exist                                 | create it, or set `"artemis": { "commandsDir" }` in your `package.json`                                                  |
+| the `artemis` key has a bad shape                                  | the shape it should have                                                                                                 |
+| any `package.json` on the way up is not valid JSON or not readable | the file, and what is wrong with it. It is never skipped: running a different project's commands silently would be worse |
 
 ### Your own command name
 
@@ -524,12 +524,21 @@ openTabs(warp(), [
 
 ## Releasing
 
-Agents cannot log in to npm or hold its token, so the owner does the first publish by hand and stores the npm token as a GitHub secret once.
+Releases are **staged by CI and approved by a person**. The npm token stored in the repository (`NPM_TOKEN`) can only stage: CI uploads the package without 2FA, and nothing is public until the owner approves it with 2FA. Agents cannot log in to npm or approve, so the owner does these steps.
 
-1. Make sure the `@zjaaal` scope exists on npm (an npm user or organization named `zjaaal`). Merge the release PR. On a machine logged in to npm, from a clean checkout of `main`: `pnpm install --frozen-lockfile && pnpm run test:all && pnpm run build && npm publish --access public`. This creates `@zjaaal/artemis@0.1.0`. (Provenance is not available for a local publish; later releases get it.)
-2. On npmjs.com create a granular access token that can publish `@zjaaal/artemis` (read and write, limited to that package, with an expiry), then store it as the repository secret: `gh secret set NPM_TOKEN --repo zJaaal/artemis`, or Settings, Secrets and variables, Actions, New repository secret, name `NPM_TOKEN`.
-3. For each later release: bump `version` in `package.json`, commit, `git tag vX.Y.Z`, `git push origin main vX.Y.Z`. The workflow tests, builds and publishes with provenance.
-4. Rotate the token before it expires: create a new one and overwrite the `NPM_TOKEN` secret.
+1. Make sure the `@zjaaal` scope exists on npm (an npm user or organization named `zjaaal`), and that 2FA is on for the account that will approve releases.
+2. Store the npm token as a repository secret, once: `gh secret set NPM_TOKEN --repo zJaaal/artemis` (or Settings, Secrets and variables, Actions, New repository secret). Any token type can stage. Rotate it before it expires by overwriting the secret.
+3. To release: bump `version` in `package.json`, commit, then `git tag vX.Y.Z` and `git push origin main vX.Y.Z`. The release workflow runs the whole gate and **stages** the package with provenance. It creates the package if it does not exist yet, so `0.1.0` is released this way too: there is no manual first publish.
+4. Approve it, from any machine logged in to npm, with npm 12 or newer (Node 22.22.2+, 24.15+ or 26+):
+
+    ```sh
+    npx npm@12.2.1 stage list                      # the staged versions and their ids
+    npx npm@12.2.1 stage view <stage-id>           # details; `stage download <stage-id>` gives you the tarball to inspect
+    npx npm@12.2.1 stage approve <stage-id>        # asks for 2FA, then the version is public
+    npx npm@12.2.1 stage reject <stage-id>         # asks for 2FA, throws it away
+    ```
+
+    A staged version holds its version number, so a rejected version needs a new number.
 
 ## Development
 
