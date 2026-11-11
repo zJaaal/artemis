@@ -29,85 +29,120 @@ const foldersAt =
 
 const noFolders = foldersAt();
 
-/** The usual case: a person running the shipped art. */
-const shipped = (cwd: string, readManifest: ReadManifestFn, isFolder: IsFolderFn) =>
-    findProject(cwd, readManifest, isFolder, 'shipped');
-
 describe('findProject: what counts as a project', () => {
-    test('a package.json with a commands folder next to it is a project', () => {
-        const project = shipped(
+    test('a package.json with a name is a project, with or without a commands folder', () => {
+        const project = findProject(
             '/work/app',
             manifestsAt({ '/work/app': { name: 'app' } }),
-            foldersAt('/work/app/commands')
+            noFolders
         );
 
         expect(project).toEqual({ root: '/work/app', manifest: { name: 'app' } });
     });
 
-    test('a package.json with an "artemis" key is a project even without a commands folder', () => {
-        const manifest = { artemis: { commandsDir: 'tools' } };
-
-        expect(shipped('/work/app', manifestsAt({ '/work/app': manifest }), noFolders)?.root).toBe(
-            '/work/app'
-        );
-    });
-
-    test('a bare package.json, such as a type marker in src, is skipped', () => {
-        const project = shipped(
-            '/work/app/src',
-            manifestsAt({ '/work/app': { name: 'app' }, '/work/app/src': { type: 'module' } }),
-            foldersAt('/work/app/commands')
-        );
-
-        expect(project?.root).toBe('/work/app');
-    });
-
-    test('a monorepo package without commands falls through to the parent that has them', () => {
-        const project = shipped(
-            '/work/packages/inner',
-            manifestsAt({ '/work': { name: 'outer' }, '/work/packages/inner': { name: 'inner' } }),
+    test('an unnamed package.json with a commands folder next to it is a project (a monorepo root)', () => {
+        const project = findProject(
+            '/work',
+            manifestsAt({ '/work': { private: true, workspaces: ['packages/*'] } }),
             foldersAt('/work/commands')
         );
 
         expect(project?.root).toBe('/work');
     });
 
-    test('is undefined when package.json files exist but none is a project', () => {
-        const project = shipped(
+    test('an unnamed package.json with an "artemis" key is a project', () => {
+        const manifest = { artemis: { commandsDir: 'tools' } };
+
+        expect(
+            findProject('/work/app', manifestsAt({ '/work/app': manifest }), noFolders)?.root
+        ).toBe('/work/app');
+    });
+
+    test('a bare marker, such as a type marker in src, is skipped', () => {
+        const project = findProject(
+            '/work/app/src',
+            manifestsAt({ '/work/app': { name: 'app' }, '/work/app/src': { type: 'module' } }),
+            noFolders
+        );
+
+        expect(project?.root).toBe('/work/app');
+    });
+
+    test('a marker in dist next to a tool’s bin file is skipped, and the tool’s own package is found', () => {
+        const project = findProject(
+            '/tool/dist',
+            manifestsAt({ '/tool': { name: 'tool' }, '/tool/dist': { type: 'module' } }),
+            noFolders
+        );
+
+        expect(project?.root).toBe('/tool');
+    });
+
+    test('a named package without commands is the project, so the failure is about its own commands', () => {
+        const project = findProject(
+            '/work/packages/inner',
+            manifestsAt({ '/work': { name: 'outer' }, '/work/packages/inner': { name: 'inner' } }),
+            foldersAt('/work/commands')
+        );
+
+        expect(project?.root).toBe('/work/packages/inner');
+    });
+
+    test('is undefined when only markers exist', () => {
+        const project = findProject(
             '/work/app',
-            manifestsAt({ '/work/app': { name: 'app' }, '/work': { name: 'work' } }),
+            manifestsAt({ '/work/app': { type: 'module' }, '/work': { private: true } }),
             noFolders
         );
 
         expect(project).toBeUndefined();
     });
+
+    test('a package.json with an empty name is not named', () => {
+        expect(
+            findProject('/work/app', manifestsAt({ '/work/app': { name: '' } }), noFolders)
+        ).toBeUndefined();
+    });
 });
 
 describe('findProject: where it looks', () => {
     test('walks up to a parent folder when the current one has no package.json', () => {
-        const project = shipped(
+        const project = findProject(
             '/work/app/src/deep',
             manifestsAt({ '/work/app': { name: 'app' } }),
-            foldersAt('/work/app/commands')
+            noFolders
         );
 
         expect(project?.root).toBe('/work/app');
     });
 
     test('the nearest project wins over one in a parent folder', () => {
-        const project = shipped(
+        const project = findProject(
             '/work/packages/inner/src',
             manifestsAt({ '/work': { name: 'outer' }, '/work/packages/inner': { name: 'inner' } }),
-            foldersAt('/work/commands', '/work/packages/inner/commands')
+            noFolders
         );
 
         expect(project?.root).toBe('/work/packages/inner');
     });
 
+    test('never climbs out of a tool’s own package into the project that installed it', () => {
+        const project = findProject(
+            '/app/node_modules/mytool/bin',
+            manifestsAt({
+                '/app/node_modules/mytool': { name: 'mytool' },
+                '/app': { name: 'app' }
+            }),
+            noFolders
+        );
+
+        expect(project?.root).toBe('/app/node_modules/mytool');
+    });
+
     test('reads the manifests of the folders in order, nearest first', () => {
         const asked: string[] = [];
 
-        shipped(
+        findProject(
             '/work/app',
             (dir) => {
                 asked.push(dir);
@@ -123,7 +158,7 @@ describe('findProject: where it looks', () => {
     test('a relative folder is resolved before it is searched', () => {
         const asked: string[] = [];
 
-        shipped(
+        findProject(
             'relative',
             (dir) => {
                 asked.push(dir);
@@ -135,62 +170,41 @@ describe('findProject: where it looks', () => {
 
         expect(asked[0]).toBe(path.resolve('relative'));
     });
+
+    test('is undefined when there is no package.json at all', () => {
+        expect(findProject('/somewhere/bin', manifestsAt({}), noFolders)).toBeUndefined();
+    });
 });
 
 describe('findProject: a package.json that cannot be read', () => {
-    test('is skipped when it is not the project, so a template does not hide the real one', () => {
-        const project = shipped(
-            '/work/app/templates',
-            manifestsAt({ '/work/app': { name: 'app' } }, '/work/app/templates'),
-            foldersAt('/work/app/commands')
+    test('is an error, even when it is not the project, so a different project is never run silently', () => {
+        const search = () =>
+            findProject(
+                '/work/app/templates',
+                manifestsAt({ '/work/app': { name: 'app' } }, '/work/app/templates'),
+                noFolders
+            );
+
+        expect(thrownBy(search)).toMatchObject({
+            message: 'Cannot read /work/app/templates/package.json'
+        });
+    });
+
+    test('is an error when it would have been the project', () => {
+        const search = () =>
+            findProject('/work/app', manifestsAt({}, '/work/app'), foldersAt('/work/app/commands'));
+
+        expect(thrownBy(search)).toBeInstanceOf(CommandError);
+    });
+
+    test('above the project it is never looked at, because the search has already stopped', () => {
+        const project = findProject(
+            '/work/app',
+            manifestsAt({ '/work/app': { name: 'app' } }, '/work'),
+            noFolders
         );
 
         expect(project?.root).toBe('/work/app');
-    });
-
-    test('is the failure when it has a commands folder next to it, so it would have been the project', () => {
-        const search = () =>
-            shipped('/work/app', manifestsAt({}, '/work/app'), foldersAt('/work/app/commands'));
-
-        expect(thrownBy(search)).toMatchObject({ message: 'Cannot read /work/app/package.json' });
-    });
-
-    test('is not a project just because it cannot be read', () => {
-        expect(shipped('/work/app', manifestsAt({}, '/work/app'), noFolders)).toBeUndefined();
-    });
-});
-
-describe('findProject: the own route (a tool’s bin file)', () => {
-    const own = (cwd: string, readManifest: ReadManifestFn) =>
-        findProject(cwd, readManifest, noFolders, 'own');
-
-    test('the nearest package.json is the project, even a bare one with no commands', () => {
-        const project = own(
-            '/app/node_modules/mytool/bin',
-            manifestsAt({ '/app/node_modules/mytool': { name: 'mytool' }, '/app': { name: 'app' } })
-        );
-
-        expect(project?.root).toBe('/app/node_modules/mytool');
-    });
-
-    test('never climbs out of the tool into the project that installed it', () => {
-        const project = own(
-            '/app/node_modules/mytool/bin',
-            manifestsAt({ '/app/node_modules/mytool': { name: 'mytool' } })
-        );
-
-        expect(project?.manifest).toEqual({ name: 'mytool' });
-    });
-
-    test('is undefined only when there is no package.json at all', () => {
-        expect(own('/somewhere/bin', manifestsAt({}))).toBeUndefined();
-    });
-
-    test('a package.json that cannot be read is the failure, since it is the tool’s own', () => {
-        const search = () =>
-            own('/app/node_modules/mytool/bin', manifestsAt({}, '/app/node_modules/mytool'));
-
-        expect(thrownBy(search)).toBeInstanceOf(CommandError);
     });
 });
 

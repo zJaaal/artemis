@@ -11,9 +11,7 @@ import { CommandError } from '../errors/errors.js';
 import type {
     ArtemisConfig,
     FindProjectFn,
-    CliRoute,
     IsFolderFn,
-    ManifestRead,
     Project,
     ReadManifestFn,
     ResolveBinNameFn,
@@ -23,54 +21,48 @@ import { isRecord } from '../utils/is-record.js';
 
 const VALID_SHAPE_HINT = `The key looks like "${CONFIG_KEY}": { "commandsDir": "commands", "bin": "mytool" }, and both fields are optional.`;
 
-const hasCommandsFolder = (dir: string, isFolder: IsFolderFn): boolean =>
+const isNonEmptyText = (value: unknown): value is string =>
+    typeof value === 'string' && value.length > 0;
+
+/**
+ * A package.json is a real package, and so a candidate for the project, when it has a name, an
+ * "artemis" key, or a commands folder next to it. A `{ "type": "module" }` marker has none.
+ */
+const isRealPackage = (dir: string, manifest: Record<string, unknown>, isFolder: IsFolderFn) =>
+    isNonEmptyText(manifest.name) ||
+    manifest[CONFIG_KEY] !== undefined ||
     isFolder(path.join(dir, DEFAULT_COMMANDS_FOLDER));
-
-/** The shipped route: a package.json is the project when it has an "artemis" key or a commands folder beside it. */
-const qualifies = (dir: string, read: ManifestRead, isFolder: IsFolderFn): boolean =>
-    'error' in read
-        ? hasCommandsFolder(dir, isFolder)
-        : read.manifest[CONFIG_KEY] !== undefined || hasCommandsFolder(dir, isFolder);
-
-/** The own route: the nearest package.json is the tool's own, so it is the project, whatever it holds. */
-const isTheProject = (dir: string, read: ManifestRead, isFolder: IsFolderFn, route: CliRoute) =>
-    route === 'own' || qualifies(dir, read, isFolder);
 
 function searchUpwards(
     dir: string,
     readManifest: ReadManifestFn,
-    isFolder: IsFolderFn,
-    route: CliRoute
+    isFolder: IsFolderFn
 ): Project | undefined {
     const read = readManifest(dir);
 
-    if (read && isTheProject(dir, read, isFolder, route)) {
-        // A package.json that cannot be read only matters once it turns out to be the project.
-        if ('error' in read) {
-            throw read.error;
-        }
+    // Failing loudly beats silently running the commands of a different project.
+    if (read && 'error' in read) {
+        throw read.error;
+    }
 
+    if (read && isRealPackage(dir, read.manifest, isFolder)) {
         return { root: dir, manifest: read.manifest };
     }
 
     const parent = path.dirname(dir);
 
-    return parent === dir ? undefined : searchUpwards(parent, readManifest, isFolder, route);
+    return parent === dir ? undefined : searchUpwards(parent, readManifest, isFolder);
 }
 
 /**
- * The project of a folder. Shipped route: the nearest package.json that has an "artemis" key or a
- * commands folder next to it, looking in `cwd` and then each parent; a package.json that is neither,
- * such as a `{ "type": "module" }` marker in `src/`, or that cannot be read, is skipped and the search
- * goes on upwards. Own route (`cli({ root })`): the nearest package.json is the tool's own package and
- * ends the search, so it can never climb out of `node_modules/mytool` into someone else's project.
+ * The project of a folder: the nearest package.json that has a name, an "artemis" key or a commands
+ * folder next to it, looking in `cwd` and then each parent. A marker such as `{ "type": "module" }`
+ * in `src/` or `dist/` is skipped; a package.json that cannot be read or parsed is an error. A tool's
+ * own package has a name, so the search from its bin file stops there and never climbs out of it.
  * Pure: the disk is only looked at through the two edges.
  */
-export const findProject: FindProjectFn = (cwd, readManifest, isFolder, route) =>
-    searchUpwards(path.resolve(cwd), readManifest, isFolder, route);
-
-const isNonEmptyText = (value: unknown): value is string =>
-    typeof value === 'string' && value.length > 0;
+export const findProject: FindProjectFn = (cwd, readManifest, isFolder) =>
+    searchUpwards(path.resolve(cwd), readManifest, isFolder);
 
 function invalidConfig(project: Project, problem: string): CommandError {
     const manifestPath = path.join(project.root, MANIFEST_FILE);
@@ -113,9 +105,11 @@ function ownBinName(manifest: Record<string, unknown>): string | undefined {
         return only;
     }
 
-    const hasBin = isRecord(bin) ? keys.length > 0 : isNonEmptyText(bin);
+    const namesNoSingleCommand = keys.length > 1 || isNonEmptyText(bin);
 
-    return hasBin && isNonEmptyText(name) ? name.replace(SCOPE_PREFIX, '') : undefined;
+    return namesNoSingleCommand && isNonEmptyText(name)
+        ? name.replace(SCOPE_PREFIX, '')
+        : undefined;
 }
 
 /**

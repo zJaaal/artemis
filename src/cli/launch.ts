@@ -10,6 +10,7 @@ import type { CliFn, CliRoute, FolderOfRootFn, HostOptions, SettingsForFn } from
 import { reportError } from '../run/report.js';
 import { run } from '../run/run.js';
 import { resolveWorld } from '../run/world.js';
+import { messageOf } from '../utils/error-message.js';
 import { jsonRequested } from '../utils/terminator.js';
 import { findProject, resolveSettings } from './settings.js';
 
@@ -21,10 +22,9 @@ function pathOfRoot(root: string | URL): string {
         }
 
         return fileURLToPath(root);
-    } catch {
-        // Nothing is lost: the failure is reported below, with what to pass instead.
+    } catch (error) {
         throw new CommandError(
-            `cli({ root }) needs the location of your bin file, but got ${String(root)}`,
+            `cli({ root }) needs the location of your bin file, but got ${String(root)} (${messageOf(error)})`,
             {
                 hint: 'Pass import.meta.url from your bin file, or a path.'
             }
@@ -41,13 +41,12 @@ const folderOfRoot: FolderOfRootFn = (root) => {
 
 /** What to do when no project is found: the end user can change folder, the author of a tool cannot. */
 const noProjectError = (start: string, route: CliRoute): CommandError =>
-    route === 'own'
-        ? new CommandError(`No ${MANIFEST_FILE} found from ${start} upwards`, {
-              hint: `This tool is missing its ${MANIFEST_FILE}. If you maintain it, ship ${MANIFEST_FILE} and a ${DEFAULT_COMMANDS_FOLDER}/ folder in the package (see "files" in ${MANIFEST_FILE}).`
-          })
-        : new CommandError(`No project found from ${start} upwards`, {
-              hint: `A project is a folder with a ${MANIFEST_FILE} and a ${DEFAULT_COMMANDS_FOLDER}/ folder next to it, or an "${CONFIG_KEY}" key in its ${MANIFEST_FILE}. Run it inside a project, or create ${DEFAULT_COMMANDS_FOLDER}/ next to your ${MANIFEST_FILE}.`
-          });
+    new CommandError(`No project found from ${start} upwards`, {
+        hint:
+            route === 'own'
+                ? `This tool has no ${MANIFEST_FILE} with a "name". If you maintain it, ship ${MANIFEST_FILE} and a ${DEFAULT_COMMANDS_FOLDER}/ folder in the package (see "files" in ${MANIFEST_FILE}).`
+                : `Run it inside a project: a folder with a ${MANIFEST_FILE} that has a "name", and a ${DEFAULT_COMMANDS_FOLDER}/ folder next to it (or an "${CONFIG_KEY}" key in the ${MANIFEST_FILE}).`
+    });
 
 /** The commands folder is missing: say what to create, and for a published tool, who has to. */
 const missingCommandsError = (commandsDir: string, manifestPath: string, route: CliRoute) =>
@@ -62,7 +61,7 @@ const missingCommandsError = (commandsDir: string, manifestPath: string, route: 
 /** The project of a folder and where its commands are, or a CommandError that says what to create. */
 const settingsFor: SettingsForFn = (start, route) => {
     // The messages name no binary: it is not known here what the user typed (art, artemis or a tool's name).
-    const project = findProject(start, readManifest, isFolder, route);
+    const project = findProject(start, readManifest, isFolder);
 
     if (!project) {
         throw noProjectError(start, route);

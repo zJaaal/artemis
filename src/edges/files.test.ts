@@ -197,10 +197,18 @@ describe('readManifest', () => {
         });
     });
 
-    test('a template with {{name}} in it is an error to return, not to throw', () => {
+    test('a template that is not valid JSON is returned as an error, not thrown', () => {
+        const { dir } = manifestIn('{ "name": "{{name}}", }');
+
+        expect(readManifest(dir)).toMatchObject({
+            error: { message: expect.stringContaining('is not valid JSON') }
+        });
+    });
+
+    test('a template whose placeholder is inside a string is valid JSON, so it is read as an object', () => {
         const { dir } = manifestIn('{ "name": "{{name}}" }');
 
-        expect(() => readManifest(dir)).not.toThrow();
+        expect(readManifest(dir)).toEqual({ manifest: { name: '{{name}}' } });
     });
 
     test('a package.json that is not an object is returned as an error with a hint', () => {

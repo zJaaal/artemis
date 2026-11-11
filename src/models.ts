@@ -462,21 +462,21 @@ export type ManifestRead = { manifest: Record<string, unknown> } | { error: Comm
 
 /**
  * Reads the package.json of a folder; undefined when the folder has none. An edge. It never throws
- * for a bad file: the search skips it unless it would have been the project.
+ * for a bad file: it returns the error, and the search decides what to do with it.
  */
 export type ReadManifestFn = (dir: string) => ManifestRead | undefined;
 
 /**
- * Shipped route: a package.json is the project when it has an "artemis" key or a commands folder next
- * to it; marker files such as `{ "type": "module" }` in `src/` do not count. Own route: the nearest
- * package.json of the bin file is the tool's own package, so it is the project and the search never
- * climbs out of it. Pure: the disk is only looked at through `readManifest` and `isFolder`.
+ * The project is the nearest package.json that is a real package: it has a "name", an "artemis" key,
+ * or a commands folder next to it. A marker such as `{ "type": "module" }` in `src/` or `dist/` has
+ * none of those and is skipped. A package.json that cannot be read or parsed is an error, never
+ * skipped: running another project's commands silently would be worse. Pure: the disk is only looked
+ * at through `readManifest` and `isFolder`.
  */
 export type FindProjectFn = (
     cwd: string,
     readManifest: ReadManifestFn,
-    isFolder: IsFolderFn,
-    route: CliRoute
+    isFolder: IsFolderFn
 ) => Project | undefined;
 
 /** Throws a CommandError with a hint when the "artemis" key has a bad shape. */

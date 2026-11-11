@@ -151,18 +151,19 @@ try {
     assert.equal(json(missing).ok, false);
     console.log('ok   outside any project it fails with a JSON error and a hint');
 
+    // A package.json that cannot be parsed is an error, never skipped: running another project's commands silently is worse.
     const templates = path.join(project, 'templates');
 
     fs.mkdirSync(templates);
-    fs.writeFileSync(path.join(templates, 'package.json'), '{ "name": "{{name}}" }');
+    fs.writeFileSync(path.join(templates, 'package.json'), '{ "name": "{{name}}", }');
 
-    assert.deepEqual(
-        json(execute(art, ['hello', '--json'], templates)).result,
-        { greeting: 'hello' },
-        'a template package.json does not hide the project above it'
-    );
+    const broken = execute(art, ['hello', '--json'], templates);
 
-    console.log('ok   a package.json that cannot be parsed does not hide the real project');
+    assert.equal(broken.code, EXIT_FAILED, 'a package.json that is not valid JSON fails');
+    assert.equal(json(broken).ok, false);
+    assert.equal(json(broken).command, null);
+    assert.match(json(broken).error, /package\.json is not valid JSON/);
+    console.log('ok   a package.json that is not valid JSON fails loudly, naming the file');
 
     // 2. A consumer that ships the same CLI under its own name, with the framework as a dependency.
     const consumer = makeProject('consumer', { bin: { mytool: 'bin/mytool.js' } });
@@ -195,6 +196,28 @@ try {
     );
 
     console.log('ok   the tool runs its own commands wherever the user is standing');
+
+    // A tool that ships its bin file in dist/, next to a { "type": "module" } marker, still finds its own package.
+    const dist = path.join(consumer, 'dist');
+
+    fs.mkdirSync(dist);
+    fs.writeFileSync(path.join(dist, 'package.json'), '{ "type": "module" }');
+
+    fs.writeFileSync(
+        path.join(dist, 'bin.js'),
+        "import { cli } from '@zjaaal/artemis/cli';\n\nprocess.exitCode = await cli({ root: import.meta.url });\n"
+    );
+
+    assert.deepEqual(
+        json(execute(process.execPath, [path.join(dist, 'bin.js'), 'hello', '--json'], nowhere))
+            .result,
+        { greeting: 'hello' },
+        'a type marker in dist does not stop the search at dist'
+    );
+
+    console.log(
+        'ok   a tool with its bin file in dist, next to a type marker, still finds its own commands'
+    );
 
     const local = json(own(['where', '--json'], nowhere)).result.framework;
 
