@@ -28,7 +28,16 @@ export const pause: PauseFn = (ms) => {
 };
 
 /** A wait that lets the process do other things: for the asynchronous named lock. */
-export const sleep: SleepFn = (ms) => sleepFor(ms);
+export const sleep: SleepFn = async (ms, signal) => {
+    try {
+        await sleepFor(ms, undefined, { signal });
+    } catch (error) {
+        // Aborting is how a caller says it no longer needs the wait: that is not a failure.
+        if (codeOf(error) !== ERROR_CODE.ABORTED) {
+            throw error;
+        }
+    }
+};
 
 /** A token that tells one holder from another with the same process id. */
 export const newToken: TokenFn = () => randomUUID();

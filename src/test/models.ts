@@ -1,5 +1,5 @@
 import type { ExitCode, PromptStreams } from '../models.js';
-import type { LockEdges, LockOptions, Store } from '../kits/store/models.js';
+import type { LockEdges, LockOptions, NowFn, SleepFn, Store } from '../kits/store/models.js';
 
 /** Types of the test helpers. Only tests import from `src/test`. */
 
@@ -58,6 +58,14 @@ export type FakeLockOptions = {
     options: LockOptions;
     /** Every pause the lock asked for, in ms. */
     pauses: number[];
+};
+
+/** A clock that only moves when something sleeps: a wait costs no real time. */
+export type FakeClock = {
+    now: NowFn;
+    sleep: SleepFn;
+    /** Every sleep asked for, in ms. */
+    naps: number[];
 };
 
 /** One call to the `@topcli/prompts` fake: which function, what it was asked, and with what options. */

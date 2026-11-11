@@ -771,3 +771,187 @@ describe('art state --reset waits for the document lock', () => {
         expect([pauses, fs.existsSync(path.join(dir, 'steps.json'))]).toEqual([[], false]);
     });
 });
+
+describe('art state: a link that cannot be followed', () => {
+    /** A state folder with one good document and one link that points at itself. */
+    const projectWithLoop = () => {
+        const { root, dir } = newProject({ documents: { steps: STEPS } });
+
+        fs.symlinkSync('loop.json', path.join(dir, 'loop.json'));
+
+        return { root };
+    };
+
+    test('does not fail the listing', async () => {
+        const { root } = projectWithLoop();
+
+        expect((await art(['state', '--json'], root)).code).toBe(EXIT_CODE.OK);
+    });
+
+    test('is listed with no version and the reason it cannot be read', async () => {
+        const { root } = projectWithLoop();
+        const documents = resultOf((await art(['state', '--json'], root)).out).documents;
+
+        expect(documents).toContainEqual({
+            name: 'loop',
+            version: null,
+            file: expect.stringContaining('loop.json'),
+            error: expect.stringContaining('cannot be read')
+        });
+    });
+
+    test('leaves the other documents listed with their versions', async () => {
+        const { root } = projectWithLoop();
+        const documents = resultOf((await art(['state', '--json'], root)).out).documents;
+
+        expect(documents).toContainEqual({
+            name: 'steps',
+            version: 0,
+            file: expect.stringContaining('steps.json')
+        });
+    });
+
+    test('shows the reason in the text listing, without a stack', async () => {
+        const { root } = projectWithLoop();
+        const result = await art(['state'], root);
+
+        expect([result.out.includes('loop  cannot be read'), result.err]).toEqual([true, '']);
+    });
+});
+
+describe('art state: a state folder that is a file', () => {
+    const projectWithFileAsFolder = () => {
+        const { root, dir } = newProject();
+
+        fs.rmSync(dir, { recursive: true });
+        fs.writeFileSync(dir, 'not a folder');
+
+        return { root, dir };
+    };
+
+    test('is a failure (exit 1)', async () => {
+        const { root } = projectWithFileAsFolder();
+
+        expect((await art(['state', '--json'], root)).code).toBe(EXIT_CODE.FAILED);
+    });
+
+    test('names the folder and says where to fix it', async () => {
+        const { root, dir } = projectWithFileAsFolder();
+
+        expect(envelope((await art(['state', '--json'], root)).out)).toMatchObject({
+            ok: false,
+            command: 'state',
+            error: `The state folder ${dir} is not a folder.`,
+            hint: 'Fix "artemis".stateDir in package.json, or remove that file.'
+        });
+    });
+
+    test('prints no stack in text mode', async () => {
+        const { root } = projectWithFileAsFolder();
+
+        expect((await art(['state'], root)).err).not.toContain('ENOTDIR');
+    });
+});
+
+describe('art state: a state folder that cannot be read', () => {
+    /** The state folder sits below a file, so listing it fails with ENOTDIR: the same path as EACCES. */
+    const projectBelowAFile = () => {
+        const { root } = newProject();
+        const blocker = path.join(root, 'blocker');
+
+        fs.writeFileSync(blocker, 'a file');
+
+        fs.writeFileSync(
+            path.join(root, 'package.json'),
+            JSON.stringify({ name: 'project', artemis: { stateDir: 'blocker/state' } })
+        );
+
+        return { root, dir: path.join(blocker, 'state') };
+    };
+
+    test('is a failure (exit 1)', async () => {
+        const { root } = projectBelowAFile();
+
+        expect((await art(['state', '--json'], root)).code).toBe(EXIT_CODE.FAILED);
+    });
+
+    test('names the folder, and says where to look', async () => {
+        const { root, dir } = projectBelowAFile();
+        const result = envelope((await art(['state', '--json'], root)).out);
+
+        expect(result).toMatchObject({
+            ok: false,
+            command: 'state',
+            error: expect.stringContaining(`Cannot read the state folder ${dir}`),
+            hint: `Check the permissions of ${dir}, or fix "artemis".stateDir in package.json.`
+        });
+    });
+
+    test('prints no stack in text mode', async () => {
+        const { root } = projectBelowAFile();
+
+        expect((await art(['state'], root)).err).not.toContain('    at ');
+    });
+});
+
+describe('art state: flags before the word', () => {
+    test('a flag that is not global is a usage error (exit 2)', async () => {
+        const { root } = newProject({ documents: { steps: STEPS } });
+
+        expect((await art(['--reset', '--yes', 'state', 'steps', '--json'], root)).code).toBe(
+            EXIT_CODE.USAGE
+        );
+    });
+
+    test('it never resets what the misplaced flag was meant for', async () => {
+        const { root, dir } = newProject({ documents: { steps: STEPS } });
+
+        await art(['--reset', '--yes', 'state', 'steps'], root);
+
+        expect(fs.existsSync(path.join(dir, 'steps.json'))).toBe(true);
+    });
+
+    test('the error says which flag and where it goes', async () => {
+        const { root } = newProject({ documents: { steps: STEPS } });
+        const result = await art(['--reset', 'state', 'steps', '--json'], root);
+
+        expect(envelope(result.out)).toMatchObject({
+            ok: false,
+            error: '"--reset" cannot come before state'
+        });
+    });
+
+    test('a global flag before the word still works', async () => {
+        const { root } = newProject({ documents: { steps: STEPS } });
+
+        expect(envelope((await art(['--json', 'state'], root)).out)).toMatchObject({
+            ok: true,
+            command: 'state'
+        });
+    });
+});
+
+describe('art state --help --json', () => {
+    test('is one object holding the manifest entry of state', async () => {
+        const { root } = newProject();
+
+        expect(envelope((await art(['state', '--help', '--json'], root)).out)).toMatchObject({
+            ok: true,
+            command: 'state',
+            result: { id: 'state', usage: expect.stringContaining('state'), aliases: [] }
+        });
+    });
+
+    test('lists --reset among its flags', async () => {
+        const { root } = newProject();
+        const flags = resultOf((await art(['state', '--help', '--json'], root)).out).flags;
+
+        expect(flags).toContainEqual(expect.objectContaining({ name: 'reset' }));
+    });
+
+    test('works where there is no project', async () => {
+        const result = await art(['state', '--help', '--json'], folders.make('artemis-state-'));
+
+        expect(envelope(result.out)).toMatchObject({ ok: true, command: 'state' });
+    });
+});

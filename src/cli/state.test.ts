@@ -3,7 +3,7 @@ import { describe, expect, test } from 'vitest';
 import { EXIT_CODE } from '../constants.js';
 import { UsageError } from '../errors/errors.js';
 import { thrownBy } from '../test/thrown.js';
-import { parseStateWords, planState } from './state.js';
+import { assertLeadingFlags, parseStateWords, planState } from './state.js';
 import type { StateWords } from '../models.js';
 
 const NO_WORDS: StateWords = {
@@ -167,6 +167,33 @@ describe('planState', () => {
         expect(plan({ name: 'steps', reset: true }, false)).toEqual({
             kind: 'cannot-ask',
             name: 'steps'
+        });
+    });
+});
+
+describe('assertLeadingFlags', () => {
+    test('accepts no flags', () => {
+        expect(thrownBy(() => assertLeadingFlags([]))).toBeUndefined();
+    });
+
+    test.each([
+        { flag: '--json' },
+        { flag: '--yes' },
+        { flag: '-y' },
+        { flag: '--help' },
+        { flag: '-h' }
+    ])('accepts the global flag $flag', ({ flag }) => {
+        expect(thrownBy(() => assertLeadingFlags([flag]))).toBeUndefined();
+    });
+
+    test('refuses --reset: it belongs after the document', () => {
+        expect(thrownBy(() => assertLeadingFlags(['--reset']))).toBeInstanceOf(UsageError);
+    });
+
+    test('refuses an unknown flag even beside a global one', () => {
+        expect(thrownBy(() => assertLeadingFlags(['--json', '--bogus']))).toMatchObject({
+            message: '"--bogus" cannot come before state',
+            exitCode: EXIT_CODE.USAGE
         });
     });
 });

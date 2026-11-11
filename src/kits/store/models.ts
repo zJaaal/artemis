@@ -5,7 +5,8 @@ import type { CommandError } from '../../errors/errors.js';
 export type NowFn = () => number;
 export type IsProcessAliveFn = (pid: number) => boolean;
 export type PauseFn = (ms: number) => void;
-export type SleepFn = (ms: number) => Promise<void>;
+/** Waits `ms`; aborting `signal` ends the wait early, without an error, and frees its timer. */
+export type SleepFn = (ms: number, signal?: AbortSignal) => Promise<void>;
 export type TokenFn = () => string;
 
 /** Who holds a lock. `pid` is undefined while the holder is still writing the file. */
@@ -121,7 +122,14 @@ export type StoreOptions = ({ dir: string } | { project: string | URL }) & LockO
 export type FolderOfProjectFn = (location: string | URL) => string;
 export type ResolveProjectDirFn = (location: string | URL) => string;
 
-export type MemoryStoreOptions = { documents?: Record<string, unknown> };
+/** `now` and `sleep` are the clock and the waiting of the named lock, injectable like the disk store's. */
+export type MemoryStoreOptions = { documents?: Record<string, unknown> } & Pick<
+    LockOptions,
+    'now' | 'sleep'
+>;
+
+/** Who holds a named lock in a memory store, and the promise that settles when it lets go. */
+export type MemoryHolder = { pid: number; released: Promise<void> };
 
 export type DefineStoreFn = (options: StoreOptions) => Store;
 export type CreateMemoryStoreFn = (options?: MemoryStoreOptions) => Store;
@@ -154,6 +162,9 @@ export type DocBackend = {
     /** Holds the lock while `work` runs. Reentrant: `work` may call back into the same document. */
     withLock: <TResult>(file: string, work: () => TResult) => TResult;
 };
+
+/** One run of `locked()` or `update()` work: `abandoned` turns true if it returned a promise. */
+export type WorkScope = { abandoned: boolean };
 
 export type CreateDocumentFn = <T>(
     backend: DocBackend,

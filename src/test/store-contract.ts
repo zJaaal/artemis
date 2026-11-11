@@ -1,6 +1,7 @@
 import { describe, expect, test } from 'vitest';
 
 import { CommandError } from '../errors/errors.js';
+import type { LockHolder } from '../kits/store/models.js';
 import type { CreateStoreFn } from './models.js';
 import { thrownBy } from './thrown.js';
 
@@ -15,6 +16,26 @@ const VERSION_THREE_FILE = { $version: 3, data: { future: true } };
 const WORK_MS = 5;
 const POLL_MS = 2;
 const BAD_NAMES = ['Steps', '../steps', 'a/b', 'steps.json', '', '-steps'];
+
+type Counted = typeof FALLBACK;
+
+/** What an app in plain JavaScript can pass: an async change, which the types do not allow. */
+const asChange = (
+    change: (current: Counted) => Promise<Counted>
+): ((current: Counted) => Counted) => change as unknown as (current: Counted) => Counted;
+
+/** Work that holds a lock until the test opens the door. */
+const createDoor = () => {
+    let open: () => void = () => undefined;
+
+    const closed = new Promise<void>((resolve) => {
+        open = resolve;
+    });
+
+    return { closed, open: () => open() };
+};
+
+const sleepFor = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
 /**
  * The behavior every store must have, run against each: the same cases for the disk store and the
@@ -201,6 +222,48 @@ export const describeStoreContract = (label: string, create: CreateStoreFn): voi
             expect(doc.read()).toEqual(FALLBACK);
         });
 
+        test('an async change that writes through the doc after the update was refused changed nothing', async () => {
+            const doc = create({ steps: { count: 2, tags: [] } }).doc('steps', {
+                fallback: FALLBACK
+            });
+
+            thrownBy(() =>
+                doc.update(
+                    asChange(async (current) => {
+                        await null;
+                        doc.write({ count: 9, tags: [] });
+
+                        return current;
+                    })
+                )
+            );
+
+            await sleepFor(WORK_MS);
+
+            expect(doc.read()).toEqual({ count: 2, tags: [] });
+        });
+
+        test('an async change that updates through the doc after the update was refused changed nothing', async () => {
+            const doc = create({ steps: { count: 2, tags: [] } }).doc('steps', {
+                fallback: FALLBACK
+            });
+
+            thrownBy(() =>
+                doc.update(
+                    asChange(async (current) => {
+                        await null;
+                        doc.update(() => ({ count: 9, tags: [] }));
+
+                        return current;
+                    })
+                )
+            );
+
+            await sleepFor(WORK_MS);
+
+            expect(doc.read()).toEqual({ count: 2, tags: [] });
+        });
+
         test('an update right after a refused async change does not wait for a lock', () => {
             const doc = create().doc('steps', { fallback: FALLBACK });
 
@@ -277,6 +340,174 @@ export const describeStoreContract = (label: string, create: CreateStoreFn): voi
             thrownBy(() => doc.locked(() => Promise.resolve('later')));
 
             expect(doc.update((current) => ({ ...current, count: 1 })).count).toBe(1);
+        });
+
+        test('async work that writes after the lock was released is refused with a TypeError', async () => {
+            const doc = create().doc('steps', { fallback: FALLBACK });
+            let late: Promise<void> = Promise.resolve();
+
+            thrownBy(() =>
+                doc.locked((held) => {
+                    late = (async () => {
+                        await null;
+                        held.write({ count: 9, tags: [] });
+                    })();
+
+                    return late;
+                })
+            );
+
+            await expect(late).rejects.toBeInstanceOf(TypeError);
+        });
+
+        test('async work that wrote after the lock was released changed nothing', async () => {
+            const doc = create({ steps: { count: 2, tags: [] } }).doc('steps', {
+                fallback: FALLBACK
+            });
+
+            thrownBy(() =>
+                doc.locked((held) =>
+                    (async () => {
+                        await null;
+                        held.write({ count: 9, tags: [] });
+                    })()
+                )
+            );
+
+            await new Promise((resolve) => setTimeout(resolve, WORK_MS));
+
+            expect(doc.read()).toEqual({ count: 2, tags: [] });
+        });
+
+        test('async work that resets after the lock was released is refused too', async () => {
+            const doc = create({ steps: { count: 2, tags: [] } }).doc('steps', {
+                fallback: FALLBACK
+            });
+
+            thrownBy(() =>
+                doc.locked((held) =>
+                    (async () => {
+                        await null;
+                        held.reset();
+                    })()
+                )
+            );
+
+            await new Promise((resolve) => setTimeout(resolve, WORK_MS));
+
+            expect(doc.read()).toEqual({ count: 2, tags: [] });
+        });
+
+        test('async work that writes through the outer doc after the lock was released changed nothing', async () => {
+            const doc = create({ steps: { count: 2, tags: [] } }).doc('steps', {
+                fallback: FALLBACK
+            });
+
+            thrownBy(() =>
+                doc.locked(() =>
+                    (async () => {
+                        await null;
+                        doc.write({ count: 9, tags: [] });
+                    })()
+                )
+            );
+
+            await sleepFor(WORK_MS);
+
+            expect(doc.read()).toEqual({ count: 2, tags: [] });
+        });
+
+        test('async work that writes through another doc of the store after the lock was released changed nothing', async () => {
+            const store = create({ other: { name: 'kept' } });
+            const doc = store.doc('steps', { fallback: FALLBACK });
+            const other = store.doc('other', { fallback: OTHER_FALLBACK });
+
+            thrownBy(() =>
+                doc.locked(() =>
+                    (async () => {
+                        await null;
+                        other.write({ name: 'overwritten' });
+                    })()
+                )
+            );
+
+            await sleepFor(WORK_MS);
+
+            expect(other.read()).toEqual({ name: 'kept' });
+        });
+
+        test('async work that writes through the outer doc is refused with a TypeError that names store.lock', async () => {
+            const doc = create().doc('steps', { fallback: FALLBACK });
+            let late: Promise<void> = Promise.resolve();
+
+            thrownBy(() =>
+                doc.locked(() => {
+                    late = (async () => {
+                        await null;
+                        doc.write({ count: 9, tags: [] });
+                    })();
+
+                    return late;
+                })
+            );
+
+            await expect(late).rejects.toMatchObject({
+                name: 'TypeError',
+                message: expect.stringContaining('store.lock')
+            });
+        });
+
+        test('a write made before the first await of async work happened inside the lock and stays', () => {
+            const doc = create().doc('steps', { fallback: FALLBACK });
+
+            thrownBy(() =>
+                doc.locked(async () => {
+                    doc.write({ count: 5, tags: [] });
+                    await null;
+                })
+            );
+
+            expect(doc.read()).toEqual({ count: 5, tags: [] });
+        });
+
+        test('a callback scheduled by work that finished normally can still write', async () => {
+            const doc = create().doc('steps', { fallback: FALLBACK });
+
+            doc.locked(() => {
+                setTimeout(() => doc.write({ count: 7, tags: [] }), 0);
+            });
+
+            await sleepFor(WORK_MS);
+
+            expect(doc.read()).toEqual({ count: 7, tags: [] });
+        });
+
+        test('a write from a flow that never was inside the refused work is allowed', async () => {
+            const doc = create().doc('steps', { fallback: FALLBACK });
+
+            thrownBy(() => doc.locked(() => Promise.resolve('later')));
+            await sleepFor(WORK_MS);
+            doc.write({ count: 6, tags: [] });
+
+            expect(doc.read()).toEqual({ count: 6, tags: [] });
+        });
+
+        test('the handle still writes while the lock is held', () => {
+            const doc = create().doc('steps', { fallback: FALLBACK });
+
+            doc.locked((held) => held.write({ count: 4, tags: [] }));
+
+            expect(doc.read()).toEqual({ count: 4, tags: [] });
+        });
+
+        test('the handle can still read after the lock was released', () => {
+            const doc = create({ steps: { count: 2, tags: [] } }).doc('steps', {
+                fallback: FALLBACK
+            });
+
+            const kept = doc.locked((held) => held);
+
+            expect(kept.read()).toEqual({ count: 2, tags: [] });
         });
     });
 
@@ -516,6 +747,82 @@ export const describeStoreContract = (label: string, create: CreateStoreFn): voi
             });
 
             expect(await later).toBe('ran later');
+        });
+
+        test('onWait is told who holds it, once, however long the wait', async () => {
+            const store = create();
+            const door = createDoor();
+            const told: LockHolder[] = [];
+
+            const first = store.lock('build', () => door.closed);
+
+            const second = store.lock('build', () => 'second', {
+                pollMs: POLL_MS,
+                onWait: (holder) => told.push(holder)
+            });
+
+            await sleepFor(WORK_MS * 3);
+            door.open();
+            await Promise.all([first, second]);
+
+            expect(told).toEqual([{ pid: process.pid }]);
+        });
+
+        test('onWait is not called when the lock is free', async () => {
+            const told: LockHolder[] = [];
+
+            await create().lock('build', () => 'free', { onWait: (holder) => told.push(holder) });
+
+            expect(told).toEqual([]);
+        });
+
+        test('a wait that outlasts timeoutMs fails, naming who holds it', async () => {
+            const store = create();
+            const door = createDoor();
+            const first = store.lock('build', () => door.closed);
+
+            await expect(
+                store.lock('build', () => 'never', { timeoutMs: WORK_MS, pollMs: POLL_MS })
+            ).rejects.toMatchObject({
+                message: expect.stringContaining(`is locked by process ${process.pid}`)
+            });
+
+            door.open();
+            await first;
+        });
+
+        test('a call that timed out leaves the holder alone, and the lock is free afterwards', async () => {
+            const store = create();
+            const door = createDoor();
+            const first = store.lock('build', () => door.closed.then(() => 'first'));
+
+            await store
+                .lock('build', () => 'never', { timeoutMs: WORK_MS, pollMs: POLL_MS })
+                .catch(() => undefined);
+
+            door.open();
+
+            expect([await first, await store.lock('build', () => 'free')]).toEqual([
+                'first',
+                'free'
+            ]);
+        });
+
+        test('a wait that ends before timeoutMs gets the lock', async () => {
+            const store = create();
+            const door = createDoor();
+            const first = store.lock('build', () => door.closed);
+
+            const second = store.lock('build', () => 'second', {
+                timeoutMs: WORK_MS * 20,
+                pollMs: POLL_MS
+            });
+
+            await sleepFor(POLL_MS);
+            door.open();
+            await first;
+
+            expect(await second).toBe('second');
         });
 
         test('different names do not exclude each other', async () => {

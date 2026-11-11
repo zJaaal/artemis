@@ -339,7 +339,6 @@ export type ErrorCodeFn = (error: unknown) => string | undefined;
 export type GitRootFn = (cwd: string) => string | null;
 export type WriteTextFn = (file: string, text: string) => void;
 export type RemoveFileFn = (file: string) => void;
-export type RenameFileFn = (from: string, to: string) => void;
 /** Replaces a file with this text so that nobody ever reads it half written. */
 export type WriteAtomicFn = (file: string, text: string) => void;
 /** The `*.json` files of a folder, by name: never a temporary file or a lock. A missing folder has none. */
@@ -687,6 +686,9 @@ export type AddKeyFn = (text: string, key: string, valueText: string) => string;
 export type IsInstalledPackageRootFn = (dir: string) => boolean;
 export type PackageNameForFn = (dir: string) => string;
 
+/** What `<word> --help` prints for a built-in word: its usage text, or under --json its manifest entry. */
+export type WordHelpFn = (word: { id: string; text: string; json: boolean }) => string;
+
 /** `art init [folder] [--json]`. Returns the exit code. */
 export type InitCommandFn = (words: string[], options: CliOptions, cwd: string) => number;
 
@@ -725,6 +727,9 @@ export type PlanStateFn = (input: StateInput) => StatePlan;
 
 /** What `art state` is given besides the words: how its lock waits, so a test never sleeps. */
 export type StateEdges = { lock: LockOptions };
+
+/** Refuses a flag typed before `state` that is not a global one (a UsageError). */
+export type AssertLeadingFlagsFn = (leading: readonly string[]) => void;
 
 /** `art state [<doc>] [--reset] [--yes] [--json]`. Returns the exit code. */
 export type StateCommandFn = (

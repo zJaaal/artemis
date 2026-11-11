@@ -1,14 +1,21 @@
 import path from 'node:path';
 
-import { EXIT_CODE, JSON_EXTENSION, NOT_INTERACTIVE_MESSAGE } from '../constants.js';
+import {
+    CONFIG_KEY,
+    EXIT_CODE,
+    JSON_EXTENSION,
+    MANIFEST_FILE,
+    NOT_INTERACTIVE_MESSAGE
+} from '../constants.js';
 import { createPrompter } from '../context/context.js';
-import { isFolder, listJsonFiles, readManifest } from '../edges/files.js';
+import { isFolder, listJsonFiles, pathExists, readManifest } from '../edges/files.js';
 import { CommandError } from '../errors/errors.js';
 import { STORE_INDENT_SPACES } from '../kits/store/constants.js';
 import { resolveLockEdges } from '../kits/store/lock-options.js';
 import { isValidDocName } from '../kits/store/names.js';
 import { inspectDocument, removeDocument } from '../kits/store/raw.js';
 import { wrapVersion } from '../kits/store/versions.js';
+import { messageOf } from '../utils/error-message.js';
 import type { StatePlan, StateCommandFn, StateRun } from '../models.js';
 import { resolveWorld } from '../run/world.js';
 import {
@@ -22,12 +29,20 @@ import {
 import { findProject, noProjectError, resolveSettings, resolveStateDir } from './settings.js';
 import { shadowsWord } from './shadow.js';
 import { parseStateWords, planState } from './state.js';
+import { wordHelp } from './word-help.js';
 
 /** The names of the documents in a folder: its valid-named `*.json` files, without the extension. */
-const documentNames = (dir: string): string[] =>
-    listJsonFiles(dir)
-        .map((file) => path.basename(file, JSON_EXTENSION))
-        .filter(isValidDocName);
+function documentNames(dir: string): string[] {
+    try {
+        return listJsonFiles(dir)
+            .map((file) => path.basename(file, JSON_EXTENSION))
+            .filter(isValidDocName);
+    } catch (error) {
+        throw new CommandError(`Cannot read the state folder ${dir}: ${messageOf(error)}`, {
+            hint: `Check the permissions of ${dir}, or fix "${CONFIG_KEY}".stateDir in ${MANIFEST_FILE}.`
+        });
+    }
+}
 
 const fileOf = (dir: string, name: string): string => path.join(dir, `${name}${JSON_EXTENSION}`);
 
@@ -39,6 +54,15 @@ function print(run: StateRun, text: string, result: unknown): void {
     const output = run.json ? JSON.stringify({ ok: true, command: STATE_WORD, result }) : text;
 
     run.io.stdout.write(`${output}\n`);
+}
+
+/** The state folder may not exist yet, but what is there must be a folder: a file is a setup mistake. */
+function assertStateFolder(dir: string): void {
+    if (pathExists(dir) && !isFolder(dir)) {
+        throw new CommandError(`The state folder ${dir} is not a folder.`, {
+            hint: `Fix "${CONFIG_KEY}".stateDir in ${MANIFEST_FILE}, or remove that file.`
+        });
+    }
 }
 
 /** What `art state` found about one document: its version, or why it cannot be read. */
@@ -137,7 +161,7 @@ export const stateCommand: StateCommandFn = async (words, host, cwd, edges = { l
     const { io, canPrompt } = resolveWorld(host);
 
     if (parsed.help) {
-        io.stdout.write(`${STATE_HELP}\n`);
+        io.stdout.write(`${wordHelp({ id: STATE_WORD, text: STATE_HELP, json: parsed.json })}\n`);
 
         return EXIT_CODE.OK;
     }
@@ -149,6 +173,9 @@ export const stateCommand: StateCommandFn = async (words, host, cwd, edges = { l
     }
 
     const dir = resolveStateDir(project);
+
+    assertStateFolder(dir);
+
     const existing = documentNames(dir);
     const interactive = canPrompt && !parsed.yes && !parsed.json;
 

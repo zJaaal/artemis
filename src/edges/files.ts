@@ -21,7 +21,6 @@ import type {
     ReadTextIfExistsFn,
     RealPathFn,
     RemoveFileFn,
-    RenameFileFn,
     WriteAtomicFn,
     WriteTextFn
 } from '../models.js';
@@ -33,11 +32,18 @@ export const listDirectory: ListDirectoryFn = (dir) =>
         .readdirSync(dir, { withFileTypes: true })
         .map((entry) => ({ name: entry.name, isDirectory: entry.isDirectory() }));
 
+/** Whether a link leads to a file. One that cannot be followed for another reason than leading nowhere (a loop, no permission) is listed too, so `art state` can say why. */
+function linkLeadsToFile(link: string): boolean {
+    try {
+        return fs.statSync(link).isFile();
+    } catch (error) {
+        return codeOf(error) !== ERROR_CODE.MISSING;
+    }
+}
+
 /** A file, or a symbolic link to one: the store reads and writes through links, so a listing must see them. */
 const isFileOrLinkToFile = (dir: string, entry: fs.Dirent): boolean =>
-    entry.isFile() ||
-    (entry.isSymbolicLink() &&
-        fs.statSync(path.join(dir, entry.name), { throwIfNoEntry: false })?.isFile() === true);
+    entry.isFile() || (entry.isSymbolicLink() && linkLeadsToFile(path.join(dir, entry.name)));
 
 /** Only `*.json` files count: `<doc>.json.lock` and `<doc>.json.<pid>.<token>.tmp` are never listed. */
 export const listJsonFiles: ListJsonFilesFn = (dir) => {
@@ -71,11 +77,6 @@ export const writeText: WriteTextFn = (file, text) => {
 /** Removing a file that is not there is not an error: the goal is that it is gone. */
 export const removeFile: RemoveFileFn = (file) => {
     fs.rmSync(file, { force: true });
-};
-
-/** Moves a file over another in one step: a reader sees the old one or the new one, never half. */
-export const renameFile: RenameFileFn = (from, to) => {
-    fs.renameSync(from, to);
 };
 
 /**

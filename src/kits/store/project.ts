@@ -12,6 +12,13 @@ import type { FolderOfProjectFn, ResolveProjectDirFn } from './models.js';
 const folderOfProject: FolderOfProjectFn = (location) => {
     let target: string;
 
+    // A relative path would be read from the current folder, which is what `project` never does.
+    if (typeof location === 'string' && !URL_LIKE.test(location) && !path.isAbsolute(location)) {
+        throw new TypeError(
+            `defineStore({ project }) cannot take the relative path "${location}": pass import.meta.url, or an absolute path or URL.`
+        );
+    }
+
     try {
         target =
             typeof location === 'string' && !URL_LIKE.test(location)

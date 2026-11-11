@@ -72,6 +72,26 @@ describe('defineStore({ project })', () => {
         expect(defineStore({ project: file }).dir).toBe(path.join(root, 'state'));
     });
 
+    test('a relative path is a TypeError: it would be read from the current folder', () => {
+        expect(thrownBy(() => defineStore({ project: path.join('src', 'deep') }))).toBeInstanceOf(
+            TypeError
+        );
+    });
+
+    test('the error for a relative path says what to pass instead', () => {
+        expect(thrownBy(() => defineStore({ project: 'src' }))).toMatchObject({
+            message: expect.stringContaining('pass import.meta.url, or an absolute path or URL')
+        });
+    });
+
+    test('a relative path is refused even when it would lead to a project from the current folder', () => {
+        const { root } = makeProject({ artemis: {} });
+
+        vi.spyOn(process, 'cwd').mockReturnValue(root);
+
+        expect(thrownBy(() => defineStore({ project: 'src' }))).toBeInstanceOf(TypeError);
+    });
+
     test('a folder of the project works too', () => {
         const { root, deep } = makeProject({ artemis: {} });
 

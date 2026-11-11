@@ -132,7 +132,8 @@ export const alreadyHeldError: AlreadyHeldErrorFn = (name) =>
         hint: 'Wait for the work that holds it to finish before asking for it again.'
     });
 
-function lockedError(file: string, lock: string, { pid }: LockHolder): CommandError {
+/** The lock is held by someone alive and the wait ran out. */
+export function lockedError(file: string, lock: string, { pid }: LockHolder): CommandError {
     return new CommandError(
         `${file} is locked by ${pid === undefined ? 'another process' : `process ${pid}`}.`,
         { hint: `If no other command is running, delete ${lock}.` }

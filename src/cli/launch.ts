@@ -15,6 +15,7 @@ import { splitLeadingFlags } from '../resolve/resolve.js';
 import { jsonRequested } from '../utils/terminator.js';
 import { BUILTINS, INIT_WORD, STATE_WORD } from './constants.js';
 import { initCommand } from './init-command.js';
+import { assertLeadingFlags } from './state.js';
 import { stateCommand } from './state-command.js';
 import { findProject, noProjectError, resolveSettings } from './settings.js';
 
@@ -134,6 +135,8 @@ export const launch: CliFn = async (options = {}) => {
     // `state` too: it reads the state folder of the project, and works with no commands folder at all.
     if (route === 'shipped' && rest[0] === STATE_WORD) {
         try {
+            assertLeadingFlags(leading);
+
             return await stateCommand(
                 [...leading, ...rest.slice(1)],
                 host,

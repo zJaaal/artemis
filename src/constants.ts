@@ -71,6 +71,9 @@ export const ANSI_RESET = 0;
 /** Shows the cursor again: a question that is cancelled may leave it hidden. */
 export const SHOW_CURSOR = `${ANSI_ESCAPE}?25h`;
 
+/** Ctrl+C reaches the prompt edge as this key with `ctrl` set, because stdin is in raw mode. */
+export const INTERRUPT_KEY = 'c';
+
 /** SGR codes of each style. */
 export const STYLE_CODES = {
     bold: 1,
@@ -110,7 +113,8 @@ export const ERROR_CODE = {
     EXISTS: 'EEXIST',
     MISSING: 'ENOENT',
     PERMISSION_DENIED: 'EPERM',
-    MODULE_NOT_FOUND: 'ERR_MODULE_NOT_FOUND'
+    MODULE_NOT_FOUND: 'ERR_MODULE_NOT_FOUND',
+    ABORTED: 'ABORT_ERR'
 } as const;
 
 /** The package a command file imports the framework from. */

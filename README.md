@@ -536,7 +536,7 @@ flags.read(); // { beta: false } until something is written; always a fresh copy
 flags.update((current) => ({ ...current, beta: true })); // read, change and write as one step under the lock
 ```
 
-**Where the files go.** `defineStore({ project: import.meta.url })` uses `"artemis": { "stateDir" }` of the project that file belongs to, which is also what `art state` reads, so the app and the CLI cannot disagree. **`stateDir` and `project` are relative to the project root, but `defineStore({ dir })` is relative to the current folder**, so a relative `dir` moves with wherever the user runs the command. Use `project`, or build an absolute `dir` from `import.meta.url`. A published tool installed globally has no project of the user's to find: it passes `dir` itself.
+**Where the files go.** `defineStore({ project: import.meta.url })` uses `"artemis": { "stateDir" }` of the project that file belongs to, which is also what `art state` reads, so the app and the CLI cannot disagree. **`stateDir` and `project` are relative to the project root, but `defineStore({ dir })` is relative to the current folder**, so a relative `dir` moves with wherever the user runs the command. Use `project`, or build an absolute `dir` from `import.meta.url`. `project` takes `import.meta.url` or an absolute path or URL; a relative string is a `TypeError`, because it would be read from the current folder. A published tool installed globally has no project of the user's to find: it passes `dir` itself.
 
 A document is `<dir>/<name>.json`. A name is lowercase letters, digits and dashes (at most 64), anything else is a `TypeError`.
 
@@ -548,7 +548,7 @@ A document is `<dir>/<name>.json`. A name is lowercase letters, digits and dashe
 | `locked(work)`   | Holds the lock for a read-modify-write that may write nothing. `work(doc)` can call `doc.write` and `doc.update`: the lock is reentrant inside one process.               |
 | `reset()`        | Deletes the file, so the next read returns the fallback.                                                                                                                  |
 
-`locked` and `update` take **synchronous work only**: a function that returns a promise is a `TypeError`, because the lock would be released before it settled. Long or async work goes in `store.lock`.
+`locked` and `update` take **synchronous work only**: a function that returns a promise is a `TypeError`, because the lock would be released before it settled. Long or async work goes in `store.lock`. Promise work that was refused is fenced off: a `write`, `update`, `locked` or `reset` called from it after the refusal throws, through any document, so it cannot write later. A write it made before its first `await` ran inside the lock and stays.
 
 **Versions.** A document is plain JSON (version 0) unless it says otherwise, so every file you have today works as it is. From version 1 on the file is `{ "$version": n, "data": ... }`, and you give the steps that bring an older file up:
 
@@ -587,7 +587,7 @@ import { createMemoryStore } from '@zjaaal/artemis/store';
 const store = createMemoryStore({ documents: { 'feature-flags': { beta: true } } });
 ```
 
-Lock options (`now`, `isProcessAlive`, `pause`, `sleep`, `lockTimeoutMs`) go to `defineStore` so a test never sleeps.
+Lock options (`now`, `isProcessAlive`, `pause`, `sleep`, `lockTimeoutMs`) go to `defineStore` so a test never sleeps. The memory store's named locks honor `onWait`, `pollMs` and `timeoutMs` like the disk store's, and take `now` and `sleep`: `createMemoryStore({ now, sleep })` lets a test of a "waiting for..." or a timeout path run without waiting.
 
 ### Worktrees: `@zjaaal/artemis/worktrees`
 

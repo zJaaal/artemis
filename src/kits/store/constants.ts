@@ -31,6 +31,8 @@ export const UPGRADE_KEY = /^[1-9][0-9]*$/;
 
 export const CORRUPT_DOCUMENT_HINT = 'Fix the file, or delete it to start again from the defaults.';
 export const SYNC_ONLY_ADVICE = 'must be synchronous; use store.lock() for async work';
+export const ABANDONED_WORK_ADVICE =
+    'was called by async work that locked() or update() refused; use store.lock() for async work';
 
 /** Where the memory store pretends its documents are: nothing is ever written there. */
 export const MEMORY_DIR = '/artemis-memory-store';

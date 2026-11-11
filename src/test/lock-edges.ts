@@ -1,4 +1,4 @@
-import type { FakeLockEdges, FakeLockEdgesOptions, FakeLockOptions } from './models.js';
+import type { FakeClock, FakeLockEdges, FakeLockEdgesOptions, FakeLockOptions } from './models.js';
 
 /** An opaque process id for the process that takes the lock in a test. */
 export const FAKE_PID = 31_337;
@@ -53,6 +53,23 @@ export const createFakeLockOptions = (options: FakeLockEdgesOptions): FakeLockOp
             pause: edges.pause,
             sleep: edges.sleep,
             lockTimeoutMs: edges.timeoutMs
+        }
+    };
+};
+
+/** A clock for named locks: sleeping moves it forward at once, so a wait or a timeout takes no real time. */
+export const createFakeClock = (): FakeClock => {
+    let now = Date.now();
+    const naps: number[] = [];
+
+    return {
+        naps,
+        now: () => now,
+        sleep: (ms) => {
+            naps.push(ms);
+            now += ms;
+
+            return Promise.resolve();
         }
     };
 };

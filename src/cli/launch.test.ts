@@ -795,6 +795,28 @@ describe('cli: the init word of the shipped binary', () => {
         expect(fs.existsSync(path.join(dir, 'sub'))).toBe(false);
     });
 
+    test('a flag that is not global before the word is a usage error (exit 2)', async () => {
+        const result = await art(['--reset', 'init', '--json'], folders.make('artemis-cli-'));
+
+        expect(result.code).toBe(EXIT_CODE.USAGE);
+    });
+
+    test('--help --json is one object holding the manifest entry of init', async () => {
+        const result = await art(['init', '--help', '--json'], folders.make('artemis-cli-'));
+
+        expect(envelope(result.out)).toMatchObject({
+            ok: true,
+            command: 'init',
+            result: { id: 'init', aliases: [], args: [], flags: [] }
+        });
+    });
+
+    test('plain --help is still the usage text', async () => {
+        const result = await art(['init', '--help'], folders.make('artemis-cli-'));
+
+        expect(result.out).toContain('Usage: init [--json]');
+    });
+
     test('a global flag before the word works too', async () => {
         const dir = folders.make('artemis-cli-');
         const result = await art(['--json', 'init'], dir);

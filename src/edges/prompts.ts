@@ -1,12 +1,10 @@
 import readline from 'node:readline';
 
-import { SHOW_CURSOR } from '../constants.js';
+import { INTERRUPT_KEY, SHOW_CURSOR } from '../constants.js';
 import type { Choice, AskFn, AskQuestionFn, IsAbortFn, PromptStreams } from '../models.js';
 
 // Edge: the only place `@topcli/prompts` is loaded (and only when a command really asks) and the
 // only place that reads keys from the terminal.
-
-const INTERRUPT_KEY = 'c';
 
 /** The library's own choice shape, with a description only when there is one. */
 const toLibraryChoice = ({ label, value, description }: Choice<string>) => ({

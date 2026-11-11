@@ -16,7 +16,6 @@ import {
     readTextIfExists,
     realPathOrResolve,
     removeFile,
-    renameFile,
     listJsonFiles,
     writeAtomic,
     writeText
@@ -259,30 +258,6 @@ describe('isFolder', () => {
     });
 });
 
-describe('renameFile', () => {
-    test('moves a file over another, replacing it', () => {
-        const dir = folders.make('artemis-files-');
-        const from = path.join(dir, 'new.json');
-        const to = path.join(dir, 'doc.json');
-
-        fs.writeFileSync(from, 'new');
-        fs.writeFileSync(to, 'old');
-        renameFile(from, to);
-
-        expect(fs.readFileSync(to, 'utf8')).toBe('new');
-    });
-
-    test('leaves nothing at the old path', () => {
-        const dir = folders.make('artemis-files-');
-        const from = path.join(dir, 'new.json');
-
-        fs.writeFileSync(from, 'new');
-        renameFile(from, path.join(dir, 'doc.json'));
-
-        expect(fs.existsSync(from)).toBe(false);
-    });
-});
-
 describe('writeAtomic', () => {
     test('creates the file with the whole text', () => {
         const file = path.join(folders.make('artemis-files-'), 'doc.json');
@@ -400,6 +375,14 @@ describe('listJsonFiles', () => {
         fs.symlinkSync(folder, path.join(dir, 'folder.json'));
 
         expect(listJsonFiles(dir)).toEqual([]);
+    });
+
+    test('lists a symbolic link that loops back on itself, so its error can be shown', () => {
+        const dir = folders.make('artemis-files-');
+
+        fs.symlinkSync('loop.json', path.join(dir, 'loop.json'));
+
+        expect(listJsonFiles(dir)).toEqual(['loop.json']);
     });
 
     test('a folder that does not exist has no files', () => {

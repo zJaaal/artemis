@@ -1,7 +1,12 @@
-import { TERMINATOR } from '../constants.js';
+import { GLOBAL_FLAG_TOKENS, TERMINATOR } from '../constants.js';
 import { UsageError } from '../errors/errors.js';
 import { isValidDocName } from '../kits/store/names.js';
-import type { ParseStateWordsFn, PlanStateFn, StateWords } from '../models.js';
+import type {
+    AssertLeadingFlagsFn,
+    ParseStateWordsFn,
+    PlanStateFn,
+    StateWords
+} from '../models.js';
 import { STATE_FLAGS, STATE_USAGE_LINE, STATE_WORD } from './constants.js';
 
 const usageError = (message: string, hint: string): UsageError =>
@@ -31,6 +36,21 @@ function applyFlag(words: StateWords, flag: string): StateWords {
             );
     }
 }
+
+/**
+ * The flags typed before `state` belong to the run, so only the global ones may be there: `art
+ * --json state` is fine, `art --reset state steps` is not (it would read as `state steps --reset`).
+ */
+export const assertLeadingFlags: AssertLeadingFlagsFn = (leading) => {
+    const stray = leading.find((flag) => !GLOBAL_FLAG_TOKENS.includes(flag));
+
+    if (stray !== undefined) {
+        throw usageError(
+            `"${stray}" cannot come before ${STATE_WORD}`,
+            `Only ${GLOBAL_FLAG_TOKENS.join(', ')} may come first. Try: ${STATE_WORD} <doc> ${stray}`
+        );
+    }
+};
 
 /**
  * Reads the words after `state`: at most one document, and the flags `--reset`, `--yes`, `--json`
