@@ -165,6 +165,13 @@ Decisions the spec has to settle (recommendation first):
 -   The fallback must be a copy (`structuredClone`): the scripts repo's `flags apply` mutates what `readData`
     returns, which is `DEFAULT_FLAGS` itself when the file is missing.
 
+**Versioning (decided 2026-11-10)**
+
+`0.1.0` is the first release, and it ships as is. The next two pieces of work are the ones that make it a stable API:
+the store kit (a new kit that the worktrees kit then moves onto, so `stateFile` goes) and removing the `prompts`
+dependency (`ctx.prompt` gets its own engine and the `prompts` question format is no longer a promise). Once both are
+in, the version is **1.0.0**. Until then everything stays in `0.x`, where the API may still move.
+
 **Backlog: replace `prompts` (decided 2026-11-10, for a later session)**
 
 Artemis does not need a prompt library to work. `prompts` only powers `ctx.prompt` (it was in `command/context.js`
