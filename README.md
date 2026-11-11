@@ -10,9 +10,18 @@
   <img alt="License MIT" src="https://img.shields.io/badge/license-MIT-lightgrey">
 </p>
 
-Artemis turns a folder of files into a command line. Every file is a command, every folder is a group of commands, and there is no registry to keep up to date: Artemis hunts down whatever you drop in the folder.
+Artemis turns repetitive work into commands an AI agent can call, instead of steps it has to read and redo.
 
-It was built so that **AI agents can write their own CLI tooling**. An agent drops one file in a folder and gets a command, and everything it needs to call that command (arguments, flags, defaults, allowed values, examples) is machine-readable. People get a normal CLI with `--help`; agents get `help --json`.
+An agent that does the same job twice usually pays for it twice: it reads the instructions (a skill, a doc, a prompt), works out the steps, and runs them. With Artemis the agent writes the job down once, as one file in a folder. From then on it just calls it:
+
+```console
+$ art deploy staging --json
+{"ok":true,"command":"deploy","result":{"url":"https://staging.example.com"}}
+```
+
+The script does the work, the same way every time. The agent spends tokens on the call and on the small result it reads back, not on re-reading instructions or re-deriving the steps. That is near zero, not zero: a run still costs the call and its result, and discovery (`help --json`) costs tokens in proportion to how many commands you have. What it saves is the repeated work itself.
+
+Every file is a command, every folder is a group of commands, and there is no registry to keep up to date: Artemis hunts down whatever you drop in the folder. Everything an agent needs to call a command (arguments, flags, defaults, allowed values, examples) is machine-readable, and people get a normal CLI with `--help`.
 
 ```
 commands/
@@ -33,6 +42,13 @@ The metaphor is branding. In the API, the help text and the errors, things keep 
 | A **quiver** | A folder: `commands/` itself, or a topic inside it          |
 | **The hunt** | Discovery: Artemis walks the folder and finds every command |
 | **`art`**    | The CLI you build on it (the name is yours)                 |
+
+## Where it fits
+
+- **Instead of a skill, for work that is deterministic.** A skill is instructions a model reads and follows: it costs tokens each time it is loaded, and the model can still get a step wrong. If the steps are always the same, write them as a command and let the agent call it. Keep skills for work that needs judgment.
+- **Like an MCP server, without the server.** The idea is the same: tools with a name, a description and typed arguments that an agent can discover (`help --json`) and call. The difference is that there is no server, no protocol and no process to keep running: a tool is a file, and calling it is a shell command. It is not an MCP implementation; an MCP adapter is possible later, but it is not part of this release.
+- **Local and private, with one caveat.** The work happens on your machine, with your files and credentials, and Artemis itself sends nothing anywhere. What reaches the model is whatever a command returns, so return what the agent needs and not everything the command saw.
+- **Commands are scripts.** They run with your permissions. Treat a command file like any script you run, and review the ones an agent writes.
 
 ## Why it is built this way
 
@@ -533,26 +549,6 @@ openTabs(warp(), [
 
 - Node 22 or newer. ESM only: use `import`, not `require`.
 - Command files are plain `.js` files (discovery loads `.js` only).
-
-## Releasing
-
-Releases are **staged by CI and approved by a person**. The release workflow only ever stages: it uploads the package without 2FA, and nothing is public until the owner approves it with 2FA. Agents cannot log in to npm or approve, so the owner does these steps.
-
-> **The approval only protects you if the token cannot publish by itself.** Create the `NPM_TOKEN` token without the "bypass 2FA" permission. What a token can do is decided on npm, and this repository cannot check it: with a token that can publish, anyone who gets hold of the secret can publish without your approval.
-
-1. Make sure the `@zjaaal` scope exists on npm (an npm user or organization named `zjaaal`), and that 2FA is on for the account that will approve releases.
-2. Store the npm token as a repository secret, once: `gh secret set NPM_TOKEN --repo zJaaal/artemis` (or Settings, Secrets and variables, Actions, New repository secret). Any token type can stage, so choose one that cannot publish on its own (see above). Rotate it before it expires by overwriting the secret.
-3. To release: bump `version` in `package.json`, commit, then `git tag vX.Y.Z` and `git push origin main vX.Y.Z`. The release workflow runs the whole gate and **stages** the package with provenance. It creates the package if it does not exist yet, so `0.1.0` is released this way too: there is no manual first publish.
-4. Approve it, from any machine logged in to npm. `npm stage` needs npm 12, which runs on Node 22.22.2+, 24.15+ or 26+ (the `npx npm@12.2.1` below brings it):
-
-    ```sh
-    npx npm@12.2.1 stage list                      # the staged versions and their ids
-    npx npm@12.2.1 stage view <stage-id>           # details; `stage download <stage-id>` gives you the tarball to inspect
-    npx npm@12.2.1 stage approve <stage-id>        # asks for 2FA, then the version is public
-    npx npm@12.2.1 stage reject <stage-id>         # asks for 2FA, throws it away
-    ```
-
-    A staged version holds its version number, so a rejected version needs a new number.
 
 ## Development
 
