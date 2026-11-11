@@ -4,7 +4,7 @@ import path from 'node:path';
 import { afterEach, describe, expect, test } from 'vitest';
 
 import { createTempFolders } from '../../test/temp.js';
-import type { TerminalTab } from '../models.js';
+import type { TerminalTab } from './models.js';
 import { openTabs } from './open-tabs.js';
 import { warp } from './warp.js';
 

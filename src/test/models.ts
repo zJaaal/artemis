@@ -1,4 +1,4 @@
-import type { LockEdges } from '../kits/models.js';
+import type { LockEdges } from '../kits/worktrees/models.js';
 
 /** Types of the test helpers. Only tests import from `src/test`. */
 

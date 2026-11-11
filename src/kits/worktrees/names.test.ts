@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'vitest';
 
-import { MAX_INSTANCE_NAME_LENGTH } from '../constants.js';
+import { MAX_INSTANCE_NAME_LENGTH } from './constants.js';
 import { toWorktreeName } from './names.js';
 
 describe('toWorktreeName', () => {

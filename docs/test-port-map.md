@@ -1,6 +1,6 @@
 # Test port map (spec 01, steps 4 and 5)
 
-Old `node:test` title in the scripts repo -> new Vitest case(s). Each old test is one or more single-case
+Old `node:test` title in the scripts repo -> new Vitest case(s). Test files are named by module and live in that module's folder (`run/run.test.ts`, `kits/worktrees/lock.test.ts`, ...). Each old test is one or more single-case
 Vitest tests, because the standards allow one case per test. Deleted in step 19; the PR description carries it.
 
 ## `test/artemis.test.js` (24 tests)

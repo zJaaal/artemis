@@ -1,9 +1,9 @@
 import { beforeAll, describe, expect, test } from 'vitest';
 
-import { discover } from './discover.js';
-import type { Registry } from './models.js';
+import { discover } from '../discover/discover.js';
+import type { Registry } from '../models.js';
 import { resolve, suggest } from './resolve.js';
-import { COMMANDS_FIXTURE_DIR } from './test/constants.js';
+import { COMMANDS_FIXTURE_DIR } from '../test/constants.js';
 
 let registry: Registry;
 

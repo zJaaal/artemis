@@ -3,8 +3,8 @@ import path from 'node:path';
 
 import { realPathOrResolve } from '../../edges/files.js';
 import { workingDirectory } from '../../edges/system.js';
-import { CommandError, UsageError } from '../../errors.js';
-import { FALLBACK_WORKTREE_NAME } from '../constants.js';
+import { CommandError, UsageError } from '../../errors/errors.js';
+import { FALLBACK_WORKTREE_NAME } from './constants.js';
 import type {
     EnsureDetachedOptions,
     EnsureOptions,
@@ -12,7 +12,7 @@ import type {
     NameCheck,
     WorktreeInstance,
     WorktreeRecords
-} from '../models.js';
+} from './models.js';
 import { describeInstance, nextFreeSlot, uniqueName } from './instances.js';
 import { isValidName, toWorktreeName } from './names.js';
 import {

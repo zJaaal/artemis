@@ -1,7 +1,7 @@
 import { spawnSync } from 'node:child_process';
 
-import type { GitRootFn } from '../models.js';
-import { realPathOrResolve } from './files.js';
+import type { GitRootFn } from '../../models.js';
+import { realPathOrResolve } from '../../edges/files.js';
 
 // Edge: asks git which checkout a folder belongs to.
 export const gitRoot: GitRootFn = (cwd) => {

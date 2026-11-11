@@ -1,4 +1,4 @@
-import { FIRST_PANE_ID, PANE_ID_PREFIX, ROOT_PANE_ID, SPLIT_ID_PREFIX } from '../constants.js';
+import { FIRST_PANE_ID, PANE_ID_PREFIX, ROOT_PANE_ID, SPLIT_ID_PREFIX } from './constants.js';
 import type {
     IdCounters,
     IdentifiedNode,
@@ -6,7 +6,7 @@ import type {
     TerminalSplit,
     TerminalTab,
     ToTomlFn
-} from '../models.js';
+} from './models.js';
 
 // TOML basic strings use the same escapes as JSON for what we write (paths and commands)
 const str = (value: string): string => JSON.stringify(value);

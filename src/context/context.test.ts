@@ -1,12 +1,12 @@
 import { beforeAll, describe, expect, test } from 'vitest';
 
 import { createContext } from './context.js';
-import { EXIT_CODE, NOT_INTERACTIVE_HINT } from './constants.js';
-import { discover } from './discover.js';
-import { CommandError } from './errors.js';
-import type { ContextParts, GlobalFlags, Registry } from './models.js';
-import { COMMANDS_FIXTURE_DIR } from './test/constants.js';
-import { createSink } from './test/sink.js';
+import { EXIT_CODE, NOT_INTERACTIVE_HINT } from '../constants.js';
+import { discover } from '../discover/discover.js';
+import { CommandError } from '../errors/errors.js';
+import type { ContextParts, GlobalFlags, Registry } from '../models.js';
+import { COMMANDS_FIXTURE_DIR } from '../test/constants.js';
+import { createSink } from '../test/sink.js';
 
 const quietFlags: GlobalFlags = { help: false, json: false, yes: false };
 

@@ -1,7 +1,7 @@
 import { describe, expect, test } from 'vitest';
 
 import { defineCommand, defineTopic, isCommand, isTopic } from './define.js';
-import type { LooseDefineFn } from './test/models.js';
+import type { LooseDefineFn } from '../test/models.js';
 
 const run = () => ({ ok: true });
 

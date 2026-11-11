@@ -1,8 +1,8 @@
 import { spawnSync } from 'node:child_process';
 
-import { OPEN_COMMAND } from '../kits/constants.js';
-import { CommandError } from '../errors.js';
-import type { OpenLinkFn } from '../kits/models.js';
+import { OPEN_COMMAND } from './constants.js';
+import { CommandError } from '../../errors/errors.js';
+import type { OpenLinkFn } from './models.js';
 
 // Edge: opens a link with the macOS `open` command.
 export const openLink: OpenLinkFn = (url) => {

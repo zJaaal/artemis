@@ -6,7 +6,7 @@ import {
     BAD_COMMANDS_FIXTURE_DIR,
     COMMANDS_FIXTURE_DIR,
     MISSING_FIXTURE_DIR
-} from './test/constants.js';
+} from '../test/constants.js';
 
 describe('discover', () => {
     test('a top-level file is a command named after the file', async () => {

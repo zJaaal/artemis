@@ -8,7 +8,7 @@ import {
     STYLE_CODES,
     TABLE_GAP,
     TABLE_INDENT
-} from './constants.js';
+} from '../constants.js';
 import type {
     ArgDefinition,
     CommandEntry,
@@ -29,7 +29,7 @@ import type {
     TableRow,
     TopicHelpFn,
     UsageFn
-} from './models.js';
+} from '../models.js';
 
 const wrap =
     (code: number, enabled: boolean): StyleFn =>

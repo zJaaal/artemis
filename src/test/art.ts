@@ -1,4 +1,4 @@
-import { run } from '../run.js';
+import { run } from '../run/run.js';
 
 import { COMMANDS_FIXTURE_DIR } from './constants.js';
 import type { ArtResult, Envelope } from './models.js';

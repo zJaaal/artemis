@@ -3,15 +3,15 @@ import path from 'node:path';
 
 import { afterEach, beforeEach, describe, expect, test } from 'vitest';
 
-import { CommandError, UsageError } from '../../errors.js';
+import { CommandError, UsageError } from '../../errors/errors.js';
 import { TEMP_REPO_MARKER } from '../../test/constants.js';
 import { addWorktree, git, makeRepo } from '../../test/git.js';
 import { createFakeLockEdges } from '../../test/lock-edges.js';
 import type { TempRepo } from '../../test/models.js';
 import { createTempFolders } from '../../test/temp.js';
 import { thrownBy } from '../../test/thrown.js';
-import { FIRST_WORKTREE_SLOT, LOCK_SUFFIX } from '../constants.js';
-import type { WorktreesOptions } from '../models.js';
+import { FIRST_WORKTREE_SLOT, LOCK_SUFFIX } from './constants.js';
+import type { WorktreesOptions } from './models.js';
 import { defineWorktrees } from './worktrees.js';
 
 const folders = createTempFolders();

@@ -1,6 +1,6 @@
 import { describe, expectTypeOf, test } from 'vitest';
 
-import type { RunOptions } from './models.js';
+import type { RunOptions } from '../models.js';
 import { run } from './run.js';
 
 describe('run options', () => {

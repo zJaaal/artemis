@@ -1,10 +1,10 @@
 import path from 'node:path';
 
 import { makeDirectory, removeFile, writeText } from '../../edges/files.js';
-import { openLink } from '../../edges/open-link.js';
+import { openLink } from './open-link.js';
 import { homeDirectory } from '../../edges/system.js';
-import { TAB_CONFIG_EXTENSION, WARP_CONFIG_FOLDER, WARP_LINK_PREFIX } from '../constants.js';
-import type { WarpFn } from '../models.js';
+import { TAB_CONFIG_EXTENSION, WARP_CONFIG_FOLDER, WARP_LINK_PREFIX } from './constants.js';
+import type { WarpFn } from './models.js';
 import { toToml } from './toml.js';
 
 /**

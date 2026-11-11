@@ -8,5 +8,5 @@ export type {
     TerminalTab,
     WarpOptions
 } from './models.js';
-export { openTabs } from './terminal/open-tabs.js';
-export { warp } from './terminal/warp.js';
+export { openTabs } from './open-tabs.js';
+export { warp } from './warp.js';

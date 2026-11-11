@@ -1,9 +1,9 @@
 import { format } from 'node:util';
 
-import { CANCELLED_MESSAGE, NOT_INTERACTIVE_HINT, NOT_INTERACTIVE_MESSAGE } from './constants.js';
-import { askQuestions } from './edges/prompts.js';
-import { CommandError } from './errors.js';
-import type { CreateContextFn, PromptFn } from './models.js';
+import { CANCELLED_MESSAGE, NOT_INTERACTIVE_HINT, NOT_INTERACTIVE_MESSAGE } from '../constants.js';
+import { askQuestions } from '../edges/prompts.js';
+import { CommandError } from '../errors/errors.js';
+import type { CreateContextFn, PromptFn } from '../models.js';
 
 /** `ctx.prompt`: asks the user, or refuses to hang when nobody can answer. */
 const createPrompt =

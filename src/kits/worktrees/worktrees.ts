@@ -1,11 +1,11 @@
 import { currentProcess } from '../../edges/process.js';
-import { isProcessAlive, now, pause } from '../../edges/lock-edges.js';
+import { isProcessAlive, now, pause } from './lock-edges.js';
 import {
     DEFAULT_COLORS,
     DEFAULT_MAIN_NAME,
     DEFAULT_SLOT_STEP,
     LOCK_TIMEOUT_MS
-} from '../constants.js';
+} from './constants.js';
 import { realPathOrResolve } from '../../edges/files.js';
 import type {
     DefineWorktreesFn,
@@ -13,7 +13,7 @@ import type {
     KitConfig,
     Operation,
     WorktreesOptions
-} from '../models.js';
+} from './models.js';
 import { createRegistryStore } from './registry-store.js';
 import { withLock } from './lock.js';
 import { ensureDetachedInstance, ensureInstance, removeInstance } from './registration.js';

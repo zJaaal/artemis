@@ -1,8 +1,8 @@
 import { parseArgs } from 'node:util';
 
-import { ERROR_SENTENCE_SEPARATOR, GLOBAL_FLAGS } from './constants.js';
-import { UsageError } from './errors.js';
-import { messageOf } from './utils/error-message.js';
+import { ERROR_SENTENCE_SEPARATOR, GLOBAL_FLAGS } from '../constants.js';
+import { UsageError } from '../errors/errors.js';
+import { messageOf } from '../utils/error-message.js';
 import type {
     ArgDefinition,
     ArgDefinitions,
@@ -13,7 +13,7 @@ import type {
     ParseFn,
     ParseOptions,
     ParsedValues
-} from './models.js';
+} from '../models.js';
 
 type ParseOption = ParseOptions[string];
 

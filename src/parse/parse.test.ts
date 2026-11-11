@@ -1,9 +1,9 @@
 import { describe, expect, test } from 'vitest';
 
-import { UsageError } from './errors.js';
-import type { ParseTarget } from './models.js';
+import { UsageError } from '../errors/errors.js';
+import type { ParseTarget } from '../models.js';
 import { parse } from './parse.js';
-import { thrownBy } from './test/thrown.js';
+import { thrownBy } from '../test/thrown.js';
 
 const USAGE_LINE = 'art demo [name] [flags]';
 

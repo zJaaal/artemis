@@ -1,11 +1,11 @@
 import path from 'node:path';
 
-import { COMMAND_EXTENSION, ID_SEPARATOR, PRIVATE_PREFIXES, TOPIC_FILE } from './constants.js';
-import { isCommand, isTopic } from './define.js';
-import { listDirectory, pathExists } from './edges/files.js';
-import { importDefault } from './edges/modules.js';
-import type { DirectoryEntry, DiscoverFn, Registry, WalkContext } from './models.js';
-import { messageOf } from './utils/error-message.js';
+import { COMMAND_EXTENSION, ID_SEPARATOR, PRIVATE_PREFIXES, TOPIC_FILE } from '../constants.js';
+import { isCommand, isTopic } from '../define/define.js';
+import { listDirectory, pathExists } from '../edges/files.js';
+import { importDefault } from '../edges/modules.js';
+import type { DirectoryEntry, DiscoverFn, Registry, WalkContext } from '../models.js';
+import { messageOf } from '../utils/error-message.js';
 
 const createRegistry = (): Registry => ({
     commands: new Map(),

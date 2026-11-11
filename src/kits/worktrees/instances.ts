@@ -1,5 +1,5 @@
-import { FIRST_SUFFIX, FIRST_WORKTREE_SLOT, MAIN_SLOT } from '../constants.js';
-import type { DescribeInstanceFn, NextFreeSlotFn, UniqueNameFn } from '../models.js';
+import { FIRST_SUFFIX, FIRST_WORKTREE_SLOT, MAIN_SLOT } from './constants.js';
+import type { DescribeInstanceFn, NextFreeSlotFn, UniqueNameFn } from './models.js';
 
 /** A record of the registry as an instance: its ports shifted by slot, and its color by slot. */
 export const describeInstance: DescribeInstanceFn = (config, name, record) => ({

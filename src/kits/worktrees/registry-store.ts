@@ -1,10 +1,10 @@
 import path from 'node:path';
 
 import { makeDirectory, readTextIfExists, writeText } from '../../edges/files.js';
-import { CommandError } from '../../errors.js';
+import { CommandError } from '../../errors/errors.js';
 import { messageOf } from '../../utils/error-message.js';
-import { STATE_INDENT_SPACES } from '../constants.js';
-import type { CreateRegistryStoreFn, WorktreeRecords } from '../models.js';
+import { STATE_INDENT_SPACES } from './constants.js';
+import type { CreateRegistryStoreFn, WorktreeRecords } from './models.js';
 
 /** The registry file: JSON the app keeps wherever it says. The kit stores nothing of its own. */
 export const createRegistryStore: CreateRegistryStoreFn = (stateFile) => ({

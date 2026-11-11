@@ -159,9 +159,14 @@ Conventions:
 Package layout:
 
 ```
-src/                    index.ts, models.ts, define.ts, discover.ts, parse.ts, resolve.ts, help.ts, run.ts,
-                        context.ts, errors.ts, constants.ts, kits/models.ts, kits/worktrees.ts, kits/terminal.ts,
-                        each with its foo.test.ts beside it; test helpers and fixture trees in src/test/
+src/                    index.ts (re-exports only), models.ts, constants.ts: the shared public types and constants
+  define/ errors/ parse/ resolve/ discover/ context/ help/ run/
+                        one folder per module: its source, its foo.test.ts (and foo.test-d.ts) beside it
+  edges/                the only code that touches the outside world (files, modules, prompts, process)
+  utils/                small pure helpers
+  test/                 test helpers and the fixture command trees; only tests import from it
+  kits/terminal/        index.ts (re-exports only), models.ts, constants.ts, the implementation, its tests
+  kits/worktrees/       same, plus its edges (git, lock-edges)
 dist/                   build output (git-ignored, published)
 package.json  tsconfig.json  tsconfig.build.json  eslint.config.mjs  .prettierrc
 AGENTS.md  README.md  LICENSE  docs/CODE_STANDARDS.md  specs/  .claude/skills/ (spec, spec-impl, review-standards)
@@ -185,8 +190,8 @@ Step 1 is on `main`; the rest are commits on `spec-01`. Each step leaves the rep
 9. **Context.** Implement `context.ts` (log, `--yes`, lazy `prompts`, the non-interactive throw with a hint).
 10. **Help.** Implement `help.ts` (text help and the `help --json` manifest) against its tests.
 11. **Run and index.** Implement `run.ts` (injectable `stdout`, `stderr`, `interactive`, `color`, `env`; JSON envelope; exit codes) with `bin` required, and `index.ts`. Core tests all green.
-12. **Terminal kit.** Implement `kits/terminal.ts` (tabs as data, layout tree, Warp adapter, injectable `open`).
-13. **Worktrees kit.** Implement `kits/worktrees.ts` (slots, ports, colors, env override, registry lock with dead-process takeover, `stateFile` option) with the real-git tests.
+12. **Terminal kit.** Implement `kits/terminal/` (tabs as data, layout tree, Warp adapter, injectable `open`).
+13. **Worktrees kit.** Implement `kits/worktrees/` (slots, ports, colors, env override, registry lock with dead-process takeover, `stateFile` option) with the real-git tests.
 14. **Build and exports.** `pnpm run build`; check `dist/` has `.js` and `.d.ts` for `.`, `./worktrees`, `./terminal`. Add `scripts/check-exports.mjs`, run by CI after `build`: it imports all three entry points through the package name (self-reference by `exports`) and asserts any other subpath fails to resolve. Verify `pnpm pack --dry-run` lists only `dist`, `README.md`, `LICENSE`, `package.json`.
 15. **Parity check.** Run the ported fixture CLI and the scripts repo's `art help --json` (scripts repo path from the brief) against the new build (read-only, scripts repo untouched): compare the manifest shape. Record any difference as a bug in the PR.
 16. **Docs.** `AGENTS.md` (how an agent adds a command: file location, `defineCommand` example, the JSON contract, exit codes, `--yes`, prompts throw with hints when non-interactive, `help --json`) and `README.md` (tagline, metaphor as branding, install, quick start, kits, "Releasing" section with the manual steps below).

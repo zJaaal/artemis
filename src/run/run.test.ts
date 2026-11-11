@@ -1,8 +1,8 @@
 import { describe, expect, test } from 'vitest';
 
-import { EXIT_CODE } from './constants.js';
-import { art, envelope } from './test/art.js';
-import { BAD_COMMANDS_FIXTURE_DIR } from './test/constants.js';
+import { EXIT_CODE } from '../constants.js';
+import { art, envelope } from '../test/art.js';
+import { BAD_COMMANDS_FIXTURE_DIR } from '../test/constants.js';
 
 describe('run: resolving and running a command', () => {
     test('a top-level file is a command named after the file', async () => {

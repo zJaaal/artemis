@@ -5,7 +5,7 @@ import {
     ID_SEPARATOR,
     SUGGEST_LENGTH_DIVISOR,
     SUGGEST_MIN_DISTANCE
-} from './constants.js';
+} from '../constants.js';
 import type {
     CommandEntry,
     FindCommandFn,
@@ -14,7 +14,7 @@ import type {
     Resolution,
     SuggestFn,
     TopicEntry
-} from './models.js';
+} from '../models.js';
 
 /** One row of the edit-distance table, from the row above it. */
 function nextRow(previous: number[], char: string, target: string, rowNumber: number): number[] {

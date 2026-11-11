@@ -1,9 +1,9 @@
 import path from 'node:path';
 
 import { createExclusive, makeDirectory, readTextIfExists, removeFile } from '../../edges/files.js';
-import { CommandError } from '../../errors.js';
-import { LOCK_POLL_MS, LOCK_SUFFIX } from '../constants.js';
-import type { LockEdges, WithLockFn } from '../models.js';
+import { CommandError } from '../../errors/errors.js';
+import { LOCK_POLL_MS, LOCK_SUFFIX } from './constants.js';
+import type { LockEdges, WithLockFn } from './models.js';
 
 /** The process that holds the lock, or undefined when the file is empty, unreadable or gone. */
 function holderOf(lock: string): number | undefined {

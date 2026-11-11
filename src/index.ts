@@ -7,8 +7,8 @@
  * Every command gets --help, --json and --yes, and `art help --json` describes all of them.
  */
 export { EXIT_CODE } from './constants.js';
-export { defineCommand, defineTopic } from './define.js';
-export { CommandError, UsageError } from './errors.js';
+export { defineCommand, defineTopic } from './define/define.js';
+export { CommandError, UsageError } from './errors/errors.js';
 export type {
     ArgDefinition,
     Command,
@@ -22,4 +22,4 @@ export type {
     RunOptions,
     TopicDefinition
 } from './models.js';
-export { run } from './run.js';
+export { run } from './run/run.js';

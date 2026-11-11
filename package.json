@@ -19,12 +19,12 @@
       "import": "./dist/index.js"
     },
     "./worktrees": {
-      "types": "./dist/kits/worktrees.d.ts",
-      "import": "./dist/kits/worktrees.js"
+      "types": "./dist/kits/worktrees/index.d.ts",
+      "import": "./dist/kits/worktrees/index.js"
     },
     "./terminal": {
-      "types": "./dist/kits/terminal.d.ts",
-      "import": "./dist/kits/terminal.js"
+      "types": "./dist/kits/terminal/index.d.ts",
+      "import": "./dist/kits/terminal/index.js"
     }
   },
   "repository": {

@@ -1,8 +1,8 @@
 import { describe, expect, test } from 'vitest';
 
-import { EXIT_CODE } from './constants.js';
-import type { Manifest } from './models.js';
-import { art, envelope } from './test/art.js';
+import { EXIT_CODE } from '../constants.js';
+import type { Manifest } from '../models.js';
+import { art, envelope } from '../test/art.js';
 
 const manifestOf = async (...argv: string[]): Promise<Manifest> =>
     envelope(await art([...argv, '--json'])).result as Manifest;

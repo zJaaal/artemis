@@ -3,11 +3,11 @@ import path from 'node:path';
 
 import { afterEach, describe, expect, test } from 'vitest';
 
-import { CommandError } from '../../errors.js';
+import { CommandError } from '../../errors/errors.js';
 import { createFakeLockEdges, FAKE_PID } from '../../test/lock-edges.js';
 import { createTempFolders } from '../../test/temp.js';
 import { thrownBy } from '../../test/thrown.js';
-import { LOCK_POLL_MS, LOCK_SUFFIX } from '../constants.js';
+import { LOCK_POLL_MS, LOCK_SUFFIX } from './constants.js';
 import { withLock } from './lock.js';
 
 const folders = createTempFolders();

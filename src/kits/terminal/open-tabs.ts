@@ -1,4 +1,4 @@
-import type { OpenTabsFn } from '../models.js';
+import type { OpenTabsFn } from './models.js';
 
 /** Writes every tab, then opens them in order. */
 export const openTabs: OpenTabsFn = (terminal, tabs) => {

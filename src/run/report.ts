@@ -1,7 +1,7 @@
-import { EXIT_CODE } from './constants.js';
-import { CommandError, UsageError } from './errors.js';
-import type { ErrorReport, ReportContext, ReportErrorFn } from './models.js';
-import { messageOf } from './utils/error-message.js';
+import { EXIT_CODE } from '../constants.js';
+import { CommandError, UsageError } from '../errors/errors.js';
+import type { ErrorReport, ReportContext, ReportErrorFn } from '../models.js';
+import { messageOf } from '../utils/error-message.js';
 
 /** Splits an error into what the user sees; only a plain error (a bug) carries its stack. */
 function describeError(error: unknown): ErrorReport {

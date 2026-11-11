@@ -1,8 +1,8 @@
-import { gitRoot } from '../../edges/git.js';
+import { gitRoot } from './git.js';
 import { workingDirectory } from '../../edges/system.js';
-import { CommandError } from '../../errors.js';
-import { MAIN_SLOT } from '../constants.js';
-import type { CurrentOptions, KitConfig, WorktreeInstance } from '../models.js';
+import { CommandError } from '../../errors/errors.js';
+import { MAIN_SLOT } from './constants.js';
+import type { CurrentOptions, KitConfig, WorktreeInstance } from './models.js';
 import { describeInstance } from './instances.js';
 
 /** The instance pinned by the app's env variable, if the app has one and it is set. */

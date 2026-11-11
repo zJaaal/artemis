@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'vitest';
 
-import type { TerminalTab } from '../models.js';
+import type { TerminalTab } from './models.js';
 import { toToml } from './toml.js';
 
 const plain = { id: 'demo', name: 'demo', panes: [{ dir: '/work/demo' }] } satisfies TerminalTab;

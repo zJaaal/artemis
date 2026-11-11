@@ -1,5 +1,5 @@
-import { EXIT_CODE } from './constants.js';
-import type { CommandErrorOptions, ExitCode, UsageErrorOptions } from './models.js';
+import { EXIT_CODE } from '../constants.js';
+import type { CommandErrorOptions, ExitCode, UsageErrorOptions } from '../models.js';
 
 /**
  * An expected failure: the message (and hint) is shown to the user, without a stack trace.

@@ -1,4 +1,4 @@
-import { createContext } from './context.js';
+import { createContext } from '../context/context.js';
 import {
     DEFAULT_COLOR_ENV,
     EXIT_CODE,
@@ -6,11 +6,11 @@ import {
     HELP_WORD,
     ID_SEPARATOR,
     JSON_FLAG
-} from './constants.js';
-import { discover } from './discover.js';
-import { currentProcess } from './edges/process.js';
-import { CommandError, UsageError } from './errors.js';
-import { commandHelp, createStyle, manifest, rootHelp, topicHelp, usage } from './help.js';
+} from '../constants.js';
+import { discover } from '../discover/discover.js';
+import { currentProcess } from '../edges/process.js';
+import { CommandError, UsageError } from '../errors/errors.js';
+import { commandHelp, createStyle, manifest, rootHelp, topicHelp, usage } from '../help/help.js';
 import type {
     CommandEntry,
     GlobalFlags,
@@ -23,10 +23,10 @@ import type {
     RunCliFn,
     RunState,
     Session
-} from './models.js';
-import { parse } from './parse.js';
+} from '../models.js';
+import { parse } from '../parse/parse.js';
 import { reportError } from './report.js';
-import { findCommand, resolve, suggest } from './resolve.js';
+import { findCommand, resolve, suggest } from '../resolve/resolve.js';
 
 const isFlagToken = (token: string): boolean => token.startsWith(FLAG_PREFIX);
 

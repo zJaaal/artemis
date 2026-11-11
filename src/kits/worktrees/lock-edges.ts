@@ -1,7 +1,7 @@
-import { ERROR_CODE } from '../constants.js';
-import { INT32_BYTES, PROBE_SIGNAL } from '../kits/constants.js';
-import type { IsProcessAliveFn, NowFn, PauseFn } from '../kits/models.js';
-import { codeOf } from '../utils/error-code.js';
+import { ERROR_CODE } from '../../constants.js';
+import { INT32_BYTES, PROBE_SIGNAL } from './constants.js';
+import type { IsProcessAliveFn, NowFn, PauseFn } from './models.js';
+import { codeOf } from '../../utils/error-code.js';
 
 // Edges of the registry lock: the clock, process liveness, and waiting.
 

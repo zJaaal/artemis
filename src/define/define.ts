@@ -4,7 +4,7 @@ import {
     RESERVED_FLAGS,
     RESERVED_SHORTS,
     TOPIC_TAG
-} from './constants.js';
+} from '../constants.js';
 import type {
     ArgDefinition,
     ArgDefinitions,
@@ -16,7 +16,7 @@ import type {
     IsTaggedFn,
     IsTopicFn,
     Topic
-} from './models.js';
+} from '../models.js';
 
 function fail(message: string): never {
     throw new TypeError(`defineCommand: ${message}`);

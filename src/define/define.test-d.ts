@@ -1,7 +1,7 @@
 import { describe, expectTypeOf, test } from 'vitest';
 
 import { defineCommand } from './define.js';
-import type { CommandContext, InferArgs, InferFlags, RunInput } from './models.js';
+import type { CommandContext, InferArgs, InferFlags, RunInput } from '../models.js';
 
 describe('inference: args', () => {
     test('a required arg is a string', () => {
