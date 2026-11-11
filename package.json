@@ -7,9 +7,6 @@
   "engines": {
     "node": ">=22"
   },
-  "bin": {
-    "artemis": "dist/global/bin.js"
-  },
   "files": [
     "dist"
   ],
@@ -39,19 +36,10 @@
     "build": "tsc -p tsconfig.build.json",
     "test": "vitest run",
     "test:all": "tsc --noEmit && eslint . && prettier --check . && vitest run",
-    "check-exports": "node scripts/check-exports.mjs",
-    "check-bin": "node scripts/check-bin.mjs"
+    "check-exports": "node scripts/check-exports.mjs"
   },
   "dependencies": {
     "prompts": "2.4.2"
-  },
-  "peerDependencies": {
-    "@types/prompts": "^2.4.9"
-  },
-  "peerDependenciesMeta": {
-    "@types/prompts": {
-      "optional": true
-    }
   },
   "devDependencies": {
     "@types/node": "22.20.5",

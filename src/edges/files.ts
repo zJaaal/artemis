@@ -6,7 +6,6 @@ import { codeOf } from '../utils/error-code.js';
 
 import type {
     CreateExclusiveFn,
-    IsFolderFn,
     ListDirectoryFn,
     MakeDirectoryFn,
     PathExistsFn,
@@ -74,6 +73,3 @@ export const realPathOrResolve: RealPathFn = (folder) => {
         return path.resolve(folder);
     }
 };
-
-export const isFolder: IsFolderFn = (target) =>
-    fs.statSync(target, { throwIfNoEntry: false })?.isDirectory() ?? false;

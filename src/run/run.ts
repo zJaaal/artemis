@@ -1,8 +1,16 @@
 import { createContext } from '../context/context.js';
-import { EXIT_CODE, FLAG_PREFIX, HELP_WORD, ID_SEPARATOR, JSON_FLAG } from '../constants.js';
+import {
+    DEFAULT_COLOR_ENV,
+    EXIT_CODE,
+    FLAG_PREFIX,
+    HELP_WORD,
+    ID_SEPARATOR,
+    JSON_FLAG
+} from '../constants.js';
 import { discover } from '../discover/discover.js';
+import { currentProcess } from '../edges/process.js';
 import { CommandError, UsageError } from '../errors/errors.js';
-import { commandHelp, manifest, rootHelp, topicHelp, usage } from '../help/help.js';
+import { commandHelp, createStyle, manifest, rootHelp, topicHelp, usage } from '../help/help.js';
 import type {
     CommandEntry,
     GlobalFlags,
@@ -10,6 +18,7 @@ import type {
     InvokeFn,
     ParsedCommandLine,
     Registry,
+    ResolveWorldFn,
     Resolution,
     RunCliFn,
     RunState,
@@ -17,10 +26,20 @@ import type {
 } from '../models.js';
 import { parse } from '../parse/parse.js';
 import { reportError } from './report.js';
-import { resolveWorld } from './world.js';
 import { findCommand, resolve, suggest } from '../resolve/resolve.js';
 
 const isFlagToken = (token: string): boolean => token.startsWith(FLAG_PREFIX);
+
+/** Works out where output goes, whether to color and whether prompts may show. */
+const resolveWorld: ResolveWorldFn = (options) => {
+    const system = currentProcess();
+    const io = { stdout: options.stdout ?? system.stdout, stderr: options.stderr ?? system.stderr };
+    const env = options.env ?? system.env;
+    const color = options.color ?? (Boolean(io.stdout.isTTY) && !env[DEFAULT_COLOR_ENV]);
+    const canPrompt = options.interactive ?? (system.stdinIsTTY && system.stdoutIsTTY);
+
+    return { io, bin: options.bin, style: createStyle(color), canPrompt };
+};
 
 /** Prints text, or under --json the data wrapped in the success envelope. */
 function print(session: Session, text: string, data: unknown): void {
