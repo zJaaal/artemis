@@ -35,7 +35,8 @@
   "scripts": {
     "build": "tsc -p tsconfig.build.json",
     "test": "vitest run",
-    "test:all": "tsc --noEmit && eslint . && prettier --check . && vitest run"
+    "test:all": "tsc --noEmit && eslint . && prettier --check . && vitest run",
+    "check-exports": "node scripts/check-exports.mjs"
   },
   "dependencies": {
     "prompts": "2.4.2"
