@@ -22,6 +22,7 @@ import type {
     ManifestCommand,
     ManifestFlag,
     ManifestFn,
+    TopicManifestFn,
     Registry,
     RootHelpFn,
     StyleFn,
@@ -250,4 +251,17 @@ export const manifest: ManifestFn = (bin, registry): Manifest => ({
     topics: [...registry.topics.values()],
     commands: [...registry.commands.values()].map((entry) => describeCommand(bin, entry)),
     globalFlags: describeFlags(GLOBAL_FLAGS)
+});
+
+const isWithin = (id: string, topicId: string): boolean =>
+    id === topicId || id.startsWith(`${topicId} `);
+
+/**
+ * The manifest of one topic: the topic and its sub-topics, and every command under it. It keeps the
+ * shape of the whole manifest, so a caller reads both the same way.
+ */
+export const topicManifest: TopicManifestFn = (everything, topicId) => ({
+    ...everything,
+    topics: everything.topics.filter((topic) => isWithin(topic.id, topicId)),
+    commands: everything.commands.filter((command) => isWithin(command.id, topicId))
 });

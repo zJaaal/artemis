@@ -1,6 +1,6 @@
 {
   "name": "@zjaaal/artemis",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "description": "Drop one file in a folder and get a CLI command. A command framework agents can write and read.",
   "type": "module",
   "packageManager": "pnpm@10.34.7",
