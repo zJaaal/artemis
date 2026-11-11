@@ -25,3 +25,9 @@ export const ALIAS_CLASH_FIXTURE_DIR = fileURLToPath(
 );
 
 export const MISSING_FIXTURE_DIR = fileURLToPath(new URL('./fixtures/not-there', import.meta.url));
+
+/** Base values for the worktrees kit tests; expectations are built from them, never copied. */
+export const KIT_BASE_PORTS = { http: 8080, frontend: 4200 } as const;
+export const KIT_SLOT_STEP = 100;
+export const KIT_COLORS = ['blue', 'green', 'magenta'] as const;
+export const KIT_LOCK_TIMEOUT_MS = 100;

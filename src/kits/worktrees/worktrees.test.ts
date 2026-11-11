@@ -4,7 +4,13 @@ import path from 'node:path';
 import { afterEach, beforeEach, describe, expect, test } from 'vitest';
 
 import { CommandError, UsageError } from '../../errors/errors.js';
-import { TEMP_REPO_MARKER } from '../../test/constants.js';
+import {
+    KIT_BASE_PORTS,
+    KIT_COLORS,
+    KIT_LOCK_TIMEOUT_MS,
+    KIT_SLOT_STEP,
+    TEMP_REPO_MARKER
+} from '../../test/constants.js';
 import { addWorktree, git, makeRepo } from '../../test/git.js';
 import { createFakeLockEdges } from '../../test/lock-edges.js';
 import type { TempRepo } from '../../test/models.js';
@@ -16,12 +22,18 @@ import { defineWorktrees } from './worktrees.js';
 
 const folders = createTempFolders();
 
-const BASE_PORTS = { http: 8080, frontend: 4200 };
-const SLOT_STEP = 100;
-const COLORS = ['blue', 'green', 'magenta'];
+const BASE_PORTS = KIT_BASE_PORTS;
+const SLOT_STEP = KIT_SLOT_STEP;
+const COLORS = [...KIT_COLORS];
+
+/** Where a slot's ports land: the base port shifted by the step. */
+const portsAt = (slot: number) => ({
+    http: BASE_PORTS.http + slot * SLOT_STEP,
+    frontend: BASE_PORTS.frontend + slot * SLOT_STEP
+});
+
 const ENV_VAR = 'APP_WORKTREE';
 const HOLDER_PID = 4242;
-const LOCK_TEST_TIMEOUT_MS = 100;
 
 let dir: string;
 let main: TempRepo;
@@ -113,7 +125,7 @@ describe('ensure', () => {
             isMain: false,
             meta: {},
             color: 'green',
-            ports: { http: 8180, frontend: 4300 }
+            ports: portsAt(FIRST_WORKTREE_SLOT)
         });
     });
 
@@ -263,12 +275,12 @@ describe('detached instances', () => {
             kit().ensureDetached({ name: 'trunk-c467', meta: { image: 'x/y:trunk_c467' } })
         ).toEqual({
             name: 'trunk-c467',
-            slot: 2,
+            slot: FIRST_WORKTREE_SLOT + 1,
             root: null,
             isMain: false,
             meta: { image: 'x/y:trunk_c467' },
             color: 'magenta',
-            ports: { http: 8280, frontend: 4400 }
+            ports: portsAt(FIRST_WORKTREE_SLOT + 1)
         });
     });
 
@@ -360,7 +372,7 @@ describe('two registrations at once', () => {
 
         const { edges } = createFakeLockEdges({
             isProcessAlive: (pid) => pid === HOLDER_PID,
-            timeoutMs: LOCK_TEST_TIMEOUT_MS,
+            timeoutMs: KIT_LOCK_TIMEOUT_MS,
             // The other process finishes its registration, then releases the lock.
             onPause: () => {
                 fs.writeFileSync(
@@ -388,8 +400,8 @@ describe('two registrations at once', () => {
                 .filter((instance) => !instance.isMain)
                 .map((instance) => [instance.name, instance.slot])
         ).toEqual([
-            ['first', 1],
-            ['second', 2]
+            ['first', FIRST_WORKTREE_SLOT],
+            ['second', FIRST_WORKTREE_SLOT + 1]
         ]);
     });
 
