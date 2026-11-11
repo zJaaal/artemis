@@ -7,6 +7,11 @@ export const EXIT_CODE = { OK: 0, FAILED: 1, USAGE: 2 } as const;
 export const COMMAND_TAG = Symbol.for('artemis.command');
 export const TOPIC_TAG = Symbol.for('artemis.topic');
 
+// Errors are tagged the same way, so an error thrown by another copy of Artemis (a project's own
+// local copy under a global `art`) is still recognised: `instanceof` only knows one copy.
+export const COMMAND_ERROR_TAG = Symbol.for('artemis.command-error');
+export const USAGE_ERROR_TAG = Symbol.for('artemis.usage-error');
+
 export const FLAG_TYPES = ['boolean', 'string'] as const;
 
 /** A short flag is a single character (`-s`); the parser rejects anything else. */

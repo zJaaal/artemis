@@ -176,6 +176,8 @@ export type DefineCommandFn = <
 
 /** Reads the tag a definition carries at runtime. */
 export type IsTaggedFn = (value: unknown, tag: symbol) => boolean;
+export type IsCommandErrorFn = (value: unknown) => value is CommandErrorShape;
+export type IsUsageErrorFn = (value: unknown) => value is UsageErrorShape;
 
 export type DefineTopicFn = (definition?: TopicDefinition) => Topic;
 export type IsCommandFn = (value: unknown) => value is Command;
@@ -186,6 +188,13 @@ export type IsTopicFn = (value: unknown) => value is Topic;
 // ---------------------------------------------------------------------------------------------
 
 export type ExitCode = (typeof EXIT_CODE)[keyof typeof EXIT_CODE];
+
+/** What a failure looks like to the reporter, whichever copy of Artemis threw it. */
+export type CommandErrorShape = Error & {
+    hint: string | undefined;
+    exitCode: ExitCode;
+};
+export type UsageErrorShape = CommandErrorShape & { usage: string | undefined };
 
 export type CommandErrorOptions = {
     hint?: string | undefined;

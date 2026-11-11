@@ -1,7 +1,8 @@
 import { describe, expect, test } from 'vitest';
 
 import { EXIT_CODE } from '../constants.js';
-import { CommandError, UsageError } from './errors.js';
+import { foreignCommandError } from '../test/foreign-error.js';
+import { CommandError, UsageError, isCommandError, isUsageError } from './errors.js';
 
 describe('CommandError', () => {
     test('exits with the failed code by default', () => {
@@ -45,5 +46,45 @@ describe('UsageError', () => {
         const error = new UsageError('bad line');
 
         expect([error.name, error instanceof CommandError]).toEqual(['UsageError', true]);
+    });
+});
+
+describe('isCommandError and isUsageError', () => {
+    test('a CommandError is an expected failure', () => {
+        expect(isCommandError(new CommandError('boom'))).toBe(true);
+    });
+
+    test('a UsageError is an expected failure and a usage error', () => {
+        const error = new UsageError('bad line');
+
+        expect([isCommandError(error), isUsageError(error)]).toEqual([true, true]);
+    });
+
+    test('a CommandError is not a usage error', () => {
+        expect(isUsageError(new CommandError('boom'))).toBe(false);
+    });
+
+    test('a plain Error is neither: it is a bug', () => {
+        const error = new Error('kaput');
+
+        expect([isCommandError(error), isUsageError(error)]).toEqual([false, false]);
+    });
+
+    test('something that is not an Error is neither', () => {
+        expect([isCommandError('boom'), isUsageError(undefined)]).toEqual([false, false]);
+    });
+
+    test('an error thrown by another copy of Artemis is still an expected failure', () => {
+        expect(isCommandError(foreignCommandError('boom', { hint: 'fix it' }))).toBe(true);
+    });
+
+    test('a usage error thrown by another copy is still a usage error', () => {
+        expect(isUsageError(foreignCommandError('bad line', { isUsage: true }))).toBe(true);
+    });
+
+    test('an error that only looks like one, without the tag, is not', () => {
+        expect(isCommandError(Object.assign(new Error('boom'), { hint: 'x', exitCode: 1 }))).toBe(
+            false
+        );
     });
 });

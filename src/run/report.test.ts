@@ -2,6 +2,7 @@ import { describe, expect, test } from 'vitest';
 
 import { EXIT_CODE } from '../constants.js';
 import { CommandError, UsageError } from '../errors/errors.js';
+import { foreignCommandError } from '../test/foreign-error.js';
 import { createStyle } from '../help/help.js';
 import { createSink } from '../test/sink.js';
 import { reportError } from './report.js';
@@ -95,5 +96,37 @@ describe('reportError exit codes', () => {
 
     test('a thrown value that is not an error is reported as text', () => {
         expect(report('a thrown string', false).err).toBe('Error: a thrown string\n');
+    });
+});
+
+describe('reportError with an error from another copy of Artemis', () => {
+    test('keeps its hint under --json', () => {
+        const { out } = report(foreignCommandError('Bad input', { hint: 'Fix it' }), true);
+
+        expect(JSON.parse(out)).toEqual({
+            ok: false,
+            command: 'math add',
+            error: 'Bad input',
+            hint: 'Fix it'
+        });
+    });
+
+    test('keeps its hint as text, without a stack trace', () => {
+        const { err } = report(foreignCommandError('Bad input', { hint: 'Fix it' }), false);
+
+        expect(err).toBe('Error: Bad input\nHint: Fix it\n');
+    });
+
+    test('a usage error from the other copy still exits with the usage code and shows its usage', () => {
+        const error = foreignCommandError('Missing', {
+            exitCode: EXIT_CODE.USAGE,
+            usage: 'art x <a>',
+            isUsage: true
+        });
+
+        const { code, err } = report(error, false);
+
+        expect(code).toBe(EXIT_CODE.USAGE);
+        expect(err).toContain('Usage  art x <a>');
     });
 });

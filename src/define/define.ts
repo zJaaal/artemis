@@ -14,10 +14,10 @@ import type {
     DefineTopicFn,
     FlagDefinition,
     IsCommandFn,
-    IsTaggedFn,
     IsTopicFn,
     Topic
 } from '../models.js';
+import { hasTag } from '../utils/tag.js';
 
 function fail(message: string): never {
     throw new TypeError(`defineCommand: ${message}`);
@@ -155,16 +155,6 @@ export const defineCommand: DefineCommandFn = (definition) => {
 export const defineTopic: DefineTopicFn = ({ description } = {}) =>
     Object.freeze({ [TOPIC_TAG]: true, description: description ?? '' });
 
-const isTagged: IsTaggedFn = (value, tag) => {
-    if (typeof value !== 'object' || value === null) {
-        return false;
-    }
+export const isCommand: IsCommandFn = (value): value is Command => hasTag(value, COMMAND_TAG);
 
-    const found: unknown = Reflect.get(value, tag);
-
-    return Boolean(found);
-};
-
-export const isCommand: IsCommandFn = (value): value is Command => isTagged(value, COMMAND_TAG);
-
-export const isTopic: IsTopicFn = (value): value is Topic => isTagged(value, TOPIC_TAG);
+export const isTopic: IsTopicFn = (value): value is Topic => hasTag(value, TOPIC_TAG);

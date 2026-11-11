@@ -1,7 +1,7 @@
 import { createContext } from '../context/context.js';
 import { EXIT_CODE, FLAG_PREFIX, HELP_WORD, ID_SEPARATOR, JSON_FLAG } from '../constants.js';
 import { discover } from '../discover/discover.js';
-import { CommandError, UsageError } from '../errors/errors.js';
+import { CommandError, UsageError, isUsageError } from '../errors/errors.js';
 import { commandHelp, manifest, rootHelp, topicHelp, usage } from '../help/help.js';
 import type {
     CommandEntry,
@@ -76,7 +76,7 @@ function parseNested(
 
         return nested;
     } catch (error) {
-        if (!(error instanceof UsageError)) {
+        if (!isUsageError(error)) {
             throw error;
         }
 

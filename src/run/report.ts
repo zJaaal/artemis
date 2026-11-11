@@ -1,16 +1,16 @@
 import { EXIT_CODE } from '../constants.js';
-import { CommandError, UsageError } from '../errors/errors.js';
+import { isCommandError, isUsageError } from '../errors/errors.js';
 import type { ErrorReport, ReportContext, ReportErrorFn } from '../models.js';
 import { messageOf } from '../utils/error-message.js';
 
 /** Splits an error into what the user sees; only a plain error (a bug) carries its stack. */
 function describeError(error: unknown): ErrorReport {
-    const isExpected = error instanceof CommandError;
+    const isExpected = isCommandError(error);
 
     return {
         message: messageOf(error),
         hint: isExpected ? error.hint : undefined,
-        usage: error instanceof UsageError ? error.usage : undefined,
+        usage: isUsageError(error) ? error.usage : undefined,
         stack: !isExpected && error instanceof Error ? error.stack : undefined,
         exitCode: isExpected ? error.exitCode : EXIT_CODE.FAILED
     };

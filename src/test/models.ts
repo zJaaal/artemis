@@ -73,3 +73,11 @@ export type ProjectOptions = {
     /** Folder of the commands, relative to the project. Default "commands". */
     commandsFolder?: string;
 };
+
+export type ForeignErrorOptions = {
+    hint?: string;
+    exitCode?: number;
+    usage?: string;
+    /** Whether it is also tagged as a usage error. */
+    isUsage?: boolean;
+};
