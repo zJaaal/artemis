@@ -66,3 +66,10 @@ export const NOT_INTERACTIVE_MESSAGE =
 export const NOT_INTERACTIVE_HINT =
     'Run it in a terminal, or pass the flags that answer the question (see --help).';
 export const CANCELLED_MESSAGE = 'Cancelled.';
+
+export const TABLE_INDENT = '  ';
+export const TABLE_GAP = '  ';
+export const SECTION_SEPARATOR = '\n\n';
+export const NOTE_SEPARATOR = '; ';
+
+export const NO_COMMAND = null;

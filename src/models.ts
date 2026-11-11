@@ -49,17 +49,20 @@ type ArgValue<TArg extends ArgDefinition> = TArg extends { readonly required: tr
       ? ChoiceOf<TArg>
       : ChoiceOf<TArg> | undefined;
 
-type FlagValue<TFlag extends FlagDefinition> = TFlag extends { readonly type: 'boolean' }
-    ? TFlag extends { readonly default: boolean }
-        ? boolean
-        : boolean | undefined
-    : TFlag extends { readonly multiple: true }
-      ? TFlag extends { readonly default: readonly string[] }
-          ? ChoiceOf<TFlag>[]
-          : ChoiceOf<TFlag>[] | undefined
-      : TFlag extends { readonly default: string }
-        ? ChoiceOf<TFlag>
-        : ChoiceOf<TFlag> | undefined;
+// A flag declared with the wide `FlagDefinition` itself (not as a constant) has no known value type.
+type FlagValue<TFlag extends FlagDefinition> = FlagDefinition extends TFlag
+    ? unknown
+    : TFlag extends { readonly type: 'boolean' }
+      ? TFlag extends { readonly default: boolean }
+          ? boolean
+          : boolean | undefined
+      : TFlag extends { readonly multiple: true }
+        ? TFlag extends { readonly default: readonly string[] }
+            ? ChoiceOf<TFlag>[]
+            : ChoiceOf<TFlag>[] | undefined
+        : TFlag extends { readonly default: string }
+          ? ChoiceOf<TFlag>
+          : ChoiceOf<TFlag> | undefined;
 
 /** A required or defaulted arg is a string; an optional one may be undefined; `choices` narrow it. */
 export type InferArgs<TArgs extends ArgDefinitions> = {
@@ -263,6 +266,12 @@ export type FindCommandFn = (registry: Registry, id: string) => CommandEntry | u
 // ---------------------------------------------------------------------------------------------
 
 export type CreateStyleFn = (enabled: boolean) => Style;
+
+/** A name and its explanation, one line of a help table. */
+export type TableRow = readonly [name: string, text: string | undefined];
+
+/** What a help listing shows: topics and the commands under them. */
+export type HelpChildren = { topics: TopicEntry[]; commands: CommandEntry[] };
 export type UsageFn = (bin: string, entry: CommandEntry) => string;
 export type RootHelpFn = (bin: string, registry: Registry, style: Style) => string;
 export type TopicHelpFn = (
@@ -335,3 +344,51 @@ export type RunOptions = {
 };
 
 export type RunCliFn = (argv: string[], options: RunOptions) => Promise<number>;
+
+/** What the process offers when the caller did not say: its streams, environment and terminals. */
+export type SystemProcess = {
+    stdout: OutputSink;
+    stderr: OutputSink;
+    env: NodeJS.ProcessEnv;
+    stdinIsTTY: boolean;
+    stdoutIsTTY: boolean;
+};
+
+export type CurrentProcessFn = () => SystemProcess;
+
+/** What a run resolved from its options and the process, before any command is looked at. */
+export type World = { io: IO; bin: string; style: Style; canPrompt: boolean };
+
+export type ResolveWorldFn = (options: RunOptions) => World;
+
+/** The id of the command a run is about, filled in as the command line is understood. */
+export type RunState = { commandId: string | undefined };
+
+/** Everything the steps of one run share. */
+export type Session = World & {
+    registry: Registry;
+    wantsJson: boolean;
+    state: RunState;
+};
+
+/** What help prints as text, and what it prints under --json. */
+export type HelpOutput = { text: string; data: unknown };
+
+/** An error as the user sees it. */
+export type ErrorReport = {
+    message: string;
+    hint: string | undefined;
+    usage: string | undefined;
+    /** Only for a plain error, which means a bug. */
+    stack: string | undefined;
+    exitCode: ExitCode;
+};
+
+export type ReportContext = {
+    io: IO;
+    style: Style;
+    json: boolean;
+    commandId: string | undefined;
+};
+
+export type ReportErrorFn = (error: unknown, context: ReportContext) => number;
