@@ -1,0 +1,46 @@
+name: Release
+
+on:
+  push:
+    tags: ['v*']
+
+# No stored npm token: npm trusts this workflow through OIDC (trusted publishing), which also gives the
+# package a provenance statement.
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+
+      # Node 24 ships an npm CLI that supports trusted publishing
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+          registry-url: https://registry.npmjs.org
+
+      - run: pnpm install --frozen-lockfile
+
+      - run: pnpm run test:all
+
+      - run: pnpm run build
+
+      - run: pnpm run check-exports
+
+      - name: The tag must match the version in package.json
+        run: |
+          expected="v$(jq -r .version package.json)"
+
+          if [ "$GITHUB_REF_NAME" != "$expected" ]; then
+            echo "Tag $GITHUB_REF_NAME does not match package.json version $expected" >&2
+            exit 1
+          fi
+
+      # Publishing stays on the npm CLI: trusted publishing and provenance are npm features
+      - run: npm publish --provenance --access public
