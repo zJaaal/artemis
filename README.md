@@ -17,7 +17,7 @@ pnpm add @zjaaal/artemis
 # or: npm install @zjaaal/artemis
 ```
 
-TypeScript users who read the types of `ctx.prompt` also need `@types/prompts`.
+TypeScript users who use the types of `ctx.prompt` can add `@types/prompts` (an optional peer dependency; plain JavaScript never needs it).
 
 ## Quick start
 

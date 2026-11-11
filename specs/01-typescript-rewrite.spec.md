@@ -232,7 +232,7 @@ Agents cannot log in to npm, so the owner does these once:
 - [ ] `pnpm run build` emits `dist/index.js`, `dist/index.d.ts`, `dist/kits/worktrees.js`, `dist/kits/terminal.js` and their `.d.ts`.
 - [ ] `@zjaaal/artemis`, `@zjaaal/artemis/worktrees` and `@zjaaal/artemis/terminal` resolve through `exports`; any other subpath does not.
 - [ ] `pnpm pack --dry-run` lists only `dist/`, `README.md`, `LICENSE` and `package.json`.
-- [ ] `package.json` has exactly one runtime dependency, `prompts`, and every dev dependency is an exact version.
+- [ ] `package.json` has exactly one runtime dependency, `prompts`, and every dev dependency is an exact version. `@types/prompts` is an optional peer dependency (plain JavaScript never needs it).
 - [ ] `engines.node` is `>=22`; `package.json` version is `0.1.0`.
 - [ ] `AGENTS.md` documents adding a command, the JSON envelope, the exit codes and `--yes`.
 - [ ] `README.md` has the tagline, install, quick start and a "Releasing" section with the manual steps.
@@ -267,6 +267,9 @@ Agents cannot log in to npm, so the owner does these once:
 - **Yes:** tag-triggered release publishing with an npm token kept as the GitHub secret `NPM_TOKEN` (owner, 2026-11-10). Changed from trusted publishing (OIDC): the owner prefers a token, which needs no trusted-publisher setup on npm and works from the first tagged release. The cost is a secret to rotate; a granular token limited to this package keeps the exposure small. Releases still get provenance.
 - **No:** Changesets or semantic-release. One maintainer and one package; a tag is enough.
 - **Yes:** first publish and the npm token done by the owner. Agents cannot log in to npm or hold the token, so the owner publishes `0.1.0` by hand and stores `NPM_TOKEN`; later releases are tags.
+
+- **Yes:** `@types/prompts` is an optional peer dependency (owner, 2026-11-10), because the public types mention `PromptObject` and plain JavaScript users never need the types.
+- **No:** a global `artemis` binary that finds a commands folder per project (considered and removed, owner, 2026-11-10). A folder is already a scope: topics segregate commands inside one commands folder, so scoping commands by project adds nothing. Each project owns its commands folder and its own `bin` file (`run(argv, { bin, commandsDir })`), which it can install globally under its own name if it wants.
 
 ## Risks
 
