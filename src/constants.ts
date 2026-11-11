@@ -60,3 +60,9 @@ export const STYLE_CODES = {
 } as const satisfies StyleCodes;
 
 export const DEFAULT_COLOR_ENV = 'NO_COLOR';
+
+export const NOT_INTERACTIVE_MESSAGE =
+    'This command needs input, but it is not running interactively.';
+export const NOT_INTERACTIVE_HINT =
+    'Run it in a terminal, or pass the flags that answer the question (see --help).';
+export const CANCELLED_MESSAGE = 'Cancelled.';

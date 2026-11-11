@@ -88,6 +88,10 @@ export type PromptFn = (
 ) => Promise<Record<string, unknown>>;
 export type InvokeFn = (id: string, argv?: string[]) => Promise<unknown>;
 
+/** What the prompts edge returns: the answers, and whether the user cancelled. */
+export type PromptResult = { answers: Record<string, unknown>; cancelled: boolean };
+export type AskFn = (questions: PromptObject | PromptObject[]) => Promise<PromptResult>;
+
 /** The `ctx` a command receives. */
 export type CommandContext = {
     json: boolean;
@@ -104,6 +108,18 @@ export type CommandContext = {
     /** Runs another command by id or alias and returns its result. Inherits --json and --yes. */
     invoke: InvokeFn;
 };
+
+/** Where output goes, and what the command was told about how it runs. */
+export type ContextParts = {
+    io: IO;
+    global: GlobalFlags;
+    interactive: boolean;
+    style: Style;
+    registry: Registry;
+    invoke: InvokeFn;
+};
+
+export type CreateContextFn = (parts: ContextParts) => CommandContext;
 
 export type RunInput<TArgs extends ArgDefinitions, TFlags extends FlagDefinitions> = {
     args: InferArgs<TArgs>;
@@ -301,6 +317,8 @@ export type ManifestFn = (bin: string, registry: Registry) => Manifest;
 
 /** Where output goes. A node `Writable`, such as `process.stdout`, fits. */
 export type OutputSink = { write: (chunk: string) => unknown; isTTY?: boolean };
+
+export type IO = { stdout: OutputSink; stderr: OutputSink };
 
 export type RunOptions = {
     /** Name shown in help and usage lines. Required: a library does not know what it is called. */
