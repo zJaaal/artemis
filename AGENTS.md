@@ -56,6 +56,12 @@ Rules a definition must follow (`defineCommand` throws a `TypeError` otherwise):
 
 Return a value from `run` to give the command a result. Throw `CommandError(message, { hint })` for a failure the caller can fix, and put in `hint` what to do about it. A plain `Error` means a bug and prints a stack.
 
+## Where commands live (the global `artemis` command)
+
+With `@zjaaal/artemis` installed globally, `artemis` loads one commands folder per run: `ARTEMIS_COMMANDS` if set, else the nearest `.artemis/commands` from the current folder upwards, else the user-level `~/.artemis/commands` (`ARTEMIS_HOME` moves it). Folders are never merged, so each project only sees its own commands.
+
+To give a project a command, create `.artemis/commands/<name>.js` in it (or in `~/.artemis/commands` for one that works everywhere). The file imports `defineCommand` from `@zjaaal/artemis` as above; nothing is installed in the project. Run `artemis help --json` from the project folder to see exactly which commands exist there.
+
 ## Calling a command (the contract an agent relies on)
 
 - **`art help --json`** prints one JSON manifest of every command: its `id`, `description`, `usage`, `aliases`, `args` (name, description, required, default, choices), `flags` (name, type, short, multiple, description, default, choices) and `examples`, plus the global flags. Read it first to learn what exists. `art help <command> --json` gives one command's entry.
@@ -68,7 +74,7 @@ Return a value from `run` to give the command a result. Throw `CommandError(mess
 
 ## Running the CLI
 
-Artemis is a library: your project owns the `bin` file.
+The global `artemis` command needs no `bin` file. To ship your own CLI with your own name instead, Artemis is also a library: your project owns the `bin` file.
 
 ```js
 #!/usr/bin/env node

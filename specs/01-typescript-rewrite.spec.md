@@ -29,6 +29,7 @@ The tagline and the arrow/quiver metaphor are branding only (README intro). The 
 - Package `@zjaaal/artemis` 0.1.0: ESM only, Node >=22, plain `tsc` build to `dist/` (JS + `.d.ts`), subpath exports `@zjaaal/artemis/worktrees` and `@zjaaal/artemis/terminal`.
 - Lint and format as in Falcon's `packages/protocol`: typescript-eslint, prettier, `eslint.spacing.cjs`, vitest rules, no `any`, no enums.
 - Cheap agent-facing changes: `bin` required in `run()`; `AGENTS.md`; `README.md`.
+- **A global `artemis` binary** (added 2026-11-10, owner: needed to ship): `npm install --global @zjaaal/artemis` gives an `artemis` command that runs from any folder. It loads exactly one commands folder per run (see "Global binary" below), so several projects on one machine stay isolated.
 - **Typed args/flags inference in `defineCommand`**: `run({ args, flags })` is typed from the definition (see Data model). All public types are exported, so TypeScript users and JS users with `// @ts-check` get them, even though command files are still `.js`.
 - GitHub Actions CI (PRs and `main`) and a tag-triggered release workflow that publishes with an npm token stored as a GitHub secret (`NPM_TOKEN`).
 - Documented manual steps for the owner: first publish, creating the npm token and storing it as the `NPM_TOKEN` repository secret.
@@ -164,6 +165,7 @@ src/                    index.ts (re-exports only), models.ts, constants.ts: the
                         one folder per module: its source, its foo.test.ts (and foo.test-d.ts) beside it
   edges/                the only code that touches the outside world (files, modules, prompts, process)
   utils/                small pure helpers
+  global/               the global `artemis` binary: bin.ts (wiring only), main.ts, locate.ts, resolve-hook.ts
   test/                 test helpers and the fixture command trees; only tests import from it
   kits/terminal/        index.ts (re-exports only), models.ts, constants.ts, the implementation, its tests
   kits/worktrees/       same, plus its edges (git, lock-edges)
@@ -198,6 +200,7 @@ Step 1 is on `main`; the rest are commits on `spec-01`. Each step leaves the rep
 17. **CI.** `.github/workflows/ci.yml`: on `pull_request` and push to `main`, matrix Node 22 and 24, `pnpm/action-setup` (version from `packageManager`), `pnpm install --frozen-lockfile`, `pnpm run test:all`, `pnpm run build`, `node scripts/check-exports.mjs`, `npm publish --dry-run`.
 18. **Release workflow.** `.github/workflows/release.yml`: on tag `v*`, `permissions: { contents: read, id-token: write }` (the second is for the provenance statement), Node 24, `pnpm/action-setup`, `pnpm install --frozen-lockfile`, `test:all`, `build`, check the tag equals `package.json` version, `npm publish --provenance --access public` with `NODE_AUTH_TOKEN` taken from `secrets.NPM_TOKEN` (publish stays on the npm CLI, which provenance needs). The token is never written in the repo.
 19. **Review and PR.** Run `/review-standards`, fix findings, push `spec-01`, open one PR to `main`.
+20. **Global binary** (added after the PR was opened). `src/global/` (constants, models, `locate.ts`, `resolve-hook.ts`, `main.ts`, `bin.ts`), `bin` in `package.json`, `scripts/check-bin.mjs` run by CI and the release workflow, README and AGENTS sections.
 
 ### Manual steps for the owner (also in the README "Releasing" section)
 
@@ -207,6 +210,26 @@ Agents cannot log in to npm, so the owner does these once:
 2. On npmjs.com create a granular access token that can publish `@zjaaal/artemis` (read and write, limited to that package, with an expiry you will remember), then store it as the repository secret: `gh secret set NPM_TOKEN --repo zJaaal/artemis`, or Settings, Secrets and variables, Actions, New repository secret, name `NPM_TOKEN`.
 3. For each later release: bump `version` in `package.json`, commit, `git tag vX.Y.Z`, `git push origin main vX.Y.Z`. The workflow publishes with provenance.
 4. Rotate the token before it expires: create a new one and overwrite the `NPM_TOKEN` secret.
+
+## Global binary
+
+Added to this spec on 2026-11-10 because the package has to ship with a command people can run anywhere. Behavior stays that of the library: the binary only decides which commands folder `run()` gets, and calls it with `bin: 'artemis'`.
+
+**Which commands folder.** Exactly one per run, the first that exists, in this order:
+
+1. `ARTEMIS_COMMANDS`, if set: a path, relative to the current folder. It is used even if it does not exist, so a wrong value shows up as a warning instead of silently loading something else.
+2. The nearest `.artemis/commands`, looking in the current folder and then each parent up to the root of the disk. Nested projects: the nearest wins.
+3. The user-level folder `~/.artemis/commands`, or `commands` under `ARTEMIS_HOME` if that is set.
+
+Folders are **never merged**. This is the answer to "several Artemis projects on one machine": each project only sees its own commands, a user-level folder is the fallback outside any project, and nothing leaks between projects. Layering project and user commands is a possible later spec.
+
+**Nothing found.** The run fails with exit code 1 and a `CommandError` whose message names where it looked and whose hint says to create `.artemis/commands` or set `ARTEMIS_COMMANDS`; under `--json` it is the usual `{ ok: false, command: null, error, hint }`.
+
+**Importing the framework from a command file.** A command file does `import { defineCommand } from '@zjaaal/artemis'`, but a global install is not on the module path of a project's files. The binary registers a module resolution hook (`node:module` `register`) that resolves `@zjaaal/artemis` and its subpaths from inside the running package, so command files get the same copy that runs them and nothing is installed in the project. The runtime `Symbol.for` tags still tolerate two copies.
+
+**Binary name.** `artemis`. (Apache ActiveMQ Artemis also ships an `artemis` command; if both are on a machine's PATH, the one installed later wins. The package name is scoped, so npm itself has no clash.)
+
+Files: `src/global/bin.ts` (wiring only, `package.json` `bin`), `main.ts`, `locate.ts` (pure; folder existence is injected), `resolve-hook.ts`, each with its test. `scripts/check-bin.mjs` packs the package, installs the tarball globally into a temporary prefix and runs the real binary in temporary projects that have nothing installed.
 
 ## Acceptance criteria
 
@@ -232,7 +255,11 @@ Agents cannot log in to npm, so the owner does these once:
 - [ ] `pnpm run build` emits `dist/index.js`, `dist/index.d.ts`, `dist/kits/worktrees.js`, `dist/kits/terminal.js` and their `.d.ts`.
 - [ ] `@zjaaal/artemis`, `@zjaaal/artemis/worktrees` and `@zjaaal/artemis/terminal` resolve through `exports`; any other subpath does not.
 - [ ] `pnpm pack --dry-run` lists only `dist/`, `README.md`, `LICENSE` and `package.json`.
-- [ ] `package.json` has exactly one runtime dependency, `prompts`, and every dev dependency is an exact version.
+- [ ] `package.json` has exactly one runtime dependency, `prompts`, and every dev dependency is an exact version. `@types/prompts` is an optional peer dependency (plain JavaScript never needs it).
+- [ ] `package.json` has `bin: { artemis }` pointing at `dist/global/bin.js`, which keeps its shebang after the build.
+- [ ] The global command loads the nearest `.artemis/commands` from the current folder upwards, falls back to the user-level folder, honors `ARTEMIS_COMMANDS` and `ARTEMIS_HOME`, never merges folders, and two projects on one machine run only their own commands (asserted by tests).
+- [ ] With nothing found it fails with exit code 1, a message that says where it looked, and a hint; under `--json` it is the failure object.
+- [ ] `pnpm run check-bin` passes: the packed package, installed globally, runs `hello` in two projects that have nothing installed, from a nested folder too, and fails cleanly outside any project.
 - [ ] `engines.node` is `>=22`; `package.json` version is `0.1.0`.
 - [ ] `AGENTS.md` documents adding a command, the JSON envelope, the exit codes and `--yes`.
 - [ ] `README.md` has the tagline, install, quick start and a "Releasing" section with the manual steps.
@@ -268,6 +295,11 @@ Agents cannot log in to npm, so the owner does these once:
 - **No:** Changesets or semantic-release. One maintainer and one package; a tag is enough.
 - **Yes:** first publish and the npm token done by the owner. Agents cannot log in to npm or hold the token, so the owner publishes `0.1.0` by hand and stores `NPM_TOKEN`; later releases are tags.
 
+- **Yes:** a global `artemis` binary in this spec (owner, 2026-11-10: needed to ship), loading one commands folder per run: `ARTEMIS_COMMANDS`, else nearest `.artemis/commands` upwards, else `~/.artemis/commands`. Never merged, so projects stay isolated.
+- **Yes:** a module resolution hook so command files import `@zjaaal/artemis` from the running copy. The alternative (a symlinked `node_modules` per project, or an `init` command) leaves state in every project and can drift from the running version.
+- **No:** layering project and user commands, an `artemis init` scaffold, shell completion for the global binary. Later specs.
+- **Yes:** `@types/prompts` is an optional peer dependency (owner, 2026-11-10), because the public types mention `PromptObject` and plain JavaScript users never need the types.
+
 ## Risks
 
 | Risk | Mitigation |
@@ -278,6 +310,7 @@ Agents cannot log in to npm, so the owner does these once:
 | The first tagged release fails (expired or wrongly scoped token, missing secret) | The manual first publish is documented; `npm publish --dry-run` runs in CI on every PR; the release workflow runs the full gate before it publishes; the first tagged release can be a patch bump. |
 | Worktrees tests depend on the machine's git config | Temp repos set `user.name`, `user.email` and `init.defaultBranch` explicitly; no global config is read. |
 | Lock takeover tests are timing-sensitive | Time and process liveness come in as injectable options; no sleeps in tests. |
+| A module resolution hook is a young Node API (`module.register`) | It is covered by a unit test and by `check-bin`, which installs the real tarball; the hook only touches this package's own name. |
 | Package scope `@zjaaal` not owned on npm | Owner confirms before step 1 of the manual steps; if missing, the owner creates the scope (free for public packages). |
 
 ## Handoff

@@ -6,20 +6,61 @@ Artemis turns a folder of files into a command line. Every file is a command, ev
 
 > The name and the arrow and quiver picture are branding: an arrow is a command, a quiver is a folder of them. The API and the help text keep plain terms (`command`, `topic`).
 
+- A global `artemis` command that runs the commands of whichever project you are in, or your own user-level ones, from anywhere on your machine.
 - ESM only, Node 22 or newer, strict TypeScript types included.
 - `help --json` describes every command; `--json` makes every call print one JSON object; exit codes are `0`, `1` and `2`.
 - One runtime dependency (`prompts`), loaded only when a command asks a question.
 
 ## Install
 
+**As a command on your machine** (run `artemis` from any folder):
+
+```sh
+npm install --global @zjaaal/artemis
+# or: pnpm add --global @zjaaal/artemis
+```
+
+**As a library** (build your own CLI with your own `bin` name):
+
 ```sh
 pnpm add @zjaaal/artemis
 # or: npm install @zjaaal/artemis
 ```
 
-TypeScript users who read the types of `ctx.prompt` also need `@types/prompts`.
+TypeScript users who use the types of `ctx.prompt` can add `@types/prompts` (an optional peer dependency; plain JavaScript never needs it).
 
-## Quick start
+## The global `artemis` command
+
+`artemis` runs the commands of the project you are in. A project keeps them in `.artemis/commands`, one `.js` file per command:
+
+```
+my-project/
+  .artemis/commands/hello.js     ->  artemis hello
+  .artemis/commands/db/reset.js  ->  artemis db reset
+  src/...
+```
+
+```js
+// my-project/.artemis/commands/hello.js
+import { defineCommand } from '@zjaaal/artemis';
+
+export default defineCommand({
+    description: 'Say hello',
+    run: () => ({ greeting: 'hello' })
+});
+```
+
+Nothing needs installing in the project: `artemis` makes `import ... from '@zjaaal/artemis'` in a command file resolve to the copy that is running it.
+
+**Which commands does it load?** Exactly one commands folder per run, the first of these that exists:
+
+1. `ARTEMIS_COMMANDS`, if you set it (a path, relative to the current folder). Use it to pin a folder.
+2. The nearest `.artemis/commands`, looking in the current folder and then each parent folder.
+3. Your user-level commands in `~/.artemis/commands` (or under `ARTEMIS_HOME` if you set it), for commands that should work everywhere.
+
+Folders are never merged, so **several projects on one machine never see each other's commands**: run `artemis` inside project A and you get A's commands, inside project B you get B's, and outside any project you get your user-level ones. With nested projects the nearest one wins. If there is none, `artemis` says where it looked and how to create one (`--json` gives the usual failure object).
+
+## Quick start (as a library)
 
 A bin file (`bin/art.js`) runs the CLI. `bin` is required: it is the name help and usage lines show.
 

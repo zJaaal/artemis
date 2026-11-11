@@ -250,6 +250,7 @@ export type WalkContext = { registry: Registry; root: string };
 
 export type ListDirectoryFn = (dir: string) => DirectoryEntry[];
 export type PathExistsFn = (path: string) => boolean;
+export type IsFolderFn = (path: string) => boolean;
 export type MakeDirectoryFn = (dir: string) => void;
 export type ReadTextIfExistsFn = (file: string) => string | undefined;
 /** Creates the file only if it does not exist yet; false means someone else has it. */
@@ -347,13 +348,13 @@ export type RunOptions = {
     bin: string;
     /** Folder to discover commands in. */
     commandsDir: string;
-    stdout?: OutputSink;
-    stderr?: OutputSink;
+    stdout?: OutputSink | undefined;
+    stderr?: OutputSink | undefined;
     /** Whether prompts may be shown. Default: stdin and stdout are terminals. */
-    interactive?: boolean;
+    interactive?: boolean | undefined;
     /** Default: stdout is a terminal and NO_COLOR is unset. */
-    color?: boolean;
-    env?: NodeJS.ProcessEnv;
+    color?: boolean | undefined;
+    env?: NodeJS.ProcessEnv | undefined;
 };
 
 export type RunCliFn = (argv: string[], options: RunOptions) => Promise<number>;
