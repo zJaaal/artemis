@@ -11,5 +11,5 @@ export const resolveWorld: ResolveWorldFn = (options) => {
     const color = options.color ?? (Boolean(io.stdout.isTTY) && !env[DEFAULT_COLOR_ENV]);
     const canPrompt = options.interactive ?? (system.stdinIsTTY && system.stdoutIsTTY);
 
-    return { io, bin: options.bin, style: createStyle(color), canPrompt };
+    return { io, style: createStyle(color), canPrompt };
 };

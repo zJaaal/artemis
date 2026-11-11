@@ -203,6 +203,17 @@ describe('readManifest', () => {
             hint: expect.stringContaining('"name"')
         });
     });
+
+    test('a package.json that cannot be read is an error naming the file, with a hint', () => {
+        const dir = folders.make('artemis-files-');
+
+        fs.mkdirSync(path.join(dir, 'package.json'));
+
+        expect(thrownBy(() => readManifest(dir))).toMatchObject({
+            message: expect.stringContaining(`Cannot read ${path.join(dir, 'package.json')}`),
+            hint: expect.stringContaining('readable file')
+        });
+    });
 });
 
 describe('isFolder', () => {

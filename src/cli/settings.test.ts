@@ -4,7 +4,7 @@ import { describe, expect, test } from 'vitest';
 
 import { DEFAULT_BIN_NAME } from '../constants.js';
 import { CommandError } from '../errors/errors.js';
-import type { ReadManifestFn } from '../models.js';
+import type { IsFolderFn, ReadManifestFn } from '../models.js';
 import { thrownBy } from '../test/thrown.js';
 import { findProject, resolveBinName, resolveSettings } from './settings.js';
 
@@ -14,55 +14,107 @@ const manifestsAt =
     (dir) =>
         manifests[dir];
 
-describe('findProject', () => {
-    test('is the current folder when it has a package.json', () => {
-        const project = findProject('/work/app', manifestsAt({ '/work/app': { name: 'app' } }));
+/** The folders that exist, named in full. */
+const foldersAt =
+    (...folders: string[]): IsFolderFn =>
+    (target) =>
+        folders.includes(target);
+
+const noFolders = foldersAt();
+
+describe('findProject: what counts as a project', () => {
+    test('a package.json with a commands folder next to it is a project', () => {
+        const project = findProject(
+            '/work/app',
+            manifestsAt({ '/work/app': { name: 'app' } }),
+            foldersAt('/work/app/commands')
+        );
 
         expect(project).toEqual({ root: '/work/app', manifest: { name: 'app' } });
     });
 
-    test('walks up to a parent folder when the current one has none', () => {
+    test('a package.json with an "artemis" key is a project even without a commands folder', () => {
+        const manifest = { artemis: { commandsDir: 'tools' } };
+
+        expect(
+            findProject('/work/app', manifestsAt({ '/work/app': manifest }), noFolders)?.root
+        ).toBe('/work/app');
+    });
+
+    test('a bare package.json, such as a type marker in src, is skipped', () => {
         const project = findProject(
-            '/work/app/src/deep',
-            manifestsAt({ '/work/app': { name: 'app' } })
+            '/work/app/src',
+            manifestsAt({ '/work/app': { name: 'app' }, '/work/app/src': { type: 'module' } }),
+            foldersAt('/work/app/commands')
         );
 
         expect(project?.root).toBe('/work/app');
     });
 
-    test('the nearest package.json wins over one in a parent folder', () => {
+    test('a monorepo package without commands falls through to the parent that has them', () => {
+        const project = findProject(
+            '/work/packages/inner',
+            manifestsAt({ '/work': { name: 'outer' }, '/work/packages/inner': { name: 'inner' } }),
+            foldersAt('/work/commands')
+        );
+
+        expect(project?.root).toBe('/work');
+    });
+
+    test('is undefined when package.json files exist but none is a project', () => {
+        const project = findProject(
+            '/work/app',
+            manifestsAt({ '/work/app': { name: 'app' }, '/work': { name: 'work' } }),
+            noFolders
+        );
+
+        expect(project).toBeUndefined();
+    });
+});
+
+describe('findProject: where it looks', () => {
+    test('is the current folder when it is a project', () => {
+        const project = findProject(
+            '/work/app',
+            manifestsAt({ '/work/app': { name: 'app' } }),
+            foldersAt('/work/app/commands')
+        );
+
+        expect(project?.root).toBe('/work/app');
+    });
+
+    test('walks up to a parent folder when the current one has no package.json', () => {
+        const project = findProject(
+            '/work/app/src/deep',
+            manifestsAt({ '/work/app': { name: 'app' } }),
+            foldersAt('/work/app/commands')
+        );
+
+        expect(project?.root).toBe('/work/app');
+    });
+
+    test('the nearest project wins over one in a parent folder', () => {
         const project = findProject(
             '/work/packages/inner/src',
-            manifestsAt({ '/work': { name: 'outer' }, '/work/packages/inner': { name: 'inner' } })
+            manifestsAt({ '/work': { name: 'outer' }, '/work/packages/inner': { name: 'inner' } }),
+            foldersAt('/work/commands', '/work/packages/inner/commands')
         );
 
         expect(project?.root).toBe('/work/packages/inner');
     });
 
-    test('the nearest one wins even when it has no "artemis" key and a parent has one', () => {
-        const project = findProject(
-            '/work/packages/inner',
-            manifestsAt({
-                '/work': { artemis: { commandsDir: 'tools' } },
-                '/work/packages/inner': { name: 'inner' }
-            })
-        );
-
-        expect(project?.manifest).toEqual({ name: 'inner' });
-    });
-
-    test('is undefined when no folder up to the root has a package.json', () => {
-        expect(findProject('/work/app', manifestsAt({}))).toBeUndefined();
-    });
-
     test('reads the manifests of the folders in order, nearest first', () => {
         const asked: string[] = [];
 
-        findProject('/work/app', (dir) => {
-            asked.push(dir);
+        findProject(
+            '/work/app',
+            (dir) => {
+                asked.push(dir);
 
-            return undefined;
-        });
+                return undefined;
+            },
+            noFolders
+        );
 
         expect(asked).toEqual(['/work/app', '/work', '/']);
     });
@@ -70,11 +122,15 @@ describe('findProject', () => {
     test('a relative folder is resolved before it is searched', () => {
         const asked: string[] = [];
 
-        findProject('relative', (dir) => {
-            asked.push(dir);
+        findProject(
+            'relative',
+            (dir) => {
+                asked.push(dir);
 
-            return undefined;
-        });
+                return undefined;
+            },
+            noFolders
+        );
 
         expect(asked[0]).toBe(path.resolve('relative'));
     });
@@ -82,7 +138,9 @@ describe('findProject', () => {
 
 describe('resolveSettings', () => {
     test('a package.json with no "artemis" key uses the defaults', () => {
-        expect(resolveSettings({ root: '/work/app', manifest: { name: 'app' } })).toEqual({
+        expect(
+            resolveSettings({ root: '/work/app', manifest: { name: 'app' } }, 'shipped')
+        ).toEqual({
             bin: DEFAULT_BIN_NAME,
             commandsDir: '/work/app/commands'
         });
@@ -94,7 +152,7 @@ describe('resolveSettings', () => {
             manifest: { artemis: { commandsDir: 'tools/commands' } }
         };
 
-        expect(resolveSettings(project).commandsDir).toBe('/work/app/tools/commands');
+        expect(resolveSettings(project, 'shipped').commandsDir).toBe('/work/app/tools/commands');
     });
 
     test('an absolute commandsDir is kept as it is', () => {
@@ -103,19 +161,13 @@ describe('resolveSettings', () => {
             manifest: { artemis: { commandsDir: '/shared/commands' } }
         };
 
-        expect(resolveSettings(project).commandsDir).toBe('/shared/commands');
+        expect(resolveSettings(project, 'shipped').commandsDir).toBe('/shared/commands');
     });
 
     test('an empty "artemis" key is the same as none', () => {
-        expect(resolveSettings({ root: '/work/app', manifest: { artemis: {} } }).commandsDir).toBe(
-            '/work/app/commands'
-        );
-    });
+        const project = { root: '/work/app', manifest: { artemis: {} } };
 
-    test('the bin name comes from the configuration', () => {
-        const project = { root: '/work/app', manifest: { artemis: { bin: 'mytool' } } };
-
-        expect(resolveSettings(project).bin).toBe('mytool');
+        expect(resolveSettings(project, 'shipped').commandsDir).toBe('/work/app/commands');
     });
 });
 
@@ -150,44 +202,86 @@ describe('resolveSettings: a bad "artemis" key', () => {
     test.each(bad)('$shape names the problem and the file', ({ value, problem }) => {
         const project = { root: '/work/app', manifest: { artemis: value } };
 
-        expect(thrownBy(() => resolveSettings(project))).toMatchObject({
+        expect(thrownBy(() => resolveSettings(project, 'shipped'))).toMatchObject({
             message: `${problem} (in /work/app/package.json)`
         });
     });
 
     test.each(bad)('$shape is a CommandError with a hint showing the valid shape', ({ value }) => {
         const project = { root: '/work/app', manifest: { artemis: value } };
-        const error = thrownBy(() => resolveSettings(project));
+        const error = thrownBy(() => resolveSettings(project, 'shipped'));
 
         expect(error).toBeInstanceOf(CommandError);
         expect(error).toMatchObject({ hint: expect.stringContaining('"commandsDir"') });
     });
 });
 
-describe('resolveBinName', () => {
-    test('the "artemis".bin setting comes first', () => {
-        expect(resolveBinName({ artemis: { bin: 'chosen' }, bin: { other: 'x.js' } })).toBe(
-            'chosen'
+describe('resolveBinName: the shipped binary', () => {
+    test('shows the "artemis".bin setting when there is one', () => {
+        expect(resolveBinName({ bin: 'chosen' }, {}, 'shipped')).toBe('chosen');
+    });
+
+    test('shows art, never the name of an unrelated CLI the project publishes', () => {
+        expect(resolveBinName({}, { bin: { foo: 'bin/foo.js' } }, 'shipped')).toBe(
+            DEFAULT_BIN_NAME
         );
     });
 
-    test('then the single key of the project’s own "bin" field', () => {
-        expect(resolveBinName({ bin: { mytool: 'bin/mytool.js' } })).toBe('mytool');
+    test('shows art for a project whose bin is a string, too', () => {
+        expect(resolveBinName({}, { name: 'foo', bin: 'bin/foo.js' }, 'shipped')).toBe(
+            DEFAULT_BIN_NAME
+        );
+    });
+});
+
+describe('resolveBinName: a project’s own bin file', () => {
+    test('the "artemis".bin setting comes first', () => {
+        expect(resolveBinName({ bin: 'chosen' }, { bin: { other: 'x.js' } }, 'own')).toBe('chosen');
+    });
+
+    test('then the single key of the project’s own "bin" object', () => {
+        expect(resolveBinName({}, { bin: { mytool: 'bin/mytool.js' } }, 'own')).toBe('mytool');
     });
 
     test('two keys in "bin" are ambiguous, so it falls back to the default', () => {
-        expect(resolveBinName({ bin: { one: 'a.js', two: 'b.js' } })).toBe(DEFAULT_BIN_NAME);
+        expect(resolveBinName({}, { bin: { one: 'a.js', two: 'b.js' } }, 'own')).toBe(
+            DEFAULT_BIN_NAME
+        );
     });
 
-    test('an empty "bin" field falls back to the default', () => {
-        expect(resolveBinName({ bin: {} })).toBe(DEFAULT_BIN_NAME);
+    test('a "bin" written as a string is named after the package', () => {
+        expect(resolveBinName({}, { name: 'mytool', bin: 'bin/mytool.js' }, 'own')).toBe('mytool');
     });
 
-    test('a "bin" written as a plain string falls back to the default', () => {
-        expect(resolveBinName({ bin: 'bin/mytool.js' })).toBe(DEFAULT_BIN_NAME);
+    test('a scoped package name loses its scope, like npm names the command', () => {
+        expect(resolveBinName({}, { name: '@acme/mytool', bin: 'bin/mytool.js' }, 'own')).toBe(
+            'mytool'
+        );
+    });
+
+    test('a string "bin" with no package name falls back to the default', () => {
+        expect(resolveBinName({}, { bin: 'bin/mytool.js' }, 'own')).toBe(DEFAULT_BIN_NAME);
+    });
+
+    test('an empty "bin" object falls back to the default', () => {
+        expect(resolveBinName({}, { bin: {} }, 'own')).toBe(DEFAULT_BIN_NAME);
     });
 
     test('with nothing at all it is the default', () => {
-        expect(resolveBinName({})).toBe(DEFAULT_BIN_NAME);
+        expect(resolveBinName({}, {}, 'own')).toBe(DEFAULT_BIN_NAME);
+    });
+});
+
+describe('resolveSettings: the bin name comes from the checked configuration', () => {
+    test('the shipped route shows the configured name', () => {
+        const project = { root: '/work/app', manifest: { artemis: { bin: 'mytool' } } };
+
+        expect(resolveSettings(project, 'shipped').bin).toBe('mytool');
+    });
+
+    test('the own route shows the name of its bin field', () => {
+        const project = { root: '/work/app', manifest: { bin: { mytool: 'bin/mytool.js' } } };
+
+        expect(resolveSettings(project, 'own').bin).toBe('mytool');
     });
 });

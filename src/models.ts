@@ -382,16 +382,23 @@ export type SystemProcess = {
     stdout: OutputSink;
     stderr: OutputSink;
     env: NodeJS.ProcessEnv;
+    /** The command line, without the node and script words. */
+    args: string[];
     stdinIsTTY: boolean;
     stdoutIsTTY: boolean;
 };
 
 export type CurrentProcessFn = () => SystemProcess;
 
-/** What a run resolved from its options and the process, before any command is looked at. */
-export type World = { io: IO; bin: string; style: Style; canPrompt: boolean };
+/** The options that describe the host a run happens in; `run()` and `cli()` both take them. */
+export type HostOptions = Pick<RunOptions, 'stdout' | 'stderr' | 'interactive' | 'color' | 'env'>;
 
-export type ResolveWorldFn = (options: RunOptions) => World;
+/** What a run resolved from the host options and the process, before any command is looked at. */
+export type Environment = { io: IO; style: Style; canPrompt: boolean };
+
+export type World = Environment & { bin: string };
+
+export type ResolveWorldFn = (options: HostOptions) => Environment;
 
 /** The id of the command a run is about, filled in as the command line is understood. */
 export type RunState = { commandId: string | undefined };
@@ -437,8 +444,11 @@ export type ArtemisConfig = {
     bin?: string;
 };
 
-/** The folder holding the nearest package.json, and what that file says. */
+/** The folder holding the nearest qualifying package.json, and what that file says. */
 export type Project = { root: string; manifest: Record<string, unknown> };
+
+/** How a run got started: the shipped binary (`art`, `artemis`) or a project's own bin file. */
+export type CliRoute = 'shipped' | 'own';
 
 /** The settings a run uses, after defaults. `commandsDir` is absolute. */
 export type CliSettings = { bin: string; commandsDir: string };
@@ -446,34 +456,51 @@ export type CliSettings = { bin: string; commandsDir: string };
 /** Reads the package.json of a folder; undefined when the folder has none. An edge. */
 export type ReadManifestFn = (dir: string) => Record<string, unknown> | undefined;
 
-/** Pure: files are read only through `readManifest`. */
-export type FindProjectFn = (cwd: string, readManifest: ReadManifestFn) => Project | undefined;
+/**
+ * A package.json is the project when it has an "artemis" key or a commands folder next to it; marker
+ * files such as `{ "type": "module" }` in `src/` do not count. Pure: the disk is only looked at
+ * through `readManifest` and `isFolder`.
+ */
+export type FindProjectFn = (
+    cwd: string,
+    readManifest: ReadManifestFn,
+    isFolder: IsFolderFn
+) => Project | undefined;
 
 /** Throws a CommandError with a hint when the "artemis" key has a bad shape. */
-export type ResolveSettingsFn = (project: Project) => CliSettings;
+export type ResolveSettingsFn = (project: Project, route: CliRoute) => CliSettings;
 
 /**
- * "artemis".bin when set; else the single key of the project's own "bin" field when it has exactly
- * one (so a project that ships `mytool` through @zjaaal/artemis/cli shows `mytool`); else "art".
+ * The name help and usage lines show. Both routes use the checked `"artemis".bin` first. The shipped
+ * binary then shows `art`, never the name of an unrelated CLI the project publishes. A project's own
+ * bin file (`cli({ root })`) shows the single key of its `bin` object, or the package name without
+ * its scope when `bin` is a string (npm names the command that way), and falls back to `art`.
  */
-export type ResolveBinNameFn = (manifest: Record<string, unknown>) => string;
+export type ResolveBinNameFn = (
+    config: ArtemisConfig,
+    manifest: Record<string, unknown>,
+    route: CliRoute
+) => string;
 
 export type IsRecordFn = (value: unknown) => value is Record<string, unknown>;
 
-/** What the binary reads from the machine; every field defaults to the real thing. */
-export type CliOptions = {
+/** What `cli()` takes: the host options of `run()`, plus where to look for the project. */
+export type CliOptions = HostOptions & {
+    /** The command line, without the node and script words. Default: the arguments of this process. */
+    argv?: string[] | undefined;
+    /** Shipped route: where to start looking. Default: the current folder. */
     cwd?: string | undefined;
-    env?: NodeJS.ProcessEnv | undefined;
-    stdout?: OutputSink | undefined;
-    stderr?: OutputSink | undefined;
-    interactive?: boolean | undefined;
-    color?: boolean | undefined;
+    /** Own route: where the bin file is (`import.meta.url`). The search starts from its folder. */
+    root?: string | URL | undefined;
 };
 
-export type CliFn = (argv: string[], options?: CliOptions) => Promise<number>;
+export type CliFn = (options?: CliOptions) => Promise<number>;
 
 /** Finds the settings for a folder, or throws a CommandError that says what to create or set. */
-export type SettingsForFn = (cwd: string) => CliSettings;
+export type SettingsForFn = (start: string, route: CliRoute) => CliSettings;
+
+/** The folder a `root` points at: itself when it is a folder, else the folder of the file. */
+export type FolderOfRootFn = (root: string | URL) => string;
 
 /** The module resolution hook that falls back to the running copy of the package. */
 export type ResolveHookFn = ResolveHook;

@@ -13,7 +13,8 @@ import type {
     Resolution,
     RunCliFn,
     RunState,
-    Session
+    Session,
+    World
 } from '../models.js';
 import { parse } from '../parse/parse.js';
 import { reportError } from './report.js';
@@ -231,7 +232,7 @@ async function dispatch(session: Session, argv: string[]): Promise<number> {
  * `{ ok: false, command, error, hint }`.
  */
 export const run: RunCliFn = async (argv, options) => {
-    const world = resolveWorld(options);
+    const world: World = { ...resolveWorld(options), bin: options.bin };
     const wantsJson = beforeTerminator(argv).includes(JSON_FLAG);
     const state: RunState = { commandId: undefined };
 

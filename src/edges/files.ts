@@ -95,13 +95,24 @@ export const realPathOrResolve: RealPathFn = (folder) => {
     }
 };
 
+/** The text of a package.json. One that cannot be read (permissions, a folder of that name) is an error naming the file. */
+function readManifestText(file: string): string | undefined {
+    try {
+        return readTextIfExists(file);
+    } catch (error) {
+        throw new CommandError(`Cannot read ${file}: ${messageOf(error)}`, {
+            hint: 'Check that it is a readable file, or run from a folder whose package.json is.'
+        });
+    }
+}
+
 /**
  * The package.json of a folder as an object, or undefined when the folder has none. One that is not
  * valid JSON, or not an object, is an error: the nearest package.json defines the project.
  */
 export const readManifest: ReadManifestFn = (dir) => {
     const file = path.join(dir, MANIFEST_FILE);
-    const text = readTextIfExists(file);
+    const text = readManifestText(file);
 
     if (text === undefined) {
         return undefined;

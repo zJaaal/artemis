@@ -106,3 +106,6 @@ export const MANIFEST_FILE = 'package.json';
 export const CONFIG_KEY = 'artemis';
 export const DEFAULT_COMMANDS_FOLDER = 'commands';
 export const DEFAULT_BIN_NAME = 'art';
+
+/** npm names the command of a string `bin` after the package, without its `@scope/`. */
+export const SCOPE_PREFIX = /^@[^/]+\//;

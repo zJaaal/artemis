@@ -4,12 +4,14 @@ import {
     CONFIG_KEY,
     DEFAULT_BIN_NAME,
     DEFAULT_COMMANDS_FOLDER,
-    MANIFEST_FILE
+    MANIFEST_FILE,
+    SCOPE_PREFIX
 } from '../constants.js';
 import { CommandError } from '../errors/errors.js';
 import type {
     ArtemisConfig,
     FindProjectFn,
+    IsFolderFn,
     Project,
     ReadManifestFn,
     ResolveBinNameFn,
@@ -19,25 +21,34 @@ import { isRecord } from '../utils/is-record.js';
 
 const VALID_SHAPE_HINT = `The key looks like "${CONFIG_KEY}": { "commandsDir": "commands", "bin": "mytool" }, and both fields are optional.`;
 
-function searchUpwards(dir: string, readManifest: ReadManifestFn): Project | undefined {
+/** A package.json is the project when it has an "artemis" key or a commands folder beside it. */
+const isProject = (dir: string, manifest: Record<string, unknown>, isFolder: IsFolderFn): boolean =>
+    manifest[CONFIG_KEY] !== undefined || isFolder(path.join(dir, DEFAULT_COMMANDS_FOLDER));
+
+function searchUpwards(
+    dir: string,
+    readManifest: ReadManifestFn,
+    isFolder: IsFolderFn
+): Project | undefined {
     const manifest = readManifest(dir);
 
-    if (manifest) {
+    if (manifest && isProject(dir, manifest, isFolder)) {
         return { root: dir, manifest };
     }
 
     const parent = path.dirname(dir);
 
-    return parent === dir ? undefined : searchUpwards(parent, readManifest);
+    return parent === dir ? undefined : searchUpwards(parent, readManifest, isFolder);
 }
 
 /**
- * The project is the folder of the nearest package.json, looking in `cwd` and then each parent. The
- * first one found wins, even without an "artemis" key (in a monorepo, the package you stand in).
- * Pure: files are read only through `readManifest`.
+ * The project is the folder of the nearest package.json that has an "artemis" key or a commands
+ * folder next to it, looking in `cwd` and then each parent. A package.json that is neither, such as a
+ * `{ "type": "module" }` marker in `src/` or `dist/`, or a monorepo package without commands, is
+ * skipped and the search goes on upwards. Pure: the disk is only looked at through the two edges.
  */
-export const findProject: FindProjectFn = (cwd, readManifest) =>
-    searchUpwards(path.resolve(cwd), readManifest);
+export const findProject: FindProjectFn = (cwd, readManifest, isFolder) =>
+    searchUpwards(path.resolve(cwd), readManifest, isFolder);
 
 const isNonEmptyText = (value: unknown): value is string =>
     typeof value === 'string' && value.length > 0;
@@ -48,7 +59,7 @@ function invalidConfig(project: Project, problem: string): CommandError {
     return new CommandError(`${problem} (in ${manifestPath})`, { hint: VALID_SHAPE_HINT });
 }
 
-/** The "artemis" key of the manifest, checked field by field. */
+/** The "artemis" key of the manifest, checked field by field. It is only read here. */
 function readConfig(project: Project): ArtemisConfig {
     const declared = project.manifest[CONFIG_KEY];
 
@@ -69,26 +80,39 @@ function readConfig(project: Project): ArtemisConfig {
     return declared;
 }
 
-/** The name help and usage lines show: the config's, else the single `bin` of the project, else "art". */
-export const resolveBinName: ResolveBinNameFn = (manifest) => {
-    const configured = isRecord(manifest[CONFIG_KEY]) ? manifest[CONFIG_KEY].bin : undefined;
+/** The command npm creates for the `bin` field of a package: its single key, or the package name. */
+function ownBinName(manifest: Record<string, unknown>): string | undefined {
+    const { bin, name } = manifest;
 
-    if (isNonEmptyText(configured)) {
-        return configured;
+    if (isRecord(bin)) {
+        const keys = Object.keys(bin);
+        const [only] = keys;
+
+        return keys.length === 1 ? only : undefined;
     }
 
-    const own = isRecord(manifest.bin) ? Object.keys(manifest.bin) : [];
-    const [only] = own;
+    return isNonEmptyText(bin) && isNonEmptyText(name) ? name.replace(SCOPE_PREFIX, '') : undefined;
+}
 
-    return own.length === 1 && only !== undefined ? only : DEFAULT_BIN_NAME;
+/**
+ * The name help and usage lines show. The shipped binary shows `"artemis".bin` or `art`, never the
+ * name of an unrelated CLI the project publishes; a project's own bin file also uses the name of
+ * its own `bin` field.
+ */
+export const resolveBinName: ResolveBinNameFn = (config, manifest, route) => {
+    if (config.bin) {
+        return config.bin;
+    }
+
+    return (route === 'own' ? ownBinName(manifest) : undefined) ?? DEFAULT_BIN_NAME;
 };
 
 /** The settings of a project: where its commands are (absolute) and what to call the CLI. */
-export const resolveSettings: ResolveSettingsFn = (project) => {
+export const resolveSettings: ResolveSettingsFn = (project, route) => {
     const config = readConfig(project);
 
     return {
-        bin: resolveBinName(project.manifest),
+        bin: resolveBinName(config, project.manifest, route),
         commandsDir: path.resolve(project.root, config.commandsDir ?? DEFAULT_COMMANDS_FOLDER)
     };
 };

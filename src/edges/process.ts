@@ -5,6 +5,7 @@ export const currentProcess: CurrentProcessFn = () => ({
     stdout: process.stdout,
     stderr: process.stderr,
     env: process.env,
+    args: process.argv.slice(2),
     stdinIsTTY: Boolean(process.stdin.isTTY),
     stdoutIsTTY: Boolean(process.stdout.isTTY)
 });
