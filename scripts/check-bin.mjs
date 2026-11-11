@@ -151,6 +151,19 @@ try {
     assert.equal(json(missing).ok, false);
     console.log('ok   outside any project it fails with a JSON error and a hint');
 
+    const templates = path.join(project, 'templates');
+
+    fs.mkdirSync(templates);
+    fs.writeFileSync(path.join(templates, 'package.json'), '{ "name": "{{name}}" }');
+
+    assert.deepEqual(
+        json(execute(art, ['hello', '--json'], templates)).result,
+        { greeting: 'hello' },
+        'a template package.json does not hide the project above it'
+    );
+
+    console.log('ok   a package.json that cannot be parsed does not hide the real project');
+
     // 2. A consumer that ships the same CLI under its own name, with the framework as a dependency.
     const consumer = makeProject('consumer', { bin: { mytool: 'bin/mytool.js' } });
     const bin = path.join(consumer, 'bin', 'mytool.js');
@@ -191,6 +204,53 @@ try {
     );
 
     console.log('ok   a copy the project installed itself wins over the running one');
+
+    // A tool that does not ship its commands must not run the commands of the project it is installed in.
+    const bare = path.join(consumer, 'node_modules', 'bare-tool');
+    const bareBin = path.join(bare, 'bin', 'bare-tool.js');
+
+    fs.mkdirSync(path.dirname(bareBin), { recursive: true });
+
+    fs.writeFileSync(
+        path.join(bare, 'package.json'),
+        JSON.stringify({ name: 'bare-tool', type: 'module' })
+    );
+
+    fs.writeFileSync(
+        bareBin,
+        "import { cli } from '@zjaaal/artemis/cli';\n\nprocess.exitCode = await cli({ root: import.meta.url });\n"
+    );
+
+    const bareRun = execute(process.execPath, [bareBin, 'hello', '--json'], consumer);
+
+    assert.equal(bareRun.code, EXIT_FAILED, 'a tool with no commands fails');
+
+    assert.match(
+        json(bareRun).error,
+        /^Commands folder not found: /,
+        'and says so, not running the consumer’s commands'
+    );
+
+    assert.match(json(bareRun).hint, /author has to ship the commands folder/);
+
+    console.log(
+        'ok   a tool that does not ship its commands fails instead of running its installer’s'
+    );
+
+    // A root that is not a file URL or a path is a reported failure, not a crash.
+    const badRootBin = path.join(consumer, 'bin', 'bad-root.js');
+
+    fs.writeFileSync(
+        badRootBin,
+        "import { cli } from '@zjaaal/artemis/cli';\n\nprocess.exitCode = await cli({ root: 'http://example.com/bin.js' });\n"
+    );
+
+    const badRoot = execute(process.execPath, [badRootBin, 'hello', '--json'], consumer);
+
+    assert.equal(badRoot.code, EXIT_FAILED);
+    assert.equal(json(badRoot).ok, false);
+    assert.equal(badRoot.err.includes('\n    at '), false, 'no stack trace');
+    console.log('ok   a bad root is a reported failure, not a stack trace');
 
     // 3. The global art runs the consumer, whose command files use the consumer's own copy.
     const failed = execute(art, ['fail', '--json'], consumer);

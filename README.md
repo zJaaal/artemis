@@ -118,12 +118,12 @@ Both settings are optional, under the `artemis` key of that `package.json`:
 
 When it cannot find what to run, `art` exits `1` and says what to create or set, and with `--json` it prints the usual failure object with `command: null`:
 
-| Problem                                                 | What the hint tells you                                                                                                           |
-| ------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------- |
-| no project from here upwards                            | a project is a `package.json` with a `commands/` folder next to it, or an `artemis` key; run it inside one, or create `commands/` |
-| the commands folder does not exist                      | create it, or set `"artemis": { "commandsDir" }` in your `package.json`                                                           |
-| the `artemis` key has a bad shape                       | the shape it should have                                                                                                          |
-| a `package.json` that is not valid JSON or not readable | the file, and what is wrong with it                                                                                               |
+| Problem                                                        | What the hint tells you                                                                                                           |
+| -------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------- |
+| no project from here upwards                                   | a project is a `package.json` with a `commands/` folder next to it, or an `artemis` key; run it inside one, or create `commands/` |
+| the commands folder does not exist                             | create it, or set `"artemis": { "commandsDir" }` in your `package.json`                                                           |
+| the `artemis` key has a bad shape                              | the shape it should have                                                                                                          |
+| the project's `package.json` is not valid JSON or not readable | the file, and what is wrong with it (one that is not the project, such as a template with `{{name}}` in it, is skipped)           |
 
 ### Your own command name
 
@@ -148,7 +148,7 @@ and point `package.json` at it, with `@zjaaal/artemis` as a dependency:
 }
 ```
 
-`root` is where your bin file is: your tool runs **its own** `commands/`, wherever the user happens to be standing, not the commands of whatever project the user is in. Help and usage lines show `mytool`, taken from the single key of your `bin` object (or from the package name when `bin` is a plain string, without its `@scope/`), or from `"artemis": { "bin" }` if you set it. `cli` resolves to the exit code and never calls `process.exit`; it also takes `argv` and the host options of `run()` (`stdout`, `stderr`, `interactive`, `color`, `env`) if you need them.
+`root` is where your bin file is: your tool runs **its own** `commands/`, wherever the user happens to be standing, not the commands of whatever project the user is in. It never climbs out of your package, so make sure `commands/` ships with it (check `files` in your `package.json`): a tool published without its commands fails with "Commands folder not found" and a hint for you, instead of running the commands of the project that installed it. Help and usage lines show `mytool`, taken from the single key of your `bin` object, or from your package name (without its `@scope/`) when `bin` is a plain string or has several keys, or from `"artemis": { "bin" }` if you set it. `cli` resolves to the exit code and never calls `process.exit`; it also takes `argv` and the host options of `run()` (`stdout`, `stderr`, `interactive`, `color`, `env`) if you need them.
 
 ### Full control
 
