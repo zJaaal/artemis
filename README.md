@@ -56,22 +56,39 @@ Installing the package puts two commands on your path, `art` and `artemis`. They
 
 ## Quick start
 
-No bin file, no boilerplate: a project is a `package.json` and a `commands/` folder next to it.
+No bin file, no boilerplate. Let `art init` set the project up, or do it by hand: a project is a `package.json` and a `commands/` folder next to it.
 
-**1. Make sure your `package.json` says `"type": "module"`.** Command files are ES modules, and without it Node prints a warning about each one on stderr.
+**1. Make a folder a project.**
 
-```json
-{ "name": "my-project", "type": "module" }
+```console
+$ npx art init
+Created /work/my-project/package.json
+Created /work/my-project/commands
+Created /work/my-project/commands/hello.js
 ```
 
-**2. Drop a command in `commands/`.**
+`init` creates a `package.json` (or adds the `artemis` key to the one you have, keeping its formatting), the `commands/` folder and a sample command. It never overwrites anything, and running it again changes nothing. It also tells you if your `package.json` does not say `"type": "module"`: command files are ES modules, and without it Node prints a warning about each one on stderr. (`init` is reserved: a command file called `init.js` cannot be run through `art`.)
+
+**2. Run the sample, then write your own.**
+
+```console
+$ npx art hello ana
+hello ana
+
+$ npx art hello ana --json
+{"ok":true,"command":"hello","result":{"greeting":"hello ana"}}
+
+$ npx art help
+```
+
+A command is one file in `commands/`:
 
 ```js
-// commands/hello.js
+// commands/greet.js
 import { defineCommand } from '@zjaaal/artemis';
 
 export default defineCommand({
-    description: 'Greet someone',
+    description: 'Greet someone, loudly if asked',
     args: [{ name: 'name', description: 'Who to greet', default: 'world' }],
     flags: { shout: { type: 'boolean', short: 's', description: 'Uppercase the greeting' } },
     run({ args, flags, ctx }) {
@@ -85,30 +102,18 @@ export default defineCommand({
 });
 ```
 
-**3. Run it.**
-
-```console
-$ npx art hello ana --shout
-HELLO ANA
-
-$ npx art hello ana --json
-{"ok":true,"command":"hello","result":{"greeting":"hello ana"}}
-
-$ npx art help
-```
+**By hand, with no `init`:** put your commands in a `commands/` folder next to a `package.json` and run `art`. That is all the convention needs.
 
 If you installed it globally, drop the `npx` and run `art hello` from the project or any folder inside it. A globally installed `art` does not need a copy of Artemis in the project: it makes `import ... from '@zjaaal/artemis'` in your command files resolve to the copy that is running them. A copy the project installed itself always wins, and errors thrown by either copy keep their hint and exit code.
 
 ### How `art` finds your project
 
-`art` looks for the **nearest project**, starting in the current folder and then each parent. The project is the nearest `package.json` that is not a marker. A marker is a `package.json` that says nothing but `"type"` and has no `commands/` folder next to it, such as the `{ "type": "module" }` people drop into `src/` or `dist/`; it is skipped, so `art` works from any folder inside your project. Any other `package.json` is a package, and the nearest one is the project, with its `commands/` folder next to it.
+`art` looks at each `package.json` from the current folder up through its parents, and the **project** is the nearest one that says it is one, in either of two ways:
 
-Two consequences worth knowing:
+- **It declares itself**: it has an `"artemis"` key. This is what `art init` writes, and it is the explicit way: nothing is guessed.
+- **It follows the convention**: it has a `commands/` folder next to it. This needs no setup.
 
-- A package without a `commands/` folder is still the project, and `art` says so instead of quietly running a parent's commands. In a monorepo, a package that wants the root's commands points at them: `"artemis": { "commandsDir": "../../commands" }`.
-- A `package.json` with real content under your project, such as a template or a test fixture, is a package of its own: run `art` from the project, or point `commandsDir` at your commands.
-
-Two projects on one machine never see each other's commands.
+Any other `package.json` is simply not a candidate and is skipped: a `{ "type": "module" }` file in `src/` or `dist/` (with or without other keys, such as `sideEffects`), a template, or a monorepo package that has neither. So `art` works from any folder inside your project, and a monorepo package without its own commands uses the root's. Two projects on one machine never see each other's commands.
 
 Both settings are optional, under the `artemis` key of that `package.json`:
 
@@ -127,7 +132,7 @@ When it cannot find what to run, `art` exits `1` and says what to create or set,
 
 | Problem                                                            | What the hint tells you                                                                                                                                                                                                                       |
 | ------------------------------------------------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| no project from here upwards                                       | a project is the nearest `package.json` that says more than `type`, with a `commands/` folder next to it                                                                                                                                      |
+| no project from here upwards                                       | a project is the nearest `package.json` with an `artemis` key or a `commands/` folder next to it; run it inside one, or run `init` in this folder                                                                                             |
 | the commands folder does not exist                                 | create it, set `"artemis": { "commandsDir" }`, or point it at a parent's commands (`"../commands"`)                                                                                                                                           |
 | the `artemis` key has a bad shape                                  | the shape it should have                                                                                                                                                                                                                      |
 | any `package.json` on the way up is not valid JSON or not readable | the file, and what is wrong with it. It is never skipped, because running a different project's commands silently would be worse (a deliberately broken fixture between you and the project makes `art` fail until you run it from elsewhere) |
@@ -155,7 +160,7 @@ and point `package.json` at it, with `@zjaaal/artemis` as a dependency:
 }
 ```
 
-`root` is where your bin file is: your tool runs **its own** `commands/`, wherever the user happens to be standing, not the commands of whatever project the user is in. It never climbs out of your package, so make sure `commands/` ships with it (check `files` in your `package.json`): a tool published without its commands fails with "Commands folder not found" and a hint for you, instead of running the commands of the project that installed it. Help and usage lines show `mytool`, taken from the single key of your `bin` object, or from your package name (without its `@scope/`) when `bin` is a plain string or has several keys, or from `"artemis": { "bin" }` if you set it. `cli` resolves to the exit code and never calls `process.exit`; it also takes `argv` and the host options of `run()` (`stdout`, `stderr`, `interactive`, `color`, `env`) if you need them.
+`root` is where your bin file is: your tool runs **its own** `commands/`, wherever the user happens to be standing, not the commands of whatever project the user is in. It finds its package through the nearest `package.json` that declares a `bin` (which npm needs anyway to create your command), so it never climbs into the project that installed it. Make sure `commands/` ships with your package (check `files` in your `package.json`): a tool published without its commands fails with "Commands folder not found" and a hint for you, instead of running the commands of the project that installed it. Nothing is reserved for a tool: `init` and every other word is yours. Help and usage lines show `mytool`, taken from the single key of your `bin` object, or from your package name (without its `@scope/`) when `bin` is a plain string or has several keys, or from `"artemis": { "bin" }` if you set it. `cli` resolves to the exit code and never calls `process.exit`; it also takes `argv` and the host options of `run()` (`stdout`, `stderr`, `interactive`, `color`, `env`) if you need them.
 
 ### Full control
 
