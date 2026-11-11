@@ -17,3 +17,21 @@ export type TempRepo = {
     root: string;
     git: (...args: string[]) => string;
 };
+
+/** What `art(...)` returns: the exit code and everything written to stdout and stderr. */
+export type ArtResult = { code: number; out: string; err: string };
+
+/** The JSON object printed on stdout under --json. */
+export type Envelope = {
+    ok: boolean;
+    command: string | null;
+    result?: unknown;
+    error?: string;
+    hint?: string;
+};
+
+/** `defineCommand` seen from a JavaScript caller: it can be handed anything. */
+export type LooseDefineFn = (definition: unknown) => unknown;
+
+/** Runs `work` and returns what it threw, or undefined. Keeps try/catch out of test bodies. */
+export type ThrownByFn = (work: () => unknown) => unknown;

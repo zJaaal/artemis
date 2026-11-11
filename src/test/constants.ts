@@ -19,3 +19,9 @@ export const GIT_TEST_CONFIG = [
 ] as const;
 
 export const TEMP_REPO_MARKER = 'marker';
+
+export const ALIAS_CLASH_FIXTURE_DIR = fileURLToPath(
+    new URL('./fixtures/alias-clash', import.meta.url)
+);
+
+export const MISSING_FIXTURE_DIR = fileURLToPath(new URL('./fixtures/not-there', import.meta.url));
