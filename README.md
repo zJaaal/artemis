@@ -101,7 +101,14 @@ If you installed it globally, drop the `npx` and run `art hello` from the projec
 
 ### How `art` finds your project
 
-`art` looks for the **nearest project**, starting in the current folder and then each parent. A project is the nearest `package.json` that is a real package: it has a `name`, an `artemis` key, or a `commands/` folder next to it. Its `commands/` folder holds the commands. A `package.json` that is only a marker, such as `{ "type": "module" }` inside `src/` or `dist/`, has none of those and is skipped, so `art` works from any folder inside your project. A named package without a `commands/` folder is still the project, and `art` tells you so instead of quietly running a parent project's commands. Two projects on one machine never see each other's commands.
+`art` looks for the **nearest project**, starting in the current folder and then each parent. The project is the nearest `package.json` that is not a marker. A marker is a `package.json` that says nothing but `"type"` and has no `commands/` folder next to it, such as the `{ "type": "module" }` people drop into `src/` or `dist/`; it is skipped, so `art` works from any folder inside your project. Any other `package.json` is a package, and the nearest one is the project, with its `commands/` folder next to it.
+
+Two consequences worth knowing:
+
+- A package without a `commands/` folder is still the project, and `art` says so instead of quietly running a parent's commands. In a monorepo, a package that wants the root's commands points at them: `"artemis": { "commandsDir": "../../commands" }`.
+- A `package.json` with real content under your project, such as a template or a test fixture, is a package of its own: run `art` from the project, or point `commandsDir` at your commands.
+
+Two projects on one machine never see each other's commands.
 
 Both settings are optional, under the `artemis` key of that `package.json`:
 
@@ -118,12 +125,12 @@ Both settings are optional, under the `artemis` key of that `package.json`:
 
 When it cannot find what to run, `art` exits `1` and says what to create or set, and with `--json` it prints the usual failure object with `command: null`:
 
-| Problem                                                            | What the hint tells you                                                                                                  |
-| ------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------ |
-| no project from here upwards                                       | a project is a folder with a `package.json` that has a `name`, and a `commands/` folder next to it (or an `artemis` key) |
-| the commands folder does not exist                                 | create it, or set `"artemis": { "commandsDir" }` in your `package.json`                                                  |
-| the `artemis` key has a bad shape                                  | the shape it should have                                                                                                 |
-| any `package.json` on the way up is not valid JSON or not readable | the file, and what is wrong with it. It is never skipped: running a different project's commands silently would be worse |
+| Problem                                                            | What the hint tells you                                                                                                                                                                                                                       |
+| ------------------------------------------------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| no project from here upwards                                       | a project is the nearest `package.json` that says more than `type`, with a `commands/` folder next to it                                                                                                                                      |
+| the commands folder does not exist                                 | create it, set `"artemis": { "commandsDir" }`, or point it at a parent's commands (`"../commands"`)                                                                                                                                           |
+| the `artemis` key has a bad shape                                  | the shape it should have                                                                                                                                                                                                                      |
+| any `package.json` on the way up is not valid JSON or not readable | the file, and what is wrong with it. It is never skipped, because running a different project's commands silently would be worse (a deliberately broken fixture between you and the project makes `art` fail until you run it from elsewhere) |
 
 ### Your own command name
 
@@ -524,12 +531,14 @@ openTabs(warp(), [
 
 ## Releasing
 
-Releases are **staged by CI and approved by a person**. The npm token stored in the repository (`NPM_TOKEN`) can only stage: CI uploads the package without 2FA, and nothing is public until the owner approves it with 2FA. Agents cannot log in to npm or approve, so the owner does these steps.
+Releases are **staged by CI and approved by a person**. The release workflow only ever stages: it uploads the package without 2FA, and nothing is public until the owner approves it with 2FA. Agents cannot log in to npm or approve, so the owner does these steps.
+
+> **The approval only protects you if the token cannot publish by itself.** Create the `NPM_TOKEN` token without the "bypass 2FA" permission. What a token can do is decided on npm, and this repository cannot check it: with a token that can publish, anyone who gets hold of the secret can publish without your approval.
 
 1. Make sure the `@zjaaal` scope exists on npm (an npm user or organization named `zjaaal`), and that 2FA is on for the account that will approve releases.
-2. Store the npm token as a repository secret, once: `gh secret set NPM_TOKEN --repo zJaaal/artemis` (or Settings, Secrets and variables, Actions, New repository secret). Any token type can stage. Rotate it before it expires by overwriting the secret.
+2. Store the npm token as a repository secret, once: `gh secret set NPM_TOKEN --repo zJaaal/artemis` (or Settings, Secrets and variables, Actions, New repository secret). Any token type can stage, so choose one that cannot publish on its own (see above). Rotate it before it expires by overwriting the secret.
 3. To release: bump `version` in `package.json`, commit, then `git tag vX.Y.Z` and `git push origin main vX.Y.Z`. The release workflow runs the whole gate and **stages** the package with provenance. It creates the package if it does not exist yet, so `0.1.0` is released this way too: there is no manual first publish.
-4. Approve it, from any machine logged in to npm, with npm 12 or newer (Node 22.22.2+, 24.15+ or 26+):
+4. Approve it, from any machine logged in to npm. `npm stage` needs npm 12, which runs on Node 22.22.2+, 24.15+ or 26+ (the `npx npm@12.2.1` below brings it):
 
     ```sh
     npx npm@12.2.1 stage list                      # the staged versions and their ids
