@@ -173,10 +173,11 @@ export type ResolveBinNameFn = (config: ArtemisConfig, manifest: Record<string, 
 //   string, the package name without its scope (npm names the command that way); else "art".
 // What cli() takes: the host options of run() (streams, interactive, color, env) plus where to look for the project.
 export type CliOptions = Pick<RunOptions, 'stdout' | 'stderr' | 'interactive' | 'color' | 'env'> & {
+    argv?: string[]; // the command line; default: the arguments of this process, so a bin file does not pass them
     cwd?: string; // shipped route: where to start looking (default: the current folder)
     root?: string | URL; // own route: where the bin file is (import.meta.url); the search starts from its folder, not from the current one
 };
-export type CliFn = (argv: string[], options?: CliOptions) => Promise<number>;
+export type CliFn = (options?: CliOptions) => Promise<number>; // resolves to the exit code; never calls process.exit
 ```
 
 Conventions:

@@ -97,11 +97,11 @@ $ npx art hello ana --json
 $ npx art help
 ```
 
-If you installed it globally, drop the `npx` and run `art hello` from the project or any folder inside it. A globally installed `art` does not need a copy of Artemis in the project: it makes `import ... from '@zjaaal/artemis'` in your command files resolve to the copy that is running them (a copy the project installed itself always wins).
+If you installed it globally, drop the `npx` and run `art hello` from the project or any folder inside it. A globally installed `art` does not need a copy of Artemis in the project: it makes `import ... from '@zjaaal/artemis'` in your command files resolve to the copy that is running them. A copy the project installed itself always wins, and errors thrown by either copy keep their hint and exit code.
 
 ### How `art` finds your project
 
-`art` looks for the **nearest `package.json`**, starting in the current folder and then each parent. That folder is the project, even when its `package.json` has no `artemis` key (in a monorepo, the package you stand in wins), and its `commands/` folder holds the commands. Two projects on one machine never see each other's commands.
+`art` looks for the **nearest project**, starting in the current folder and then each parent. A project is a folder whose `package.json` has an `artemis` key, or has a `commands/` folder next to it. That folder's `commands/` holds the commands. A `package.json` that is neither (a `{ "type": "module" }` marker inside `src/`, or a monorepo package without commands) is skipped and the search goes on upwards, so `art` works from any folder inside your project. Two projects on one machine never see each other's commands.
 
 Both settings are optional, under the `artemis` key of that `package.json`:
 
@@ -109,36 +109,46 @@ Both settings are optional, under the `artemis` key of that `package.json`:
 { "artemis": { "commandsDir": "tools/commands", "bin": "mytool" } }
 ```
 
-| Setting       | What it does                                                        | Default                                                     |
-| ------------- | ------------------------------------------------------------------- | ----------------------------------------------------------- |
-| `commandsDir` | The commands folder, relative to the folder of that `package.json`. | `commands`                                                  |
-| `bin`         | The name help and usage lines show.                                 | the single key of the project's own `bin` field, else `art` |
+| Setting       | What it does                                                        | Default                                        |
+| ------------- | ------------------------------------------------------------------- | ---------------------------------------------- |
+| `commandsDir` | The commands folder, relative to the folder of that `package.json`. | `commands`                                     |
+| `bin`         | The name help and usage lines show.                                 | `art` (see "Your own command name" for a tool) |
+
+`art` always shows `art` (or your `bin` setting) in help, even in a project that publishes a CLI of its own, so what the help tells you to type is what you typed.
 
 When it cannot find what to run, `art` exits `1` and says what to create or set, and with `--json` it prints the usual failure object with `command: null`:
 
-| Problem                             | What the hint tells you                                                          |
-| ----------------------------------- | -------------------------------------------------------------------------------- |
-| no `package.json` from here upwards | run `art` inside a project, or create a `package.json` with a `commands/` folder |
-| the commands folder does not exist  | create it, or set `"artemis": { "commandsDir" }` in your `package.json`          |
-| the `artemis` key has a bad shape   | the shape it should have                                                         |
+| Problem                                                 | What the hint tells you                                                                                                           |
+| ------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------- |
+| no project from here upwards                            | a project is a `package.json` with a `commands/` folder next to it, or an `artemis` key; run it inside one, or create `commands/` |
+| the commands folder does not exist                      | create it, or set `"artemis": { "commandsDir" }` in your `package.json`                                                           |
+| the `artemis` key has a bad shape                       | the shape it should have                                                                                                          |
+| a `package.json` that is not valid JSON or not readable | the file, and what is wrong with it                                                                                               |
 
 ### Your own command name
 
-To ship the same CLI under your own name, give your package a bin file with one line:
+To ship the same CLI under your own name (say you publish a package `mytool`), give it a bin file:
 
 ```js
 #!/usr/bin/env node
 // bin/mytool.js
-import '@zjaaal/artemis/cli';
+import { cli } from '@zjaaal/artemis/cli';
+
+process.exitCode = await cli({ root: import.meta.url });
 ```
 
-and point `package.json` at it. Help and usage lines then show `mytool`, because it is the single key of your `bin` field (or set `"artemis": { "bin": "mytool" }`):
+and point `package.json` at it, with `@zjaaal/artemis` as a dependency:
 
 ```json
-{ "name": "my-project", "type": "module", "bin": { "mytool": "bin/mytool.js" } }
+{
+    "name": "mytool",
+    "type": "module",
+    "bin": { "mytool": "bin/mytool.js" },
+    "dependencies": { "@zjaaal/artemis": "^0.1.0" }
+}
 ```
 
-`@zjaaal/artemis/cli` is only meant to be imported by a bin file: importing it runs the CLI.
+`root` is where your bin file is: your tool runs **its own** `commands/`, wherever the user happens to be standing, not the commands of whatever project the user is in. Help and usage lines show `mytool`, taken from the single key of your `bin` object (or from the package name when `bin` is a plain string, without its `@scope/`), or from `"artemis": { "bin" }` if you set it. `cli` resolves to the exit code and never calls `process.exit`; it also takes `argv` and the host options of `run()` (`stdout`, `stderr`, `interactive`, `color`, `env`) if you need them.
 
 ### Full control
 

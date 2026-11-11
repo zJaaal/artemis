@@ -71,13 +71,13 @@ Return a value from `run` to give the command a result. Throw `CommandError(mess
 
 You do not write a `bin` file. Installing the package gives the commands `art` and `artemis` (the same command): run `npx art` in a project, or `art` if it is installed globally.
 
-- **The project is the nearest `package.json`**, looking in the current folder and then each parent. Its `commands/` folder next to it holds the commands. Two projects never see each other's commands, and in a monorepo the package you stand in wins.
-- **Settings, all optional**, under the `artemis` key of that `package.json`: `"artemis": { "commandsDir": "tools/commands", "bin": "mytool" }`. `commandsDir` is relative to the folder of that `package.json` (default `commands`). `bin` is the name help and usage lines show (default: the single key of the project's own `bin` field, else `art`).
+- **The project is the nearest `package.json` that has an `artemis` key or a `commands/` folder next to it**, looking in the current folder and then each parent. A bare `package.json` (a `{ "type": "module" }` marker in `src/`, a monorepo package with no commands) is skipped, so `art` works from any folder inside the project. Two projects never see each other's commands.
+- **Settings, all optional**, under the `artemis` key of that `package.json`: `"artemis": { "commandsDir": "tools/commands", "bin": "mytool" }`. `commandsDir` is relative to the folder of that `package.json` (default `commands`). `bin` is the name help and usage lines show; the shipped `art` shows `art` unless you set it, whatever CLI the project publishes.
 - **Command files are ES modules**: set `"type": "module"` in the project's `package.json`, or Node prints a warning for each file.
-- **A global `art` needs no copy of Artemis in the project.** `import ... from '@zjaaal/artemis'` in a command file resolves to the running copy; a copy the project installed itself wins.
-- **When it cannot find what to run** (no `package.json` upwards, no commands folder, a bad `artemis` key) it exits `1` with a hint that says what to create or set; under `--json` that is `{ "ok": false, "command": null, "error", "hint" }`.
+- **A global `art` needs no copy of Artemis in the project.** `import ... from '@zjaaal/artemis'` in a command file resolves to the running copy; a copy the project installed itself wins, and errors from either copy keep their hint and exit code.
+- **When it cannot find what to run** (no project upwards, no commands folder, a bad `artemis` key, an unreadable `package.json`) it exits `1` with a hint that says what to create or set; under `--json` that is `{ "ok": false, "command": null, "error", "hint" }`.
 
-To ship the same CLI under its own name, a project adds a bin file with one line, `import '@zjaaal/artemis/cli';`, and a `bin` field in its `package.json` (`"bin": { "mytool": "bin/mytool.js" }`); help then shows `mytool`. To control everything yourself, call `run(argv, { bin, commandsDir })` from your own bin file: `bin` is required, and `run` returns the exit code without calling `process.exit`.
+To ship the same CLI under its own name, a project adds a bin file, `import { cli } from '@zjaaal/artemis/cli'; process.exitCode = await cli({ root: import.meta.url });`, a `bin` field in its `package.json` (`"bin": { "mytool": "bin/mytool.js" }`) and `@zjaaal/artemis` as a dependency. It runs its own `commands/` wherever the user is standing, and help shows `mytool`. To control everything yourself, call `run(argv, { bin, commandsDir })` from your own bin file: `bin` is required, and `run` returns the exit code without calling `process.exit`.
 
 ## Working on Artemis itself
 
