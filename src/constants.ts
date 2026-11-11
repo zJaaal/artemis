@@ -68,6 +68,9 @@ export const SUGGEST_LENGTH_DIVISOR = 3;
 export const ANSI_ESCAPE = '\u001b[';
 export const ANSI_RESET = 0;
 
+/** Shows the cursor again: a question that is cancelled may leave it hidden. */
+export const SHOW_CURSOR = `${ANSI_ESCAPE}?25h`;
+
 /** SGR codes of each style. */
 export const STYLE_CODES = {
     bold: 1,
@@ -82,8 +85,13 @@ export const DEFAULT_COLOR_ENV = 'NO_COLOR';
 
 export const NOT_INTERACTIVE_MESSAGE =
     'This command needs input, but it is not running interactively.';
-export const NOT_INTERACTIVE_HINT =
-    'Pass --yes to run without questions, or pass the flags that answer them (see --help).';
+export const NOT_INTERACTIVE_HINT = 'Pass --yes to skip the question.';
+/**
+ * `--yes` and `--json` never answer a question, so when one of them was passed and the command asks
+ * anyway, "pass --yes" would send the caller round in a circle: it has to answer another way.
+ */
+export const ASKS_REGARDLESS_HINT =
+    'This command asks even with --yes or --json: answer it with the flags it documents (see --help).';
 export const CANCELLED_MESSAGE = 'Cancelled.';
 
 export const TABLE_INDENT = '  ';
@@ -92,6 +100,10 @@ export const SECTION_SEPARATOR = '\n\n';
 export const NOTE_SEPARATOR = '; ';
 
 export const NO_COMMAND = null;
+
+/** What a document file ends with, and what a file being written ends with until it is renamed into place. */
+export const JSON_EXTENSION = '.json';
+export const TEMP_SUFFIX = '.tmp';
 
 /** Node system error codes the framework reacts to. */
 export const ERROR_CODE = {
@@ -112,6 +124,7 @@ export const CONFIG_KEY = 'artemis';
 export const NODE_MODULES = 'node_modules';
 export const SCOPE_FOLDER_PREFIX = '@';
 export const DEFAULT_COMMANDS_FOLDER = 'commands';
+export const DEFAULT_STATE_FOLDER = 'state';
 export const DEFAULT_BIN_NAME = 'art';
 
 /** npm names the command of a string `bin` after the package, without its `@scope/`. */

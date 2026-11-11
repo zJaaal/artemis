@@ -2,8 +2,18 @@ import { createContext } from '../context/context.js';
 import { EXIT_CODE, FLAG_PREFIX, HELP_WORD, ID_SEPARATOR } from '../constants.js';
 import { discover } from '../discover/discover.js';
 import { CommandError, UsageError, isUsageError } from '../errors/errors.js';
-import { commandHelp, manifest, rootHelp, topicHelp, topicManifest, usage } from '../help/help.js';
+import {
+    builtinHelp,
+    commandHelp,
+    describeBuiltins,
+    manifest,
+    rootHelp,
+    topicHelp,
+    topicManifest,
+    usage
+} from '../help/help.js';
 import type {
+    Builtin,
     CommandEntry,
     GlobalFlags,
     HelpOutput,
@@ -39,8 +49,17 @@ function print(session: Session, text: string, data: unknown): void {
     session.io.stdout.write(`${output}\n`);
 }
 
-const unknownHint = (bin: string, registry: Registry, name: string): string => {
-    const match = suggest(registry, name);
+const unknownHint = (
+    bin: string,
+    registry: Registry,
+    name: string,
+    builtins: readonly Builtin[] = []
+): string => {
+    const match = suggest(
+        registry,
+        name,
+        builtins.map((builtin) => builtin.id)
+    );
 
     if (match) {
         return `Did you mean "${match}"?`;
@@ -53,8 +72,14 @@ const unknownHint = (bin: string, registry: Registry, name: string): string => {
     return `Run "${listing}" to see the commands.`;
 };
 
-const unknownCommand = ({ bin, registry }: Session, name: string): UsageError =>
-    new UsageError(`Unknown command "${name}".`, { hint: unknownHint(bin, registry, name) });
+const unknownCommand = ({ bin, registry, builtins }: Session, name: string): UsageError =>
+    new UsageError(`Unknown command "${name}".`, {
+        hint: unknownHint(bin, registry, name, builtins)
+    });
+
+/** The word of the binary itself that these help words name, if any: `help state`. */
+const builtinNamed = ({ builtins = [] }: Session, words: string[]): Builtin | undefined =>
+    words.length === 1 ? builtins.find((builtin) => builtin.id === words[0]) : undefined;
 
 /** A bad call to `ctx.invoke` is the calling command's bug, not a wrong command line: exit 1. */
 function parseNested(
@@ -151,8 +176,22 @@ function showHelpFor(session: Session, words: string[]): void {
 
         print(
             session,
-            rootHelp(session.bin, session.registry, session.style),
-            manifest(session.bin, session.registry)
+            rootHelp(session.bin, session.registry, session.style, session.builtins),
+            manifest(session.bin, session.registry, session.builtins)
+        );
+
+        return;
+    }
+
+    const builtin = builtinNamed(session, words);
+
+    if (builtin) {
+        session.state.commandId = builtin.id;
+
+        print(
+            session,
+            builtinHelp(session.bin, builtin, session.style),
+            describeBuiltins(session.bin, [builtin])[0]
         );
 
         return;
@@ -246,7 +285,10 @@ export const run: RunCliFn = async (argv, options) => {
             world.io.stderr.write(`${world.style.yellow('warning:')} ${warning}\n`)
         );
 
-        return await dispatch({ ...world, registry, wantsJson, state }, argv);
+        return await dispatch(
+            { ...world, registry, wantsJson, state, builtins: options.builtins },
+            argv
+        );
     } catch (error) {
         return reportError(error, {
             io: world.io,

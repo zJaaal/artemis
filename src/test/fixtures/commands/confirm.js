@@ -9,7 +9,7 @@ export default defineCommand({
             return { value: true, asked: false };
         }
 
-        const { value } = await ctx.prompt({ type: 'confirm', name: 'value', message: 'Sure?' });
+        const value = await ctx.prompt.confirm('Sure?');
 
         ctx.log(JSON.stringify({ value, asked: true }));
 

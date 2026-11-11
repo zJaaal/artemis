@@ -2,6 +2,8 @@ import { fileURLToPath } from 'node:url';
 
 export const COMMANDS_FIXTURE_DIR = fileURLToPath(new URL('./fixtures/commands', import.meta.url));
 
+export const PROMPTS_FIXTURE_DIR = fileURLToPath(new URL('./fixtures/prompts', import.meta.url));
+
 export const BAD_COMMANDS_FIXTURE_DIR = fileURLToPath(
     new URL('./fixtures/bad-commands', import.meta.url)
 );

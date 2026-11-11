@@ -57,7 +57,7 @@ The metaphor is branding. In the API, the help text and the errors, things keep 
 - **Honest exit codes.** `0` success, `1` the command failed, `2` the command line was wrong.
 - **Never hangs.** `--yes` and `--json` never prompt, and a prompt that nobody can answer fails with a hint instead of waiting forever.
 - **Typed.** `run({ args, flags })` is typed from the definition, even in plain JavaScript with `// @ts-check`.
-- **Small.** ESM only, Node 22 or newer, and one runtime dependency (`prompts`), loaded only when a command asks a question.
+- **Small.** ESM only, Node 22 or newer, and one runtime dependency, [`@topcli/prompts`](https://github.com/TopCli/prompts), which has none of its own and is loaded only when a command asks a question.
 
 ## Install
 
@@ -68,7 +68,7 @@ pnpm add -D @zjaaal/artemis      # in a project: run it with `npx art`
 npm install --global @zjaaal/artemis   # anywhere: run it as `art` (or `artemis`, the same command)
 ```
 
-Installing the package puts two commands on your path, `art` and `artemis`. They are the same file, so use whichever you like. TypeScript users who use the types of `ctx.prompt` can add `@types/prompts` (an optional peer dependency; plain JavaScript never needs it).
+Installing the package puts two commands on your path, `art` and `artemis`. They are the same file, so use whichever you like.
 
 ## Quick start
 
@@ -131,16 +131,17 @@ If you installed it globally, drop the `npx` and run `art hello` from the projec
 
 Any other `package.json` is simply not a candidate and is skipped: a `{ "type": "module" }` file in `src/` or `dist/` (with or without other keys, such as `sideEffects`), a template, or a monorepo package that has neither. So `art` works from any folder inside your project, and a monorepo package without its own commands uses the root's. Two projects on one machine never see each other's commands.
 
-Both settings are optional, under the `artemis` key of that `package.json`:
+All settings are optional, under the `artemis` key of that `package.json`:
 
 ```json
-{ "artemis": { "commandsDir": "tools/commands", "bin": "mytool" } }
+{ "artemis": { "commandsDir": "tools/commands", "bin": "mytool", "stateDir": "data" } }
 ```
 
-| Setting       | What it does                                                        | Default                                        |
-| ------------- | ------------------------------------------------------------------- | ---------------------------------------------- |
-| `commandsDir` | The commands folder, relative to the folder of that `package.json`. | `commands`                                     |
-| `bin`         | The name help and usage lines show.                                 | `art` (see "Your own command name" for a tool) |
+| Setting       | What it does                                                                                                          | Default                                        |
+| ------------- | --------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------- |
+| `commandsDir` | The commands folder, relative to the folder of that `package.json`.                                                   | `commands`                                     |
+| `bin`         | The name help and usage lines show.                                                                                   | `art` (see "Your own command name" for a tool) |
+| `stateDir`    | Where the store kit keeps its documents, relative to that folder. Read by `art state` and `defineStore({ project })`. | `state`                                        |
 
 `art` always shows `art` (or your `bin` setting) in help, even in a project that publishes a CLI of its own, so what the help tells you to type is what you typed.
 
@@ -270,16 +271,16 @@ export default defineCommand({
 
 ### The `ctx` your command receives
 
-| Field                             | What it does                                                                                                                                                                                   |
-| --------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `ctx.log(...)`                    | Human output on stdout. **Silent under `--json`**, so stdout stays one JSON object.                                                                                                            |
-| `ctx.warn(...)`                   | Progress and warnings on stderr. Never mixes with `--json` output.                                                                                                                             |
-| `ctx.prompt(questions, { hint })` | Asks the user (questions use the [`prompts`](https://github.com/terkelg/prompts) format). When nobody can answer it throws a `CommandError` with `hint`.                                       |
-| `ctx.interactive`                 | `true` only when a prompt may be shown. See "Prompts" below.                                                                                                                                   |
-| `ctx.json`                        | Whether the run was asked for `--json`.                                                                                                                                                        |
-| `ctx.style`                       | Color helpers (`bold`, `dim`, `red`, `green`, `yellow`, `cyan`); plain text when color is off.                                                                                                 |
-| `ctx.commands`                    | Every discovered command, for building lists of commands to run in order.                                                                                                                      |
-| `ctx.invoke(id, argv)`            | Runs another command by id or alias and returns its result. It inherits `--json` and `--yes`. A bad call (unknown command, wrong arguments, `--help`) fails the calling command with exit `1`. |
+| Field                  | What it does                                                                                                                                                                                   |
+| ---------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `ctx.log(...)`         | Human output on stdout. **Silent under `--json`**, so stdout stays one JSON object.                                                                                                            |
+| `ctx.warn(...)`        | Progress and warnings on stderr. Never mixes with `--json` output.                                                                                                                             |
+| `ctx.prompt`           | Asks the user: `confirm`, `text`, `select` and `multiselect`, each returning the answer itself. When nobody can answer it throws a `CommandError` with `hint`. See "Prompts" below.            |
+| `ctx.interactive`      | `true` only when a prompt may be shown. See "Prompts" below.                                                                                                                                   |
+| `ctx.json`             | Whether the run was asked for `--json`.                                                                                                                                                        |
+| `ctx.style`            | Color helpers (`bold`, `dim`, `red`, `green`, `yellow`, `cyan`); plain text when color is off.                                                                                                 |
+| `ctx.commands`         | Every discovered command, for building lists of commands to run in order.                                                                                                                      |
+| `ctx.invoke(id, argv)` | Runs another command by id or alias and returns its result. It inherits `--json` and `--yes`. A bad call (unknown command, wrong arguments, `--help`) fails the calling command with exit `1`. |
 
 ### Typed arguments and flags
 
@@ -338,6 +339,8 @@ Global flags may be typed before or after the command name: `art --json math add
 | `art help --json`                   | the manifest of every command, as data                                  |
 | `art help <topic> --json`           | the manifest narrowed to one topic: same shape, only its commands       |
 | `art help <command> --json`         | the manifest entry of one command                                       |
+
+On the shipped `art`, `help` also lists the words the binary handles itself (`init` and `state`) under **Built-in**, and `help --json` adds them as a top-level `builtins` array in the same shape as `commands`. `art help state` and `art help init` (with or without `--json`) describe them like a command, and a typo close to one suggests it. A tool published with its own bin file has no `builtins`.
 
 ### The JSON contract
 
@@ -400,22 +403,58 @@ The manifest from `help --json` has this shape:
 | `1`  | the command failed (a `CommandError`, or a bug)                                    | `EXIT_CODE.FAILED` |
 | `2`  | the command line was wrong: unknown command, bad or missing argument, unknown flag | `EXIT_CODE.USAGE`  |
 
+### `art state`: see and reset what the app keeps
+
+An app that keeps state (see the store kit below) keeps it in one folder, `"artemis": { "stateDir" }` in `package.json` (default `state`). `state` is a word of the shipped `art`, like `init`, so you and your agent can look at it without reading code:
+
+```console
+$ art state                       # list the documents: name, version, path
+$ art state steps                 # show one (its JSON, the version wrapper included)
+$ art state steps --reset         # delete it, so the app starts again from its defaults (asks first)
+$ art state steps --reset --yes   # the same, with no question
+```
+
+- Under `--json` it prints one object: `{ dir, documents: [{ name, version, file }] }` for the list, `{ name, version, file, data }` for a document and `{ name, file, reset: true }` for a reset. A document that cannot be read is listed with `version: null` and an `error`, and a reset deletes it anyway.
+- A reset never prompts under `--json` or without a terminal: without `--yes` it fails with the hint `Pass --yes to reset without a question.`
+- A reset takes the document's lock, so it never removes a file in the middle of an update.
+- An unknown document, or a name that could not be a document, exits `1` and lists the ones that exist. A wrong command line (a second argument, an unknown flag, `--reset` with no document) exits `2`.
+- `state` only exists on the shipped `art` / `artemis`. A command of yours called `state` is hidden there, with a warning, and still runs through a tool published with `cli({ root })`.
+
 ### Prompts
 
-- A command asks with `ctx.prompt(...)`. In a terminal the user answers.
-- `--yes` and `--json` mean nobody can answer, so `ctx.interactive` is `false` and `ctx.prompt` throws a `CommandError`. The same happens when there is no terminal (a pipe, an agent, CI).
-- The hint of that error says how to answer without a prompt. Pass your own: `ctx.prompt(question, { hint: 'Pass --yes to accept the default.' })`. Without one, the hint says to pass `--yes` or the flags that answer the question.
-- The good pattern: check `ctx.interactive`, and fall back to flags, saved values or defaults when it is `false`.
+`ctx.prompt` has four questions. Each returns the answer itself, so there is nothing to destructure:
 
 ```js
 async run({ ctx }) {
     if (!ctx.interactive) return { confirmed: true };
 
-    const { confirmed } = await ctx.prompt({ type: 'confirm', name: 'confirmed', message: 'Sure?' });
+    const confirmed = await ctx.prompt.confirm('Sure?'); // boolean; `initial: true` makes Return answer yes
+    const name = await ctx.prompt.text('Name?', { initial: 'world' }); // string; Return answers `initial`
 
-    return { confirmed };
+    const runner = await ctx.prompt.select('Runner?', {
+        choices: [
+            { label: 'Node', value: 'node', description: 'The default' },
+            { label: 'Deno', value: 'deno' }
+        ]
+    }); // 'node' | 'deno' in TypeScript
+
+    const steps = await ctx.prompt.multiselect('Steps?', {
+        choices: [
+            { label: 'Build', value: 'build', selected: true },
+            { label: 'Test', value: 'test' }
+        ]
+    }); // ('build' | 'test')[]
+
+    return { confirmed, name, runner, steps };
 }
 ```
+
+- In a terminal the user answers. Choice values are strings, and with literal choices TypeScript narrows the answer to their union (choices built at runtime give `string`).
+- `--yes` and `--json` mean nobody can answer, so `ctx.interactive` is `false` and every question throws a `CommandError`. The same happens when there is no terminal (a pipe, an agent, CI).
+- **`--yes` never answers a question with its default.** What `--yes` means is the command's decision: it reads `ctx.interactive` (or `flags.yes`) and skips the question, as in the example above. A `confirm` with `initial: true` still throws under `--yes`.
+- The hint of that error says how to answer without a prompt. Pass your own: `ctx.prompt.confirm('Sure?', { hint: 'Pass --yes to accept the default.' })`. Without one, the hint says to pass `--yes`, or, when `--yes` or `--json` was already passed, that the command asks regardless and has to be answered with the flags it documents.
+- Ctrl+C at a question fails the command with `Cancelled.` (exit `1`).
+- The good pattern: check `ctx.interactive`, and fall back to flags, saved values or defaults when it is `false`.
 
 ## For agents
 
@@ -483,15 +522,85 @@ console.log(code === EXIT_CODE.OK, JSON.parse(stdout.text).result); // true { su
 
 Opt-in pieces, imported from their own subpath so apps that do not need them do not load them.
 
-### Worktrees: `@zjaaal/artemis/worktrees`
+### Store: `@zjaaal/artemis/store`
 
-Give every checkout of a repo its own **instance**: a stable slot, ports shifted by that slot, and a color, so several copies of an app can run side by side. The main checkout is slot 0 and needs no registration; other worktrees register on first use and keep their slot until removed. The kit keeps nothing of its own: the app says where the registry lives (`stateFile`).
+Safe, versioned JSON documents an app can keep between runs, and a lock for work that takes minutes. The kit models nobody's state: the app picks the folder, the names, the shapes and the defaults. The kit only guarantees **how a file is read and written**: atomically (a temporary file renamed into place, so a crash never leaves half a file), under a lock (so two processes updating at once cannot lose a write), with one clear error for a corrupt file.
 
 ```js
+import { defineStore } from '@zjaaal/artemis/store';
+
+const store = defineStore({ project: import.meta.url }); // the project's "artemis".stateDir (default "state")
+const flags = store.doc('feature-flags', { fallback: { beta: false } });
+
+flags.read(); // { beta: false } until something is written; always a fresh copy
+flags.update((current) => ({ ...current, beta: true })); // read, change and write as one step under the lock
+```
+
+**Where the files go.** `defineStore({ project: import.meta.url })` uses `"artemis": { "stateDir" }` of the project that file belongs to, which is also what `art state` reads, so the app and the CLI cannot disagree. **`stateDir` and `project` are relative to the project root, but `defineStore({ dir })` is relative to the current folder**, so a relative `dir` moves with wherever the user runs the command. Use `project`, or build an absolute `dir` from `import.meta.url`. A published tool installed globally has no project of the user's to find: it passes `dir` itself.
+
+A document is `<dir>/<name>.json`. A name is lowercase letters, digits and dashes (at most 64), anything else is a `TypeError`.
+
+| `doc` method     | What it does                                                                                                                                                              |
+| ---------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `read()`         | The document, with no lock. The `fallback` when the file does not exist: always a copy, so changing it changes nothing. Upgrades are applied in memory and never written. |
+| `write(value)`   | Replaces the document, atomically, under the lock.                                                                                                                        |
+| `update(change)` | `change(current)` returns the new value; read, change and write happen as one step under the lock. Returning `undefined` is a `TypeError` (a forgotten `return`).         |
+| `locked(work)`   | Holds the lock for a read-modify-write that may write nothing. `work(doc)` can call `doc.write` and `doc.update`: the lock is reentrant inside one process.               |
+| `reset()`        | Deletes the file, so the next read returns the fallback.                                                                                                                  |
+
+`locked` and `update` take **synchronous work only**: a function that returns a promise is a `TypeError`, because the lock would be released before it settled. Long or async work goes in `store.lock`.
+
+**Versions.** A document is plain JSON (version 0) unless it says otherwise, so every file you have today works as it is. From version 1 on the file is `{ "$version": n, "data": ... }`, and you give the steps that bring an older file up:
+
+```js
+const steps = store.doc('steps', {
+    fallback: { order: [] },
+    version: 2,
+    upgrades: {
+        1: (v0) => ({ order: v0.list ?? [] }), // keyed by the version each one produces
+        2: (v1) => ({ ...v1, enabled: true })
+    }
+});
+```
+
+A file older than the code is upgraded in memory, one step at a time (a missing step is a `TypeError` when the document is defined). A file **newer** than the code is a `CommandError` with a hint, never a silent downgrade. A version-0 document whose value happens to be an object with a `"$version"` key is read as versioned: that key is Artemis's.
+
+**Named locks, for long work.** `store.lock(name, work, { onWait, pollMs, timeoutMs })` runs `work` (sync or async) while holding `<dir>/<name>.lock`, waiting without blocking the process. `onWait({ pid })` is called once, when the lock is first found taken. A lock left by a process that died is taken over. Concurrent calls queue, in one process as across processes: `Promise.all([store.lock('build', a), store.lock('build', b)])` runs `a` then `b`. It is not reentrant: a call made from inside the work that holds the lock (even after an `await`) is a `CommandError` at once, not an endless wait.
+
+```js
+await store.lock(
+    'build',
+    async () => {
+        await runTheBuild();
+    },
+    { onWait: ({ pid }) => console.log(`waiting for process ${pid}...`) }
+);
+```
+
+**Corrupt files.** A document that is not valid JSON is a `CommandError` naming the file, with a hint to fix or delete it. `art state <doc> --reset` is how.
+
+**In tests.** `createMemoryStore({ documents })` has the same API and never touches the disk. It holds JSON text, so copies and errors behave as on disk, and `documents` is what is "on disk" at the start (a versioned document is given wrapped).
+
+```js
+import { createMemoryStore } from '@zjaaal/artemis/store';
+
+const store = createMemoryStore({ documents: { 'feature-flags': { beta: true } } });
+```
+
+Lock options (`now`, `isProcessAlive`, `pause`, `sleep`, `lockTimeoutMs`) go to `defineStore` so a test never sleeps.
+
+### Worktrees: `@zjaaal/artemis/worktrees`
+
+Give every checkout of a repo its own **instance**: a stable slot, ports shifted by that slot, and a color, so several copies of an app can run side by side. The main checkout is slot 0 and needs no registration; other worktrees register on first use and keep their slot until removed. The kit keeps nothing of its own: the app hands it the store document the registry lives in (`registry`).
+
+```js
+import { defineStore } from '@zjaaal/artemis/store';
 import { defineWorktrees } from '@zjaaal/artemis/worktrees';
 
+const store = defineStore({ project: import.meta.url });
+
 const worktrees = defineWorktrees({
-    stateFile: '/path/to/data/instances.json',
+    registry: store.doc('instances', { fallback: {} }),
     mainCheckout: '/path/to/main/checkout',
     ports: { http: 8080, frontend: 4200 }
 });
@@ -502,7 +611,7 @@ instance.ports; // { http: 8180, frontend: 4300 } for slot 1
 
 | Option         | What it is                                                                                                    |
 | -------------- | ------------------------------------------------------------------------------------------------------------- |
-| `stateFile`    | JSON file the registry is kept in (required).                                                                 |
+| `registry`     | The store document the registry is kept in: `store.doc('instances', { fallback: {} })` (required).            |
 | `mainCheckout` | Path of the main checkout, slot 0 (required).                                                                 |
 | `ports`        | Base ports, shifted by `slot * slotStep` (required).                                                          |
 | `isCheckout`   | `(root) => boolean`: whether a git root is a checkout of this app. Other repos count as outside any checkout. |
@@ -520,7 +629,7 @@ instance.ports; // { http: 8180, frontend: 4300 } for slot 1
 | `ensureDetached({ name, meta })` | A named instance that belongs to no checkout (for example one per container image).                                                           |
 | `remove(name)`                   | Forgets a registered instance and frees its slot. Never touches the worktree itself.                                                          |
 
-Every write to the registry holds a lock file (`<stateFile>.lock`), so several processes registering at once each get their own slot. A lock left by a process that died is taken over safely.
+Every write to the registry holds the document's lock file (`<dir>/instances.json.lock` for the example above), so several processes registering at once each get their own slot. A lock left by a process that died is taken over safely. How the lock waits (its clock, liveness check and timeout) is set on `defineStore`.
 
 ### Terminal: `@zjaaal/artemis/terminal`
 
@@ -546,6 +655,36 @@ openTabs(warp(), [
 - A pane is `{ dir, run?: string[], focus? }`.
 - `warp({ configDir, open })` writes each tab as a Warp Tab Config and opens it through its `warp://` link. Both options are injectable, which is how you test it.
 
+## Upgrading from 0.1
+
+`1.0.0` changes three things, once.
+
+**`ctx.prompt` is four methods that return the answer.** The question-object format of 0.1 and the two packages behind it (the prompt library and its optional types peer dependency) are gone:
+
+| 0.1                                                                                         | 1.0                                                                          |
+| ------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------- |
+| `const { ok } = await ctx.prompt({ type: 'confirm', name: 'ok', message })`                 | `const ok = await ctx.prompt.confirm(message)`                               |
+| `ctx.prompt({ type: 'text', name, message, initial })`                                      | `ctx.prompt.text(message, { initial })`                                      |
+| `ctx.prompt({ type: 'select', name, message, choices: [{ title, value }] })`                | `ctx.prompt.select(message, { choices: [{ label, value }] })`                |
+| `ctx.prompt({ type: 'multiselect', name, message, choices: [{ title, value, selected }] })` | `ctx.prompt.multiselect(message, { choices: [{ label, value, selected }] })` |
+| `ctx.prompt(question, { hint })`                                                            | the same `{ hint }` goes in the options of each method                       |
+
+Choice values are strings. Calling `ctx.prompt(...)` the old way fails with JavaScript's own `ctx.prompt is not a function`, and TypeScript and `// @ts-check` show it at compile time. If your project listed that types package only for Artemis, remove it.
+
+**The worktrees kit takes a document, not a file.** `stateFile: path` becomes `registry: defineStore({ dir }).doc(name, { fallback: {} })`, where `dir` is the old file's folder and `name` is its file name without `.json`. That is the same file, the same content and the same lock file, so a `0.1` process and a `1.0` process running at once still exclude each other. If the old file name is not a valid document name (`Instances.json`) or you want another name, rename the file while nothing runs. The lock options (`now`, `isProcessAlive`, `pause`, `lockTimeoutMs`) move from `defineWorktrees` to `defineStore`.
+
+```js
+// 0.1
+defineWorktrees({ stateFile: '/app/data/instances.json', mainCheckout, ports });
+
+// 1.0
+const store = defineStore({ dir: '/app/data' });
+
+defineWorktrees({ registry: store.doc('instances', { fallback: {} }), mainCheckout, ports });
+```
+
+**New:** the store kit, `art state` and the `"artemis": { "stateDir" }` setting. Nothing to change for them.
+
 ## Requirements
 
 - Node 22 or newer. ESM only: use `import`, not `require`.
@@ -559,7 +698,7 @@ pnpm run test:all      # tsc, eslint, prettier, vitest (including the type tests
 pnpm run build         # emits dist/ (JS and .d.ts)
 pnpm run check-exports # after a build: the entry points resolve, nothing else does
 pnpm run check-bin     # after a build: the packed art and artemis, run in temporary projects
-pnpm run check-lock    # after a build: real processes racing for the registry lock
+pnpm run check-lock    # after a build: real processes racing for the registry, a document and a named lock
 ```
 
 The code follows [docs/CODE_STANDARDS.md](docs/CODE_STANDARDS.md). Changes are specified in `specs/`.

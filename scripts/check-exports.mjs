@@ -12,6 +12,7 @@ const ENTRY_POINTS = {
         'EXIT_CODE'
     ],
     '@zjaaal/artemis/worktrees': ['defineWorktrees', 'toWorktreeName'],
+    '@zjaaal/artemis/store': ['defineStore', 'createMemoryStore'],
     '@zjaaal/artemis/terminal': ['warp', 'openTabs'],
     '@zjaaal/artemis/cli': ['cli']
 };
@@ -21,6 +22,9 @@ const HIDDEN_PATHS = [
     '@zjaaal/artemis/dist/index.js',
     '@zjaaal/artemis/define',
     '@zjaaal/artemis/worktrees/lock',
+    '@zjaaal/artemis/store/lock',
+    '@zjaaal/artemis/store/raw',
+    '@zjaaal/artemis/kits/store',
     '@zjaaal/artemis/kits/worktrees',
     '@zjaaal/artemis/cli/main',
     '@zjaaal/artemis/dist/cli/main.js'

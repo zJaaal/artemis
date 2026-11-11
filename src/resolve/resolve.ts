@@ -49,11 +49,12 @@ const maxSuggestDistance = (name: string): number =>
     Math.max(SUGGEST_MIN_DISTANCE, Math.floor(name.length / SUGGEST_LENGTH_DIVISOR));
 
 /** The closest command, topic or alias name, if one is close enough to be a likely typo. */
-export const suggest: SuggestFn = (registry, name) => {
+export const suggest: SuggestFn = (registry, name, extraNames = []) => {
     const names = [
         ...registry.commands.keys(),
         ...registry.topics.keys(),
-        ...registry.aliases.keys()
+        ...registry.aliases.keys(),
+        ...extraNames
     ];
 
     const [best] = names

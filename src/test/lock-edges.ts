@@ -1,4 +1,4 @@
-import type { FakeLockEdges, FakeLockEdgesOptions } from './models.js';
+import type { FakeLockEdges, FakeLockEdgesOptions, FakeLockOptions } from './models.js';
 
 /** An opaque process id for the process that takes the lock in a test. */
 export const FAKE_PID = 31_337;
@@ -29,7 +29,30 @@ export const createFakeLockEdges = ({
                 pauses.push(ms);
                 now += ms;
                 onPause?.();
+            },
+            sleep: (ms) => {
+                pauses.push(ms);
+                now += ms;
+                onPause?.();
+
+                return Promise.resolve();
             }
+        }
+    };
+};
+
+/** The same fakes as `LockOptions`, for `defineStore`: a store whose lock never sleeps for real. */
+export const createFakeLockOptions = (options: FakeLockEdgesOptions): FakeLockOptions => {
+    const { edges, pauses } = createFakeLockEdges(options);
+
+    return {
+        pauses,
+        options: {
+            now: edges.now,
+            isProcessAlive: edges.isProcessAlive,
+            pause: edges.pause,
+            sleep: edges.sleep,
+            lockTimeoutMs: edges.timeoutMs
         }
     };
 };

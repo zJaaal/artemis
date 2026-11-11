@@ -37,6 +37,7 @@ import {
     SHADOW_WARNING,
     TYPE_WARNING
 } from './constants.js';
+import { shadowsWord } from './shadow.js';
 import { resolveSettings } from './settings.js';
 
 /** The indentation a package.json already uses, so editing it does not reformat the whole file. */
@@ -184,10 +185,6 @@ function assertCommandsDirIsUsable(commandsDir: string): void {
     }
 }
 
-/** Whether the project already has a command or topic called `init`, which the init word would hide. */
-const shadowsInit = (commandsDir: string): boolean =>
-    [`${INIT_WORD}.js`, INIT_WORD].some((name) => pathExists(path.join(commandsDir, name)));
-
 /**
  * Makes `dir` a project: reads what is there once, plans, and does it. Running it again changes
  * nothing. A package.json that cannot be read or parsed is an error: editing it would be guesswork.
@@ -216,7 +213,7 @@ export const initProject: InitProjectFn = (dir) => {
         commandsDir,
         commandsDirExists,
         commandsDirIsEmpty: commandsDirExists && listDirectory(commandsDir).length === 0,
-        shadowsCommand: shadowsInit(commandsDir)
+        shadowsCommand: shadowsWord(commandsDir, INIT_WORD)
     });
 
     plan.steps.forEach(applyStep);

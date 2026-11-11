@@ -219,6 +219,86 @@ describe('cli: the name it shows', () => {
     });
 });
 
+describe('cli: the built-in words in help', () => {
+    const manifestOf = async (cwd: string) =>
+        envelope((await art(['help', '--json'], cwd)).out).result as Manifest;
+
+    test('the shipped binary lists init and state in the builtins of its manifest', async () => {
+        const root = folders.make('artemis-cli-');
+
+        makeProject(root, { greeting: 'project' });
+
+        expect((await manifestOf(root)).builtins?.map((builtin) => builtin.id)).toEqual([
+            'init',
+            'state'
+        ]);
+    });
+
+    test('the shipped binary lists them under Built-in in its text help', async () => {
+        const root = folders.make('artemis-cli-');
+
+        makeProject(root, { greeting: 'project' });
+
+        expect((await art(['help'], root)).out).toMatch(/Built-in\n\s+init\s+.*\n\s+state\s+/);
+    });
+
+    test('the usage lines of the builtins show the name of the binary', async () => {
+        const root = folders.make('artemis-cli-');
+
+        makeProject(root, { greeting: 'project', manifest: { artemis: { bin: 'mytool' } } });
+
+        expect((await manifestOf(root)).builtins?.map((builtin) => builtin.usage)).toEqual([
+            'mytool init',
+            'mytool state [doc] [flags]'
+        ]);
+    });
+
+    test('a published tool’s manifest has no builtins key', async () => {
+        const tool = folders.make('artemis-tool-');
+
+        makeProject(tool, {
+            greeting: 'tool',
+            manifest: { name: 'mytool', bin: { mytool: 'bin/mytool.js' } }
+        });
+
+        const stdout = createSink();
+
+        await cli({
+            argv: ['help', '--json'],
+            root: path.join(tool, 'bin', 'mytool.js'),
+            stdout,
+            stderr: createSink(),
+            env: {},
+            interactive: false
+        });
+
+        expect(Object.keys(envelope(stdout.text).result as Manifest)).not.toContain('builtins');
+    });
+
+    test('a published tool’s text help has no Built-in section', async () => {
+        const tool = folders.make('artemis-tool-');
+
+        makeProject(tool, {
+            greeting: 'tool',
+            manifest: { name: 'mytool', bin: { mytool: 'bin/mytool.js' } }
+        });
+
+        const stdout = createSink();
+
+        await cli({
+            argv: ['help'],
+            root: path.join(tool, 'bin', 'mytool.js'),
+            stdout,
+            stderr: createSink(),
+            env: {},
+            interactive: false,
+            color: false
+        });
+
+        expect(stdout.text).not.toContain('Built-in');
+    });
+});
+
 describe('cli: when it cannot find what to run', () => {
     test('with no project up the tree it fails and says what to create', async () => {
         const nowhere = folders.make('artemis-cli-');

@@ -4,6 +4,7 @@ import {
     CONFIG_KEY,
     DEFAULT_BIN_NAME,
     DEFAULT_COMMANDS_FOLDER,
+    DEFAULT_STATE_FOLDER,
     MANIFEST_FILE,
     NODE_MODULES,
     SCOPE_FOLDER_PREFIX,
@@ -16,14 +17,17 @@ import type {
     CliRoute,
     IsFolderFn,
     IsInstalledPackageRootFn,
+    NoProjectErrorFn,
     Project,
     ReadManifestFn,
     ResolveBinNameFn,
-    ResolveSettingsFn
+    ResolveSettingsFn,
+    ResolveStateDirFn
 } from '../models.js';
 import { isRecord } from '../utils/is-record.js';
+import { INIT_WORD } from './constants.js';
 
-const VALID_SHAPE_HINT = `The key looks like "${CONFIG_KEY}": { "commandsDir": "commands", "bin": "mytool" }, and both fields are optional.`;
+const VALID_SHAPE_HINT = `The key looks like "${CONFIG_KEY}": { "commandsDir": "commands", "bin": "mytool", "stateDir": "state" }, and every field is optional.`;
 
 const isNonEmptyText = (value: unknown): value is string =>
     typeof value === 'string' && value.length > 0;
@@ -99,15 +103,15 @@ function searchUpwards(
 }
 
 /**
- * The project of a folder, looking in `cwd` and then each parent. Shipped route: the nearest
+ * The project of a folder, looking in `start` and then each parent. Shipped route: the nearest
  * package.json with an "artemis" key or a commands folder next to it. Own route (`cli({ root })`):
  * the nearest one with the identity of a package (a name, a `bin` or an "artemis" key), and never
  * past the folder of an installed package, so a tool cannot climb into the project that holds it,
  * with or without a `bin`. A package.json that cannot be read or parsed is an error, never skipped.
  * Pure: the disk is only looked at through the two edges.
  */
-export const findProject: FindProjectFn = (cwd, readManifest, isFolder, route) =>
-    searchUpwards(path.resolve(cwd), readManifest, isFolder, route);
+export const findProject: FindProjectFn = (start, readManifest, isFolder, route) =>
+    searchUpwards(path.resolve(start), readManifest, isFolder, route);
 
 function invalidConfig(project: Project, problem: string): CommandError {
     const manifestPath = path.join(project.root, MANIFEST_FILE);
@@ -127,7 +131,7 @@ function readConfig(project: Project): ArtemisConfig {
         throw invalidConfig(project, `"${CONFIG_KEY}" must be an object`);
     }
 
-    for (const field of ['commandsDir', 'bin']) {
+    for (const field of ['commandsDir', 'bin', 'stateDir']) {
         if (declared[field] !== undefined && !isNonEmptyText(declared[field])) {
             throw invalidConfig(project, `"${CONFIG_KEY}".${field} must be a non-empty string`);
         }
@@ -179,3 +183,21 @@ export const resolveSettings: ResolveSettingsFn = (project, route) => {
         commandsDir: path.resolve(project.root, config.commandsDir ?? DEFAULT_COMMANDS_FOLDER)
     };
 };
+
+/**
+ * Where the store kit keeps its documents: `"artemis".stateDir` (default `state`), resolved from the
+ * project root, never from the current folder. `art state` and `defineStore({ project })` both
+ * come here, so the CLI and the app cannot disagree about the folder.
+ */
+export const resolveStateDir: ResolveStateDirFn = (project) =>
+    path.resolve(project.root, readConfig(project).stateDir ?? DEFAULT_STATE_FOLDER);
+
+/** What to do when no project is found: the end user can create one, the author of a tool must declare its bin. */
+export const noProjectError: NoProjectErrorFn = (start, route) =>
+    route === 'own'
+        ? new CommandError(`No ${MANIFEST_FILE} with a "bin" field found from ${start} upwards`, {
+              hint: `A published tool is found through the ${MANIFEST_FILE} that declares its "bin" (npm needs it to create the command anyway). If you maintain this tool, declare "bin" there and ship a ${DEFAULT_COMMANDS_FOLDER}/ folder in the package (see "files" in ${MANIFEST_FILE}).`
+          })
+        : new CommandError(`No project found from ${start} upwards`, {
+              hint: `A project is the nearest ${MANIFEST_FILE} with an "${CONFIG_KEY}" key or a ${DEFAULT_COMMANDS_FOLDER}/ folder next to it. Run it inside one, or use its "${INIT_WORD}" command in this folder to create one.`
+          });

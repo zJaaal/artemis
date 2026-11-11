@@ -12,11 +12,14 @@ import {
     TEMP_REPO_MARKER
 } from '../../test/constants.js';
 import { addWorktree, git, makeRepo } from '../../test/git.js';
-import { createFakeLockEdges } from '../../test/lock-edges.js';
+import { createFakeLockOptions } from '../../test/lock-edges.js';
 import type { TempRepo } from '../../test/models.js';
 import { createTempFolders } from '../../test/temp.js';
 import { thrownBy } from '../../test/thrown.js';
-import { FIRST_WORKTREE_SLOT, LOCK_SUFFIX } from './constants.js';
+import { LOCK_SUFFIX } from '../store/constants.js';
+import { FIRST_WORKTREE_SLOT } from './constants.js';
+import type { LockOptions } from '../store/models.js';
+import { defineStore } from '../store/store.js';
 import type { WorktreesOptions } from './models.js';
 import { defineWorktrees } from './worktrees.js';
 
@@ -47,10 +50,16 @@ afterEach(() => folders.cleanUp());
 
 const stateFile = () => path.join(dir, 'state', 'worktrees.json');
 
+/** The registry document an app would keep, in a store over a real folder. */
+const registry = (lockOptions: LockOptions = {}) =>
+    defineStore({ dir: path.dirname(stateFile()), ...lockOptions }).doc('worktrees', {
+        fallback: {}
+    });
+
 /** The kit as an app would configure it: a marker folder makes a repo a checkout. */
 const kit = (overrides: Partial<WorktreesOptions> = {}) =>
     defineWorktrees({
-        stateFile: stateFile(),
+        registry: registry(),
         envVar: ENV_VAR,
         mainCheckout: main.root,
         isCheckout: (root) => fs.existsSync(path.join(root, TEMP_REPO_MARKER)),
@@ -341,7 +350,7 @@ describe('detached instances', () => {
 });
 
 describe('the registry file', () => {
-    test('is kept where the app says, in the stateFile option', () => {
+    test('is kept where the app says, in the document it was given', () => {
         kit().ensureDetached({ name: 'qa', meta: {} });
 
         expect(JSON.parse(fs.readFileSync(stateFile(), 'utf8'))).toEqual({
@@ -366,11 +375,54 @@ describe('the registry file', () => {
     });
 });
 
+describe('a registry kept by Artemis 0.1', () => {
+    /** What 0.1 wrote for `stateFile: data/instances.json`: the same name, the same lock file. */
+    const instancesDocument = () =>
+        defineStore({ dir: path.join(dir, 'data') }).doc('instances', { fallback: {} });
+
+    const writtenBy01 = { qa: { slot: FIRST_WORKTREE_SLOT, root: null, meta: { image: 'x' } } };
+
+    test('is read unchanged', () => {
+        const registryDocument = instancesDocument();
+
+        fs.mkdirSync(path.dirname(registryDocument.file), { recursive: true });
+        fs.writeFileSync(registryDocument.file, `${JSON.stringify(writtenBy01, null, 4)}\n`);
+
+        expect(kit({ registry: registryDocument }).get('qa')).toMatchObject({
+            name: 'qa',
+            slot: FIRST_WORKTREE_SLOT
+        });
+    });
+
+    test('keeps its lock at <file>.lock, which a 0.1 process holding it is honored for', () => {
+        const registryDocument = instancesDocument();
+        const lock = path.join(dir, 'data', 'instances.json.lock');
+
+        const { options, pauses } = createFakeLockOptions({
+            isProcessAlive: (pid) => pid === HOLDER_PID,
+            timeoutMs: KIT_LOCK_TIMEOUT_MS,
+            onPause: () => fs.rmSync(lock, { force: true })
+        });
+
+        fs.mkdirSync(path.dirname(lock), { recursive: true });
+        fs.writeFileSync(lock, `${HOLDER_PID} token-of-0.1`);
+
+        kit({
+            registry: defineStore({ dir: path.dirname(registryDocument.file), ...options }).doc(
+                'instances',
+                { fallback: {} }
+            )
+        }).ensureDetached({ name: 'waited' });
+
+        expect(pauses.length).toBeGreaterThan(0);
+    });
+});
+
 describe('two registrations at once', () => {
     test('a registration that waited for the lock does not overwrite the one made while it waited', () => {
         const lock = `${stateFile()}${LOCK_SUFFIX}`;
 
-        const { edges } = createFakeLockEdges({
+        const { options } = createFakeLockOptions({
             isProcessAlive: (pid) => pid === HOLDER_PID,
             timeoutMs: KIT_LOCK_TIMEOUT_MS,
             // The other process finishes its registration, then releases the lock.
@@ -387,12 +439,7 @@ describe('two registrations at once', () => {
         fs.mkdirSync(path.dirname(lock), { recursive: true });
         fs.writeFileSync(lock, String(HOLDER_PID));
 
-        kit({
-            now: edges.now,
-            isProcessAlive: edges.isProcessAlive,
-            pause: edges.pause,
-            lockTimeoutMs: edges.timeoutMs
-        }).ensureDetached({ name: 'second' });
+        kit({ registry: registry(options) }).ensureDetached({ name: 'second' });
 
         expect(
             kit()

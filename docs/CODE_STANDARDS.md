@@ -52,7 +52,7 @@ Allowed literals: `0`, `1`, `-1` as index/identity, `100` for percent conversion
 
 - Don't rebuild static data in a loop or on every call: compute it once at module level.
 - Index once, then look up; don't filter a list per item.
-- Load heavy or optional dependencies lazily (`await import('prompts')` only when a command prompts).
+- Load heavy or optional dependencies lazily (`await import('@topcli/prompts')` only when a command prompts).
 
 ## 6. Errors and lifecycle
 
@@ -156,7 +156,7 @@ ESLint also rejects `any` (`@typescript-eslint/no-explicit-any`) and enums (`no-
 
 - Every new dependency is justified in its spec. Prefer Node's standard library.
 - Versions are exact and at least 7 days old when added.
-- Artemis ships with the fewest runtime dependencies possible (today: `prompts`, loaded lazily). Everything
+- Artemis ships with the fewest runtime dependencies possible (today: `@topcli/prompts`, loaded lazily). Everything
   else is a dev dependency.
 
 ## Review checklist

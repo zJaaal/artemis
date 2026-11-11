@@ -20,7 +20,7 @@ export const mainInstance = (config: KitConfig): WorktreeInstance =>
 
 /** Every instance: the main one first, then the registered worktrees by slot. */
 export function listInstances(config: KitConfig): WorktreeInstance[] {
-    const registered = Object.entries(config.store.read())
+    const registered = Object.entries(config.registry.read())
         .map(([name, record]) => describeInstance(config, name, record))
         .sort((a, b) => a.slot - b.slot);
 

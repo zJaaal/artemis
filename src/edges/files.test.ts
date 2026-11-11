@@ -16,6 +16,9 @@ import {
     readTextIfExists,
     realPathOrResolve,
     removeFile,
+    renameFile,
+    listJsonFiles,
+    writeAtomic,
     writeText
 } from './files.js';
 
@@ -253,5 +256,155 @@ describe('isFolder', () => {
 
     test('is false for a path that does not exist', () => {
         expect(isFolder(path.join(folders.make('artemis-files-'), 'nope'))).toBe(false);
+    });
+});
+
+describe('renameFile', () => {
+    test('moves a file over another, replacing it', () => {
+        const dir = folders.make('artemis-files-');
+        const from = path.join(dir, 'new.json');
+        const to = path.join(dir, 'doc.json');
+
+        fs.writeFileSync(from, 'new');
+        fs.writeFileSync(to, 'old');
+        renameFile(from, to);
+
+        expect(fs.readFileSync(to, 'utf8')).toBe('new');
+    });
+
+    test('leaves nothing at the old path', () => {
+        const dir = folders.make('artemis-files-');
+        const from = path.join(dir, 'new.json');
+
+        fs.writeFileSync(from, 'new');
+        renameFile(from, path.join(dir, 'doc.json'));
+
+        expect(fs.existsSync(from)).toBe(false);
+    });
+});
+
+describe('writeAtomic', () => {
+    test('creates the file with the whole text', () => {
+        const file = path.join(folders.make('artemis-files-'), 'doc.json');
+
+        writeAtomic(file, '{"a":1}\n');
+
+        expect(fs.readFileSync(file, 'utf8')).toBe('{"a":1}\n');
+    });
+
+    test('replaces the content of a file that is already there', () => {
+        const file = path.join(folders.make('artemis-files-'), 'doc.json');
+
+        fs.writeFileSync(file, 'old content that is longer than the new one');
+        writeAtomic(file, 'new');
+
+        expect(fs.readFileSync(file, 'utf8')).toBe('new');
+    });
+
+    test('leaves no temporary file behind', () => {
+        const dir = folders.make('artemis-files-');
+
+        writeAtomic(path.join(dir, 'doc.json'), 'text');
+
+        expect(fs.readdirSync(dir)).toEqual(['doc.json']);
+    });
+
+    test('is a different file than the one being replaced until the rename: a reader holding the old one still has it whole', () => {
+        const file = path.join(folders.make('artemis-files-'), 'doc.json');
+
+        fs.writeFileSync(file, 'old');
+        const reader = fs.openSync(file, 'r');
+
+        writeAtomic(file, 'new');
+
+        expect(fs.readFileSync(reader, 'utf8')).toBe('old');
+        fs.closeSync(reader);
+    });
+
+    test('a failed write leaves no temporary file and the target untouched', () => {
+        const dir = folders.make('artemis-files-');
+        const target = path.join(dir, 'doc.json');
+
+        fs.mkdirSync(target);
+
+        expect(thrownBy(() => writeAtomic(target, 'text'))).toBeInstanceOf(Error);
+        expect(fs.readdirSync(dir)).toEqual(['doc.json']);
+    });
+
+    test('a folder that does not exist is an error, not a silent noop', () => {
+        const file = path.join(folders.make('artemis-files-'), 'missing', 'doc.json');
+
+        expect(thrownBy(() => writeAtomic(file, 'text'))).toBeInstanceOf(Error);
+    });
+});
+
+describe('listJsonFiles', () => {
+    test('lists the json files, sorted', () => {
+        const dir = folders.make('artemis-files-');
+
+        fs.writeFileSync(path.join(dir, 'steps.json'), '{}');
+        fs.writeFileSync(path.join(dir, 'instances.json'), '{}');
+
+        expect(listJsonFiles(dir)).toEqual(['instances.json', 'steps.json']);
+    });
+
+    test('skips lock files', () => {
+        const dir = folders.make('artemis-files-');
+
+        fs.writeFileSync(path.join(dir, 'steps.json'), '{}');
+        fs.writeFileSync(path.join(dir, 'steps.json.lock'), '123 token');
+        fs.writeFileSync(path.join(dir, 'build.lock'), '123 token');
+
+        expect(listJsonFiles(dir)).toEqual(['steps.json']);
+    });
+
+    test('skips temporary files', () => {
+        const dir = folders.make('artemis-files-');
+
+        fs.writeFileSync(path.join(dir, 'steps.json'), '{}');
+        fs.writeFileSync(path.join(dir, 'steps.json.123.abc.tmp'), '{}');
+
+        expect(listJsonFiles(dir)).toEqual(['steps.json']);
+    });
+
+    test('skips a folder named like a json file', () => {
+        const dir = folders.make('artemis-files-');
+
+        fs.mkdirSync(path.join(dir, 'odd.json'));
+
+        expect(listJsonFiles(dir)).toEqual([]);
+    });
+
+    test('lists a symbolic link to a json file', () => {
+        const dir = folders.make('artemis-files-');
+        const elsewhere = path.join(folders.make('artemis-files-target-'), 'real.json');
+
+        fs.writeFileSync(elsewhere, '{}');
+        fs.symlinkSync(elsewhere, path.join(dir, 'linked.json'));
+
+        expect(listJsonFiles(dir)).toEqual(['linked.json']);
+    });
+
+    test('skips a symbolic link whose target is gone', () => {
+        const dir = folders.make('artemis-files-');
+
+        fs.symlinkSync(path.join(dir, 'nowhere.json'), path.join(dir, 'dangling.json'));
+
+        expect(listJsonFiles(dir)).toEqual([]);
+    });
+
+    test('skips a symbolic link to a folder', () => {
+        const dir = folders.make('artemis-files-');
+        const folder = folders.make('artemis-files-target-');
+
+        fs.symlinkSync(folder, path.join(dir, 'folder.json'));
+
+        expect(listJsonFiles(dir)).toEqual([]);
+    });
+
+    test('a folder that does not exist has no files', () => {
+        const dir = path.join(folders.make('artemis-files-'), 'missing');
+
+        expect(listJsonFiles(dir)).toEqual([]);
     });
 });
