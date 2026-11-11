@@ -105,6 +105,49 @@ that starts two concurrent `ensure` calls and checks they get different slots; s
 Keep separate files per document; do not merge them into one or add a database.
 
 
+**Store kit: next spec (decided 2026-11-10, before replacing `prompts`)**
+
+The owner wants the store kit first, because it is what lets the dotCMS scripts run entirely on Artemis. The spec is
+`specs/02-store-kit.spec.md` (to be written with `/spec`; this section is its seed).
+
+How state is handled today in the scripts repo (read-only look, 2026-11-10):
+
+-   `lib/store.js`: `readData(name, fallback)` and `writeData(name, value)` on `data/<name>`. Atomic? No: a plain
+    `writeFileSync`. A corrupt file becomes a `CommandError` with a hint (copied into the worktrees kit).
+-   `lib/lock.js`: `withLock(name, work, { onWait, pollMs })`, async, machine-wide, used to run builds one at a time
+    (concurrent Maven builds race on the shared Node download in `~/.m2`). Held for minutes, polls every 5 s, tells the
+    caller who it is waiting for. It treats `EPERM` as dead, which is wrong.
+-   `lib/marks.js`: read-modify-write of `initialized.json` under `withLock('initialized', ..., { pollMs: 25 })`.
+-   `data/instances.json` (written by the worktrees kit through `stateFile`), `data/steps.json` (`lib/steps.js`) and
+    `data/feature-flags.json` (`flags apply` mutates what `readData` returns).
+
+What spec 01 already gives the store kit: the worktrees kit's registry lock is now safe and reusable (the file has its
+content from the instant it exists, a stale lock is taken over by one process at a time through a guard and only if it
+still holds what was judged stale, an empty or unreadable lock gets a grace period, a lock is released only if it is
+still the holder's, and "alive" means the process exists, `EPERM` included). Share that core instead of writing a third
+lock. It lives in `src/kits/worktrees/lock.ts` and `src/edges/files.ts` today, and would move to a neutral place.
+
+Decisions the spec has to settle (recommendation first):
+
+1.  **Documents versus build locks.** A document update holds the lock for milliseconds, the build lock for minutes with
+    an `onWait` callback. Make documents synchronous and expose the long async named lock separately, both on one
+    shared lock core.
+2.  **Versions and migrations.** Unversioned files stay plain JSON as version 0; from version 1 on the file is
+    `{ "$version": n, "data": ... }`. The app passes upgrade functions. A file newer than the code is an error with a hint.
+3.  **`update(fn)`.** `fn` returns the new value; returning `undefined` throws (a forgotten `return`). `doc.locked(fn)`
+    is for read-modify-writes that may write nothing.
+4.  **Reentrancy.** `write()` inside `update()` must not deadlock; make the lock reentrant within the process (safe
+    because the work is synchronous).
+5.  **Fallbacks are copies** (`structuredClone`), never the shared default.
+6.  **An in-memory store** with the same API, so commands that use state can be tested without disk.
+7.  **The worktrees kit** takes a store document instead of `stateFile`, behind a compatibility path (spec 01 keeps
+    `stateFile`, and its acceptance criteria say so).
+8.  **`art state [doc] [--reset]`**: a kit cannot ship command files today (commands are files in the app's folder), so
+    decide whether it is a documented example, a helper that registers it, or out of scope.
+9.  **Sequencing.** Spec 02 depends on spec 01 being merged, so cut `spec-02` from `spec-01` until it lands. The
+    migration of the scripts repo (`lib/` onto the store, `command/` deleted, `@zjaaal/artemis` as a dependency) is a
+    separate spec in that repo, after `0.1.0` is on npm.
+
 **Store kit: findings from a first draft (2026-11-10, not kept)**
 
 -   Today's two lock implementations differ: the scripts repo's `lib/lock.js` treats `EPERM` from
@@ -137,6 +180,25 @@ Facts gathered when it was discussed:
     which conflicts with our `>=22`), `enquirer` (stale too), and Node's own `readline/promises` (no dependency).
 -   Swapping to another library only trades one dependency for another, and changes the public question format
     (`ctx.prompt` takes `prompts`-style question objects today).
+
+Provenance, checked on npm (2026-11-10, with `npm view` and the registry attestations endpoint): `prompts@2.4.2` has
+**no** signed provenance (only the registry signature); `@clack/prompts@1.9.0` and `@inquirer/prompts@8.8.0` both
+publish SLSA provenance. Provenance proves where a package was built, not that its code is safe, and none of them was
+audited.
+
+Effort per route (the seam is `src/edges/prompts.ts` plus its test, so every route is isolated):
+
+-   `@clack/prompts` behind an adapter: about half a day to a day. `ctx.prompt` keeps accepting `prompts`-style question
+    objects and the adapter maps `confirm`, `text`, `select`, `multiselect` onto clack's calls (clack returns a symbol on
+    cancel, so the adapter turns it into the existing `Cancelled.` error). Four dependencies, Node 20.12 or newer.
+-   Built-in on `readline/promises`, no dependency at all: about one to two days, and the smallest attack surface.
+    `multiselect` is the cost: arrow-key checkboxes need raw-mode keypress handling and a fake-terminal test. A numbered
+    list ("pick 1 3") is much cheaper and easier to test, with a worse UX.
+-   `@inquirer/prompts`: blocked, its `engines` (Node `^22.22.2 || ^24.15.0 || >=26`) conflict with our `>=22` floor
+    unless the floor is raised.
+
+The owner has not picked a route yet. Lean: zero dependencies if security matters more than UX polish, clack if the UX
+should stay as it is. The store kit goes first (see below); this is next after it.
 
 Direction: make the prompt engine pluggable and ship a built-in one with no dependency.
 
