@@ -194,7 +194,16 @@ export type ParseFn = (
 ) => ParsedCommandLine;
 
 export type ParseOptions = NonNullable<ParseArgsConfig['options']>;
-export type ParsedValues = Record<string, unknown>;
+export type ParsedValues = Record<string, string | boolean | (string | boolean)[] | undefined>;
+
+/** A value to check against the `choices` of the arg or flag it was given for. */
+export type ChoiceCheck = {
+    kind: 'argument' | 'value for flag';
+    name: string;
+    value: unknown;
+    choices: readonly string[] | undefined;
+    usage: string;
+};
 
 // ---------------------------------------------------------------------------------------------
 // Discovery and resolution
@@ -212,6 +221,17 @@ export type Registry = {
 };
 
 export type DiscoverFn = (commandsDir: string) => Promise<Registry>;
+
+/** What discovery needs to know about a folder entry. */
+export type DirectoryEntry = { name: string; isDirectory: boolean };
+
+/** Where discovery is: the registry being filled and the folder it started from. */
+export type WalkContext = { registry: Registry; root: string };
+
+export type ListDirectoryFn = (dir: string) => DirectoryEntry[];
+export type PathExistsFn = (path: string) => boolean;
+export type ImportDefaultFn = (file: string) => Promise<unknown>;
+export type MessageOfFn = (error: unknown) => string;
 
 export type Resolution =
     | { kind: 'command'; entry: CommandEntry; rest: string[] }
