@@ -31,7 +31,8 @@
       "import": "./dist/kits/terminal/index.js"
     },
     "./cli": {
-      "import": "./dist/cli/main.js"
+      "types": "./dist/cli/index.d.ts",
+      "import": "./dist/cli/index.js"
     }
   },
   "repository": {

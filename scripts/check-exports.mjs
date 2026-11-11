@@ -12,11 +12,9 @@ const ENTRY_POINTS = {
         'EXIT_CODE'
     ],
     '@zjaaal/artemis/worktrees': ['defineWorktrees', 'toWorktreeName'],
-    '@zjaaal/artemis/terminal': ['warp', 'openTabs']
+    '@zjaaal/artemis/terminal': ['warp', 'openTabs'],
+    '@zjaaal/artemis/cli': ['cli']
 };
-
-// Importing the CLI entry runs the CLI, so it is only resolved, never imported.
-const RESOLVE_ONLY = ['@zjaaal/artemis/cli'];
 
 const HIDDEN_PATHS = [
     '@zjaaal/artemis/package.json',
@@ -37,13 +35,6 @@ async function checkEntry([specifier, names]) {
     console.log(`ok   ${specifier}`);
 }
 
-function checkResolves(specifier) {
-    const url = import.meta.resolve(specifier);
-
-    assert.match(url, /\/dist\/cli\/main\.js$/, `${specifier} should resolve to the CLI entry`);
-    console.log(`ok   ${specifier} resolves (and is not imported: it runs the CLI)`);
-}
-
 async function checkHidden(specifier) {
     const failure = await import(specifier).then(
         () => undefined,
@@ -55,5 +46,4 @@ async function checkHidden(specifier) {
 }
 
 await Promise.all(Object.entries(ENTRY_POINTS).map(checkEntry));
-RESOLVE_ONLY.forEach(checkResolves);
 await Promise.all(HIDDEN_PATHS.map(checkHidden));
