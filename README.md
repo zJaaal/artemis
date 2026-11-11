@@ -140,12 +140,12 @@ A tab can also take a `layout` tree of nested splits instead of a flat `panes` l
 
 ## Releasing
 
-Agents cannot log in to npm, so the owner does the first publish by hand and links the trusted publisher once.
+Agents cannot log in to npm or hold its token, so the owner does the first publish by hand and stores the npm token as a GitHub secret once.
 
 1. Merge the release PR. On a machine logged in to npm (`npm login`, with an account that owns the `@zjaaal` scope), from a clean checkout of `main`: `pnpm install --frozen-lockfile && pnpm run test:all && pnpm run build && npm publish --access public`. This creates `@zjaaal/artemis@0.1.0`. (Provenance is not available for a local publish; later releases get it.)
-2. On npmjs.com open the package, Settings, Trusted Publisher, choose GitHub Actions and enter: owner `zJaaal`, repository `artemis`, workflow filename `release.yml`, no environment. Save.
+2. On npmjs.com create a granular access token that can publish `@zjaaal/artemis` (read and write, limited to that package, with an expiry), then store it as the repository secret: `gh secret set NPM_TOKEN --repo zJaaal/artemis`, or Settings, Secrets and variables, Actions, New repository secret, name `NPM_TOKEN`.
 3. For each later release: bump `version` in `package.json`, commit, `git tag vX.Y.Z`, `git push origin main vX.Y.Z`. The workflow tests, builds and publishes with provenance.
-4. Optionally, once the trusted publisher works, set the package to require 2FA and disallow tokens.
+4. Rotate the token before it expires: create a new one and overwrite the `NPM_TOKEN` secret.
 
 ## Development
 

@@ -30,8 +30,8 @@ The tagline and the arrow/quiver metaphor are branding only (README intro). The 
 - Lint and format as in Falcon's `packages/protocol`: typescript-eslint, prettier, `eslint.spacing.cjs`, vitest rules, no `any`, no enums.
 - Cheap agent-facing changes: `bin` required in `run()`; `AGENTS.md`; `README.md`.
 - **Typed args/flags inference in `defineCommand`**: `run({ args, flags })` is typed from the definition (see Data model). All public types are exported, so TypeScript users and JS users with `// @ts-check` get them, even though command files are still `.js`.
-- GitHub Actions CI (PRs and `main`) and a tag-triggered release workflow using npm trusted publishing.
-- Documented manual steps for the owner: first publish and linking the trusted publisher.
+- GitHub Actions CI (PRs and `main`) and a tag-triggered release workflow that publishes with an npm token stored as a GitHub secret (`NPM_TOKEN`).
+- Documented manual steps for the owner: first publish, creating the npm token and storing it as the `NPM_TOKEN` repository secret.
 
 **Out of scope (for future specs):**
 
@@ -196,7 +196,7 @@ Step 1 is on `main`; the rest are commits on `spec-01`. Each step leaves the rep
 15. **Parity check.** Run the ported fixture CLI and the scripts repo's `art help --json` (scripts repo path from the brief) against the new build (read-only, scripts repo untouched): compare the manifest shape. Record any difference as a bug in the PR.
 16. **Docs.** `AGENTS.md` (how an agent adds a command: file location, `defineCommand` example, the JSON contract, exit codes, `--yes`, prompts throw with hints when non-interactive, `help --json`) and `README.md` (tagline, metaphor as branding, install, quick start, kits, "Releasing" section with the manual steps below).
 17. **CI.** `.github/workflows/ci.yml`: on `pull_request` and push to `main`, matrix Node 22 and 24, `pnpm/action-setup` (version from `packageManager`), `pnpm install --frozen-lockfile`, `pnpm run test:all`, `pnpm run build`, `node scripts/check-exports.mjs`, `npm publish --dry-run`.
-18. **Release workflow.** `.github/workflows/release.yml`: on tag `v*`, `permissions: { contents: read, id-token: write }`, Node 24 (npm CLI with trusted publishing), `pnpm/action-setup`, `pnpm install --frozen-lockfile`, `test:all`, `build`, check the tag equals `package.json` version, `npm publish --provenance --access public` (publish stays on the npm CLI: trusted publishing OIDC is an npm feature). No `NPM_TOKEN`.
+18. **Release workflow.** `.github/workflows/release.yml`: on tag `v*`, `permissions: { contents: read, id-token: write }` (the second is for the provenance statement), Node 24, `pnpm/action-setup`, `pnpm install --frozen-lockfile`, `test:all`, `build`, check the tag equals `package.json` version, `npm publish --provenance --access public` with `NODE_AUTH_TOKEN` taken from `secrets.NPM_TOKEN` (publish stays on the npm CLI, which provenance needs). The token is never written in the repo.
 19. **Review and PR.** Run `/review-standards`, fix findings, push `spec-01`, open one PR to `main`.
 
 ### Manual steps for the owner (also in the README "Releasing" section)
@@ -204,9 +204,9 @@ Step 1 is on `main`; the rest are commits on `spec-01`. Each step leaves the rep
 Agents cannot log in to npm, so the owner does these once:
 
 1. Merge the PR. On a machine logged in to npm (`npm login`, account that owns the `@zjaaal` scope), from a clean checkout of `main`: `pnpm install --frozen-lockfile && pnpm run test:all && pnpm run build && npm publish --access public`. This creates `@zjaaal/artemis@0.1.0`. (Provenance is not available for a local publish; later releases get it.)
-2. On npmjs.com open the package, Settings, Trusted Publisher, choose GitHub Actions, and enter: owner `zJaaal`, repository `artemis`, workflow filename `release.yml`, no environment. Save.
+2. On npmjs.com create a granular access token that can publish `@zjaaal/artemis` (read and write, limited to that package, with an expiry you will remember), then store it as the repository secret: `gh secret set NPM_TOKEN --repo zJaaal/artemis`, or Settings, Secrets and variables, Actions, New repository secret, name `NPM_TOKEN`.
 3. For each later release: bump `version` in `package.json`, commit, `git tag vX.Y.Z`, `git push origin main vX.Y.Z`. The workflow publishes with provenance.
-4. Optionally, after the trusted publisher works, set the package to require 2FA and disallow tokens.
+4. Rotate the token before it expires: create a new one and overwrite the `NPM_TOKEN` secret.
 
 ## Acceptance criteria
 
@@ -236,7 +236,7 @@ Agents cannot log in to npm, so the owner does these once:
 - [ ] `engines.node` is `>=22`; `package.json` version is `0.1.0`.
 - [ ] `AGENTS.md` documents adding a command, the JSON envelope, the exit codes and `--yes`.
 - [ ] `README.md` has the tagline, install, quick start and a "Releasing" section with the manual steps.
-- [ ] `ci.yml` runs on PRs and `main` for Node 22 and 24; `release.yml` runs on `v*` tags, uses `id-token: write` and no `NPM_TOKEN`.
+- [ ] `ci.yml` runs on PRs and `main` for Node 22 and 24; `release.yml` runs on `v*` tags, uses `id-token: write` for provenance, and reads the npm token only from `secrets.NPM_TOKEN` (no token value in the repo).
 - [ ] `.claude/skills/` is committed in the public repo (it is not in the published package: `files` is only `dist`), and no file in the repo holds an absolute local path (a grep for the home-directory prefix of the owner machine finds nothing).
 - [ ] The repo history starts at step 1 and holds no commit from the scripts repo.
 
@@ -251,7 +251,7 @@ Agents cannot log in to npm, so the owner does these once:
 - **Yes:** subpath exports for the kits, so apps that do not need them do not load them.
 - **Yes:** `prompts` stays the only runtime dependency, lazy-loaded.
 - **Yes:** dev dependencies at exact versions at least 7 days old, same versions as Falcon's protocol package for the shared tools.
-- **Yes:** pnpm as package manager (owner, 2026-11-10), same as Falcon. One package, no workspace file. Publishing still uses the npm CLI, because trusted publishing and provenance are npm features.
+- **Yes:** pnpm as package manager (owner, 2026-11-10), same as Falcon. One package, no workspace file. Publishing still uses the npm CLI, because provenance is an npm feature.
 - **Yes:** Vitest. Port the 46 tests first, then rewrite the source against them, so parity is proven and not assumed.
 - **Yes:** lint as in Falcon (typescript-eslint, prettier, spacing rules, vitest rules, no `any`, no enums), enforced by `pnpm run test:all`.
 - **Yes:** behavior parity is the bar: same CLI output, `help --json` shape, errors, hints and exit codes, same kits API.
@@ -264,9 +264,9 @@ Agents cannot log in to npm, so the owner does these once:
 - **No:** TypeScript command files. Loading `.ts` needs a loader or a build step in the consumer; later spec.
 - **No:** store kit now. `stateFile` stays so this spec moves nothing but language and packaging.
 - **Yes:** CI on Node 22 and 24 (current LTS and the next); Node 20 is not supported.
-- **Yes:** tag-triggered release with npm trusted publishing (OIDC). No token to store or rotate, and releases get provenance.
+- **Yes:** tag-triggered release publishing with an npm token kept as the GitHub secret `NPM_TOKEN` (owner, 2026-11-10). Changed from trusted publishing (OIDC): the owner prefers a token, which needs no trusted-publisher setup on npm and works from the first tagged release. The cost is a secret to rotate; a granular token limited to this package keeps the exposure small. Releases still get provenance.
 - **No:** Changesets or semantic-release. One maintainer and one package; a tag is enough.
-- **Yes:** first publish and trusted-publisher linking done by the owner. Agents cannot log in to npm, and the trusted publisher can only be linked after the package exists.
+- **Yes:** first publish and the npm token done by the owner. Agents cannot log in to npm or hold the token, so the owner publishes `0.1.0` by hand and stores `NPM_TOKEN`; later releases are tags.
 
 ## Risks
 
@@ -275,7 +275,7 @@ Agents cannot log in to npm, so the owner does these once:
 | Rewrite drifts from the JS behavior | Tests are ported first; step 15 compares the `help --json` manifest against the scripts repo's build; differences are listed in the PR as bugs. |
 | Discovery loads `.js` fixtures but sources are `.ts` | Fixtures stay `.js` under `src/test/fixtures/`, excluded from `tsc` build and from lint type rules; discovery loads whatever is on disk through `import()`. |
 | Dev dependency versions copied from Falcon are not on npm or younger than 7 days | Check each with `pnpm view <pkg> time` before pinning; on a miss, stop and report. |
-| Trusted publishing fails on the first tagged release | The manual first publish is documented; the first tagged release can be a patch bump with `npm publish --dry-run` verified in CI before. |
+| The first tagged release fails (expired or wrongly scoped token, missing secret) | The manual first publish is documented; `npm publish --dry-run` runs in CI on every PR; the release workflow runs the full gate before it publishes; the first tagged release can be a patch bump. |
 | Worktrees tests depend on the machine's git config | Temp repos set `user.name`, `user.email` and `init.defaultBranch` explicitly; no global config is read. |
 | Lock takeover tests are timing-sensitive | Time and process liveness come in as injectable options; no sleeps in tests. |
 | Package scope `@zjaaal` not owned on npm | Owner confirms before step 1 of the manual steps; if missing, the owner creates the scope (free for public packages). |
@@ -297,6 +297,6 @@ Agents cannot log in to npm, so the owner does these once:
 - Result schemas in the manifest.
 - MCP adapter, shell completion, topic aliases.
 - Migrating the scripts repo to the package (separate spec in that repo).
-- Publishing: the owner does the first `npm publish` and the trusted-publisher link by hand.
+- Publishing: the owner does the first `npm publish` and creates the `NPM_TOKEN` secret by hand.
 
 Each one, if it lands, goes in its own spec.

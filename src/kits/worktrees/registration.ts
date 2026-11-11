@@ -1,7 +1,6 @@
-import fs from 'node:fs';
 import path from 'node:path';
 
-import { realPathOrResolve } from '../../edges/files.js';
+import { pathExists, realPathOrResolve } from '../../edges/files.js';
 import { workingDirectory } from '../../edges/system.js';
 import { CommandError, UsageError } from '../../errors/errors.js';
 import { FALLBACK_WORKTREE_NAME } from './constants.js';
@@ -30,7 +29,7 @@ const isTakenBy =
         Object.hasOwn(records, name) || name === config.mainName;
 
 const isCheckoutRoot = (config: KitConfig, root: string): boolean =>
-    fs.existsSync(root) && config.isCheckout(root);
+    pathExists(root) && config.isCheckout(root);
 
 function assertChoosable(config: KitConfig, records: WorktreeRecords, name: string): void {
     if (!isValidName(name)) {

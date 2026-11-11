@@ -11,17 +11,16 @@ import type {
     FlagDefinitions,
     GlobalFlags,
     ParseFn,
+    ParseOptionDescriptor,
     ParseOptions,
     ParsedValues
 } from '../models.js';
-
-type ParseOption = ParseOptions[string];
 
 // parseArgs wants a mutable array for a repeatable flag's default
 const toParseDefault = (value: NonNullable<FlagDefinition['default']>) =>
     typeof value === 'object' ? [...value] : value;
 
-function toParseOption(flag: FlagDefinition): ParseOption {
+function toParseOption(flag: FlagDefinition): ParseOptionDescriptor {
     return {
         type: flag.type,
         ...(flag.short ? { short: flag.short } : {}),

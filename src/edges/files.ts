@@ -69,6 +69,7 @@ export const realPathOrResolve: RealPathFn = (folder) => {
     try {
         return fs.realpathSync(folder);
     } catch {
+        // Nothing to lose: a folder that does not exist yet is used by its resolved path.
         return path.resolve(folder);
     }
 };

@@ -4,8 +4,8 @@ on:
   push:
     tags: ['v*']
 
-# No stored npm token: npm trusts this workflow through OIDC (trusted publishing), which also gives the
-# package a provenance statement.
+# The npm token is the repository secret NPM_TOKEN (never written in the repo). id-token is only for the
+# provenance statement the published package gets.
 permissions:
   contents: read
   id-token: write
@@ -18,7 +18,7 @@ jobs:
 
       - uses: pnpm/action-setup@v4
 
-      # Node 24 ships an npm CLI that supports trusted publishing
+      # Node 24 ships an npm CLI that can sign provenance
       - uses: actions/setup-node@v4
         with:
           node-version: 24
@@ -42,5 +42,7 @@ jobs:
             exit 1
           fi
 
-      # Publishing stays on the npm CLI: trusted publishing and provenance are npm features
+      # Publishing stays on the npm CLI: provenance is an npm feature
       - run: npm publish --provenance --access public
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}

@@ -213,6 +213,7 @@ export type ParseFn = (
 ) => ParsedCommandLine;
 
 export type ParseOptions = NonNullable<ParseArgsConfig['options']>;
+export type ParseOptionDescriptor = ParseOptions[string];
 export type ParsedValues = Record<string, string | boolean | (string | boolean)[] | undefined>;
 
 /** A value to check against the `choices` of the arg or flag it was given for. */
@@ -255,6 +256,7 @@ export type ReadTextIfExistsFn = (file: string) => string | undefined;
 export type CreateExclusiveFn = (file: string, text: string) => boolean;
 export type RealPathFn = (path: string) => string;
 export type WorkingDirectoryFn = () => string;
+export type ProcessIdFn = () => number;
 export type ErrorCodeFn = (error: unknown) => string | undefined;
 export type GitRootFn = (cwd: string) => string | null;
 export type WriteTextFn = (file: string, text: string) => void;
