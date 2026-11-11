@@ -1,0 +1,35 @@
+import { describe, expect, test } from 'vitest';
+
+import { beforeTerminator, jsonRequested } from './terminator.js';
+
+describe('beforeTerminator', () => {
+    test('keeps only the words before --', () => {
+        expect(beforeTerminator(['echo', '--json', '--', '--json'])).toEqual(['echo', '--json']);
+    });
+
+    test('keeps everything when there is no --', () => {
+        expect(beforeTerminator(['echo', 'hi'])).toEqual(['echo', 'hi']);
+    });
+
+    test('is empty when the line starts with --', () => {
+        expect(beforeTerminator(['--', 'a'])).toEqual([]);
+    });
+});
+
+describe('jsonRequested', () => {
+    test('is true when --json is among the arguments', () => {
+        expect(jsonRequested(['math', 'add', '--json'])).toBe(true);
+    });
+
+    test('is true when --json comes before the command', () => {
+        expect(jsonRequested(['--json', 'math'])).toBe(true);
+    });
+
+    test('is false when there is no --json', () => {
+        expect(jsonRequested(['math', 'add'])).toBe(false);
+    });
+
+    test('is false when --json only appears after --, where it is a plain argument', () => {
+        expect(jsonRequested(['echo', '--', '--json'])).toBe(false);
+    });
+});

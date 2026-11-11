@@ -1,0 +1,14 @@
+{
+  "printWidth": 100,
+  "tabWidth": 4,
+  "singleQuote": true,
+  "trailingComma": "none",
+  "bracketSameLine": true,
+  "arrowParens": "always",
+  "overrides": [
+    {
+      "files": ["*.json", "*.yaml", "*.yml", ".prettierrc"],
+      "options": { "tabWidth": 2 }
+    }
+  ]
+}

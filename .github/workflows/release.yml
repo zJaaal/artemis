@@ -1,0 +1,58 @@
+name: Release
+
+on:
+  push:
+    tags: ['v*']
+
+# Releases are staged, not published: this workflow only ever runs `npm stage publish`, and nothing is
+# public until the owner approves the staged package with 2FA (`npm stage approve`). That protects the
+# owner only if the token itself cannot publish. The token is the repository secret NPM_TOKEN (never
+# written in the repo); what it may do is decided on npm, and nothing here can check it. id-token is only
+# for the provenance statement.
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+
+      # Node 24 ships an npm CLI that can sign provenance
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          check-latest: true
+          cache: pnpm
+          registry-url: https://registry.npmjs.org
+
+      - run: pnpm install --frozen-lockfile
+
+      - run: pnpm run test:all
+
+      - run: pnpm run build
+
+      - run: pnpm run check-exports
+
+      - run: pnpm run check-bin
+
+      - run: pnpm run check-lock
+
+      - name: The tag must match the version in package.json
+        run: |
+          expected="v$(jq -r .version package.json)"
+
+          if [ "$GITHUB_REF_NAME" != "$expected" ]; then
+            echo "Tag $GITHUB_REF_NAME does not match package.json version $expected" >&2
+            exit 1
+          fi
+
+      # `npm stage` needs npm 12 (Node 24 ships npm 11, and npm 12 runs on Node 22.22.2+, 24.15+ or 26+), so it
+      # runs through a pinned npx on this Node 24. It also creates the
+      # package when it does not exist yet, so the very first release is staged this way too.
+      - run: npx -y npm@12.2.1 stage publish --provenance --access public
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}

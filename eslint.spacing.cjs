@@ -1,4 +1,4 @@
-// The owner's spacing rules (2026-11-04: "quiero el código organizado"), shared by every package's ESLint config.
+// Spacing rules: code reads in paragraphs (docs/CODE_STANDARDS.md §8).
 // Prettier keeps blank lines but never adds them; these add them, and `eslint --fix` applies them. They go after
 // eslint-config-prettier, which turns `curly` off.
 module.exports = {

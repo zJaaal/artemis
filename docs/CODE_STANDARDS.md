@@ -1,21 +1,19 @@
 # Code Standards
 
-Binding rules for all code in Artemis: strict TypeScript, ES modules, Node 22+. They come from the owner's standards in Project Millennium Falcon (its `docs/frontend/CODE_STANDARDS.md`), which
-follow the dotCMS frontend standards the owner wrote. The React, mobile and native parts are left out; the rest
-applies as written.
+Binding rules for all code in Artemis: strict TypeScript, ES modules, Node 22+.
 
 **A review comment is a rule for the whole codebase, not a note on one file.** When one is found, fix every
 occurrence.
 
 ## 1. Files have one job
 
-| Kind                                                          | Where                                                     | Never                                        |
-| ------------------------------------------------------------- | --------------------------------------------------------- | -------------------------------------------- |
-| Types and interfaces                                          | `models.ts` (module or root)                              | Inline in a logic file                       |
-| Constants                                                     | `constants.ts` (module or root)                           | Inline literals in logic                     |
-| Pure logic                                                    | `utils/<topic>` or a module's pure file                   | Mixed with I/O                               |
-| Side effects (files, processes, git, terminal, clock, prompts) | One small edge module each (see §7)                      | Called directly from logic                   |
-| The public API                                                | `src/index.ts` and each kit's entry: re-exports only      | Logic in an entry file                       |
+| Kind                                                           | Where                                                | Never                      |
+| -------------------------------------------------------------- | ---------------------------------------------------- | -------------------------- |
+| Types and interfaces                                           | `models.ts` (module or root)                         | Inline in a logic file     |
+| Constants                                                      | `constants.ts` (module or root)                      | Inline literals in logic   |
+| Pure logic                                                     | `utils/<topic>` or a module's pure file              | Mixed with I/O             |
+| Side effects (files, processes, git, terminal, clock, prompts) | One small edge module each (see §7)                  | Called directly from logic |
+| The public API                                                 | `src/index.ts` and each kit's entry: re-exports only | Logic in an entry file     |
 
 An entry file only re-exports. A module that both decides and does I/O is two modules.
 
@@ -24,10 +22,10 @@ An entry file only re-exports. A module that both decides and does I/O is two mo
 - **Reuse types.** One shape, one declaration; derive the rest (`Pick`, `Omit`, `Parameters`).
 - **No enums.** Use `as const` objects and derive the union:
 
-  ```ts
-  export const EXIT_CODE = { OK: 0, FAILED: 1, USAGE: 2 } as const;
-  export type ExitCode = (typeof EXIT_CODE)[keyof typeof EXIT_CODE];
-  ```
+    ```ts
+    export const EXIT_CODE = { OK: 0, FAILED: 1, USAGE: 2 } as const;
+    export type ExitCode = (typeof EXIT_CODE)[keyof typeof EXIT_CODE];
+    ```
 
 - No `any`. Use `unknown` and narrow. No `as unknown as` to force a type.
 - Let TypeScript infer obvious types; annotate parameters, return types of exported functions and the public
@@ -43,7 +41,7 @@ Allowed literals: `0`, `1`, `-1` as index/identity, `100` for percent conversion
 
 ## 4. Readability
 
-- **No nested loops.** Index or group first (`Map`, `groupBy`), then do one pass.
+- **No nested loops.** Index or group first (a lookup keyed by id), then do one pass.
 - **Name conditions.** A boolean with more than two terms becomes a well-named helper (`isTopicOnly(words, length)`).
 - **No dense one-liners.** Break chained ternaries into an early-return helper.
 - **Pass objects, not spread fields.**
@@ -52,8 +50,7 @@ Allowed literals: `0`, `1`, `-1` as index/identity, `100` for percent conversion
 
 ## 5. Performance
 
-- Don't rebuild `Map`s, arrays or objects in a loop or per call when the input is static: compute once at module
-  level.
+- Don't rebuild static data in a loop or on every call: compute it once at module level.
 - Index once, then look up; don't filter a list per item.
 - Load heavy or optional dependencies lazily (`await import('prompts')` only when a command prompts).
 
@@ -144,8 +141,8 @@ Prettier, enforced by ESLint (`eslint-plugin-prettier`):
 }
 ```
 
-**Code reads in paragraphs.** Prettier keeps blank lines but never adds them, so ESLint adds them (the owner's
-`eslint.spacing.cjs` from Project Millennium Falcon, copied as is) and `eslint --fix` applies them:
+**Code reads in paragraphs.** Prettier keeps blank lines but never adds them, so ESLint adds them
+(`eslint.spacing.cjs`) and `eslint --fix` applies them:
 
 - a blank line before a `return` that isn't alone in its block;
 - a blank line after a run of `const`/`let` declarations;
