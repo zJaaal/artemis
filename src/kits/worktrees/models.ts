@@ -22,11 +22,14 @@ export type IsCheckoutFn = (root: string) => boolean;
 export type NowFn = () => number;
 export type IsProcessAliveFn = (pid: number) => boolean;
 export type PauseFn = (ms: number) => void;
+export type TokenFn = () => string;
 
 /** The clock, process liveness and waiting, injected so lock tests never sleep. */
 export type LockEdges = {
     /** The process id written into the lock file. */
     pid: number;
+    /** Tells this holder apart from any other holder with the same pid. */
+    token: TokenFn;
     now: NowFn;
     isProcessAlive: IsProcessAliveFn;
     pause: PauseFn;
@@ -78,6 +81,14 @@ export type Worktrees = {
 
 export type DefineWorktreesFn = (options: WorktreesOptions) => Worktrees;
 export type ToWorktreeNameFn = (folder: string) => string;
+/** One acquisition of the registry lock: where it is, who is asking, and when to give up. */
+export type LockAttempt = {
+    lock: string;
+    ownership: string;
+    deadline: number;
+    edges: LockEdges;
+};
+
 export type WithLockFn = <TResult>(
     stateFile: string,
     work: () => TResult,

@@ -236,6 +236,13 @@ Agents cannot log in to npm, so the owner does these once:
 - [ ] `engines.node` is `>=22`; `package.json` version is `0.1.0`.
 - [ ] `AGENTS.md` documents adding a command, the JSON envelope, the exit codes and `--yes`.
 - [ ] `README.md` has the tagline, install, quick start and a "Releasing" section with the manual steps.
+- [ ] Global flags may be typed before the command name (`art --json math add 1 2`); any other flag before the command is a usage error (exit 2), and a line of only global flags shows help. After `--` everything is a plain argument, and JSON mode is decided from the words before `--`.
+- [ ] `--json` never prompts: `ctx.interactive` is false under `--json` and `--yes`. The default hint of a prompt that nobody can answer names `--yes`.
+- [ ] A bad `ctx.invoke` call (unknown command, wrong arguments, `--help`) fails the calling command with exit 1 and names the invoked command; it is never a usage error of the outer command line.
+- [ ] `defineCommand` rejects a short flag that is not one character and a flag default of the wrong type (a `TypeError`, not a usage error at call time).
+- [ ] An alias cannot hide a command, a topic or another alias: it is ignored with a warning.
+- [ ] Instance names that look like members of an object (`constructor`) work like any other name; a tab id that is not a plain word (letters, digits, `-`, `_`) is refused before anything is written or opened.
+- [ ] The registry lock never exposes an empty file (content is written before the file appears), a stale lock is taken over by one process at a time and only if it still holds what was judged stale, an empty or unreadable lock gets a grace period, and a lock is released only if it is still the holder's. `pnpm run check-lock` races real processes against the built package and every one gets its own slot.
 - [ ] `ci.yml` runs on PRs and `main` for Node 22 and 24; `release.yml` runs on `v*` tags, uses `id-token: write` for provenance, and reads the npm token only from `secrets.NPM_TOKEN` (no token value in the repo).
 - [ ] `.claude/skills/` is committed in the public repo (it is not in the published package: `files` is only `dist`), and no file in the repo holds an absolute local path (a grep for the home-directory prefix of the owner machine finds nothing).
 - [ ] The repo history starts at step 1 and holds no commit from the scripts repo.

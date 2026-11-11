@@ -1,3 +1,4 @@
+import { randomUUID } from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
 
@@ -8,6 +9,7 @@ import type {
     CreateExclusiveFn,
     ListDirectoryFn,
     MakeDirectoryFn,
+    ModifiedAtFn,
     PathExistsFn,
     ReadTextIfExistsFn,
     RealPathFn,
@@ -50,9 +52,18 @@ export const readTextIfExists: ReadTextIfExistsFn = (file) => {
     }
 };
 
+/**
+ * Creates the file with its whole content already in it, or says someone else has it. The text is
+ * written to a staging file that is then hard-linked into place, so the file can never be seen
+ * empty or half written, and the link fails if the file already exists.
+ */
 export const createExclusive: CreateExclusiveFn = (file, text) => {
+    const staging = `${file}.${randomUUID()}.tmp`;
+
+    fs.writeFileSync(staging, text);
+
     try {
-        fs.writeFileSync(file, text, { flag: 'wx' });
+        fs.linkSync(staging, file);
 
         return true;
     } catch (error) {
@@ -61,8 +72,13 @@ export const createExclusive: CreateExclusiveFn = (file, text) => {
         }
 
         throw error;
+    } finally {
+        fs.rmSync(staging, { force: true });
     }
 };
+
+export const modifiedAt: ModifiedAtFn = (file) =>
+    fs.statSync(file, { throwIfNoEntry: false })?.mtimeMs;
 
 /** The real path of a folder; one that does not exist yet has none, so it is resolved as given. */
 export const realPathOrResolve: RealPathFn = (folder) => {

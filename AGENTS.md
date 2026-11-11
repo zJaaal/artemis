@@ -63,7 +63,8 @@ Return a value from `run` to give the command a result. Throw `CommandError(mess
     - success: `{ "ok": true, "command": "math add", "result": { "sum": 3 } }`
     - failure: `{ "ok": false, "command": "math add", "error": "Both arguments must be numbers", "hint": "Try: math add 1 2" }` (`hint` is omitted when there is none; `command` is `null` when no command was resolved)
 - **Exit codes:** `0` success, `1` the command failed, `2` the command line was wrong (unknown command, bad or missing argument, unknown flag).
-- **`--yes` never prompts.** Pass it when nobody can answer. A command uses `ctx.interactive` to decide whether to ask, and falls back to flags, saved values or defaults.
+- **Global flags can go before or after the command name** (`art --json math add 1 2`); any other flag goes after the command. After `--`, everything is a plain argument.
+- **`--yes` never prompts.** Pass it when nobody can answer. `--json` never prompts either, so stdout stays one object. A command uses `ctx.interactive` to decide whether to ask, and falls back to flags, saved values or defaults.
 - **Prompts never hang.** When a command prompts and nobody can answer (a pipe, `--yes`, an agent), `ctx.prompt` throws a `CommandError` whose `hint` says how to answer without a prompt (for example "Pass --yes to skip the question."). Read the `hint`, add the flag, call again.
 
 ## Running the CLI

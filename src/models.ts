@@ -254,6 +254,8 @@ export type MakeDirectoryFn = (dir: string) => void;
 export type ReadTextIfExistsFn = (file: string) => string | undefined;
 /** Creates the file only if it does not exist yet; false means someone else has it. */
 export type CreateExclusiveFn = (file: string, text: string) => boolean;
+/** When a file was last written, in ms since the epoch, or undefined when it is not there. */
+export type ModifiedAtFn = (file: string) => number | undefined;
 export type RealPathFn = (path: string) => string;
 export type WorkingDirectoryFn = () => string;
 export type ProcessIdFn = () => number;

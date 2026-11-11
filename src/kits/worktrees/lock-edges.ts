@@ -1,6 +1,8 @@
+import { randomUUID } from 'node:crypto';
+
 import { ERROR_CODE } from '../../constants.js';
 import { INT32_BYTES, PROBE_SIGNAL } from './constants.js';
-import type { IsProcessAliveFn, NowFn, PauseFn } from './models.js';
+import type { IsProcessAliveFn, NowFn, PauseFn, TokenFn } from './models.js';
 import { codeOf } from '../../utils/error-code.js';
 
 // Edges of the registry lock: the clock, process liveness, and waiting.
@@ -22,3 +24,5 @@ export const isProcessAlive: IsProcessAliveFn = (pid) => {
 export const pause: PauseFn = (ms) => {
     Atomics.wait(new Int32Array(new SharedArrayBuffer(INT32_BYTES)), 0, 0, ms);
 };
+
+export const newToken: TokenFn = () => randomUUID();

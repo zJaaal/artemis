@@ -1,6 +1,6 @@
 import { currentProcess } from '../../edges/process.js';
 import { processId } from '../../edges/system.js';
-import { isProcessAlive, now, pause } from './lock-edges.js';
+import { isProcessAlive, newToken, now, pause } from './lock-edges.js';
 import {
     DEFAULT_COLORS,
     DEFAULT_MAIN_NAME,
@@ -37,6 +37,7 @@ function configure(options: WorktreesOptions): KitConfig {
         store: createRegistryStore(options.stateFile),
         lock: {
             pid: processId(),
+            token: newToken,
             now: options.now ?? now,
             isProcessAlive: options.isProcessAlive ?? isProcessAlive,
             pause: options.pause ?? pause,

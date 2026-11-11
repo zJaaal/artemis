@@ -9,6 +9,7 @@ import {
     createExclusive,
     listDirectory,
     makeDirectory,
+    modifiedAt,
     pathExists,
     readTextIfExists,
     realPathOrResolve,
@@ -17,6 +18,8 @@ import {
 } from './files.js';
 
 const folders = createTempFolders();
+
+const MODIFIED_TOLERANCE_MS = 5000;
 
 afterEach(() => folders.cleanUp());
 
@@ -129,5 +132,38 @@ describe('realPathOrResolve', () => {
 
     test('a folder that does not exist yet is resolved as given', () => {
         expect(realPathOrResolve('relative/missing')).toBe(path.resolve('relative/missing'));
+    });
+});
+
+describe('createExclusive: no staging files', () => {
+    test('leaves only the created file in the folder', () => {
+        const dir = folders.make('artemis-files-');
+
+        createExclusive(path.join(dir, 'lock'), 'mine');
+
+        expect(fs.readdirSync(dir)).toEqual(['lock']);
+    });
+
+    test('leaves nothing behind when the file already existed', () => {
+        const dir = folders.make('artemis-files-');
+
+        createExclusive(path.join(dir, 'lock'), 'first');
+        createExclusive(path.join(dir, 'lock'), 'second');
+
+        expect(fs.readdirSync(dir)).toEqual(['lock']);
+    });
+});
+
+describe('modifiedAt', () => {
+    test('is when the file was last written', () => {
+        const file = path.join(folders.make('artemis-files-'), 'a.txt');
+
+        writeText(file, 'x');
+
+        expect(Math.abs((modifiedAt(file) ?? 0) - Date.now())).toBeLessThan(MODIFIED_TOLERANCE_MS);
+    });
+
+    test('is undefined for a file that is not there', () => {
+        expect(modifiedAt(path.join(folders.make('artemis-files-'), 'gone'))).toBeUndefined();
     });
 });
