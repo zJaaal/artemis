@@ -122,6 +122,36 @@ Keep separate files per document; do not merge them into one or add a database.
 -   The fallback must be a copy (`structuredClone`): the scripts repo's `flags apply` mutates what `readData`
     returns, which is `DEFAULT_FLAGS` itself when the file is missing.
 
+**Backlog: replace `prompts` (decided 2026-11-10, for a later session)**
+
+Artemis does not need a prompt library to work. `prompts` only powers `ctx.prompt` (it was in `command/context.js`
+in the old codebase for exactly that, loaded lazily), so it is the only runtime dependency of the package.
+
+Facts gathered when it was discussed:
+
+-   The old scripts repo uses it in 5 places, with two question types only: 3 `confirm` and 2 `multiselect`.
+-   `prompts@2.4.2` was last released in 2021 (0 releases in the last 12 months), has two small dependencies
+    (`kleur`, `sisteransi`), no install scripts and no known advisories. The risk is staleness, not a known hole.
+-   Alternatives checked on npm: `@clack/prompts` (active, 4 dependencies, Node 20.12 or newer, different question
+    API), `@inquirer/prompts` (active, 10 dependencies, but its `engines` need Node `^22.22.2 || ^24.15.0 || >=26`,
+    which conflicts with our `>=22`), `enquirer` (stale too), and Node's own `readline/promises` (no dependency).
+-   Swapping to another library only trades one dependency for another, and changes the public question format
+    (`ctx.prompt` takes `prompts`-style question objects today).
+
+Direction: make the prompt engine pluggable and ship a built-in one with no dependency.
+
+1.  Keep the `ctx.prompt(questions, { hint })` contract and the question shape for the subset in use:
+    `confirm`, `text`, `select`, `multiselect` (`{ type, name, message, choices: [{ title, value }], initial }`).
+2.  Build the built-in engine on `readline/promises` plus raw-mode keypress handling for `multiselect`. Keep it in
+    `src/edges/` (it is the only code that touches stdin and the terminal) and test it with fake streams.
+3.  Let a host plug in another engine (for example `@clack/prompts`) through an option, so richer UIs stay possible
+    without Artemis depending on them.
+4.  Drop `prompts` and `@types/prompts` (the optional peer dependency goes with them), and update spec, README and
+    AGENTS. Behavior that must not change: `--yes` and `--json` never prompt, and a prompt nobody can answer throws
+    a `CommandError` with a hint.
+5.  The one-file seam today is `src/edges/prompts.ts` (`askQuestions`), and `src/edges/prompts.test.ts` fakes the
+    package; both are the starting point.
+
 **Ideas worth building**
 
 -   An MCP adapter: `help --json` already lists every command with its args and flags, which maps directly to
