@@ -55,7 +55,7 @@ describe('ensureDetachedInstance', () => {
     test('a name that belongs to a worktree is a usage error naming its root', () => {
         const config = createKitConfig(dir, main.root);
 
-        config.store.write({ taken: { slot: FIRST_WORKTREE_SLOT, root: '/w/taken' } });
+        config.registry.write({ taken: { slot: FIRST_WORKTREE_SLOT, root: '/w/taken' } });
 
         expect(thrownBy(() => ensureDetachedInstance(config, { name: 'taken' }))).toMatchObject({
             message: 'Instance "taken" already belongs to /w/taken.'
@@ -87,7 +87,7 @@ describe('removeInstance', () => {
         ensureDetachedInstance(config, { name: 'qa' });
         removeInstance(config, 'qa');
 
-        expect(config.store.read()).toEqual({});
+        expect(config.registry.read()).toEqual({});
     });
 
     test('an unknown instance is the no-instance error', () => {

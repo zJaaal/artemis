@@ -6,7 +6,7 @@ import { DEFAULT_BIN_NAME } from '../constants.js';
 import { CommandError } from '../errors/errors.js';
 import type { IsFolderFn, ReadManifestFn } from '../models.js';
 import { thrownBy } from '../test/thrown.js';
-import { findProject, resolveBinName, resolveSettings } from './settings.js';
+import { findProject, resolveBinName, resolveSettings, resolveStateDir } from './settings.js';
 
 /** Manifests by folder: the only "files" the pure code gets to see. Folders in `broken` cannot be read. */
 const manifestsAt =
@@ -378,6 +378,16 @@ describe('resolveSettings: a bad "artemis" key', () => {
             problem: '"artemis".commandsDir must be a non-empty string'
         },
         {
+            shape: 'an empty stateDir',
+            value: { stateDir: '' },
+            problem: '"artemis".stateDir must be a non-empty string'
+        },
+        {
+            shape: 'a stateDir that is not text',
+            value: { stateDir: 5 },
+            problem: '"artemis".stateDir must be a non-empty string'
+        },
+        {
             shape: 'an empty bin',
             value: { bin: '' },
             problem: '"artemis".bin must be a non-empty string'
@@ -483,5 +493,42 @@ describe('resolveSettings: the bin name comes from the checked configuration', (
         const project = { root: '/work/app', manifest: { bin: { mytool: 'bin/mytool.js' } } };
 
         expect(resolveSettings(project, 'own').bin).toBe('mytool');
+    });
+});
+
+describe('resolveStateDir', () => {
+    test('defaults to <root>/state', () => {
+        expect(resolveStateDir({ root: '/work/app', manifest: { name: 'app' } })).toBe(
+            '/work/app/state'
+        );
+    });
+
+    test('"artemis".stateDir is resolved from the project root', () => {
+        const project = { root: '/work/app', manifest: { artemis: { stateDir: 'data' } } };
+
+        expect(resolveStateDir(project)).toBe('/work/app/data');
+    });
+
+    test('an absolute stateDir is kept as it is', () => {
+        const project = {
+            root: '/work/app',
+            manifest: { artemis: { stateDir: '/var/app-state' } }
+        };
+
+        expect(resolveStateDir(project)).toBe('/var/app-state');
+    });
+
+    test('a stateDir with no commandsDir leaves the commands folder at its default', () => {
+        const project = { root: '/work/app', manifest: { artemis: { stateDir: 'data' } } };
+
+        expect(resolveSettings(project, 'shipped').commandsDir).toBe('/work/app/commands');
+    });
+
+    test('a bad "artemis" key is the same CommandError as for the other settings', () => {
+        const project = { root: '/work/app', manifest: { artemis: { stateDir: 5 } } };
+
+        expect(thrownBy(() => resolveStateDir(project))).toMatchObject({
+            message: '"artemis".stateDir must be a non-empty string (in /work/app/package.json)'
+        });
     });
 });

@@ -4,6 +4,7 @@ import type { InitCommandFn, InitResult } from '../models.js';
 import { resolveWorld } from '../run/world.js';
 import { INIT_FLAGS, INIT_HELP, INIT_USAGE_LINE, INIT_WORD } from './constants.js';
 import { initProject } from './init.js';
+import { wordHelp } from './word-help.js';
 
 const KNOWN_WORDS: readonly string[] = Object.values(INIT_FLAGS);
 
@@ -36,15 +37,17 @@ export const initCommand: InitCommandFn = (words, options, cwd) => {
         });
     }
 
+    const json = words.includes(INIT_FLAGS.json);
+
     if (words.includes(INIT_FLAGS.help) || words.includes(INIT_FLAGS.helpShort)) {
-        io.stdout.write(`${INIT_HELP}\n`);
+        io.stdout.write(`${wordHelp({ id: INIT_WORD, text: INIT_HELP, json })}\n`);
 
         return EXIT_CODE.OK;
     }
 
     const result = initProject(cwd);
 
-    const output = words.includes(INIT_FLAGS.json)
+    const output = json
         ? JSON.stringify({ ok: true, command: INIT_WORD, result })
         : describeResult(result);
 

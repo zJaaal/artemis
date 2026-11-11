@@ -65,7 +65,7 @@ describe('listInstances', () => {
     test('lists the main instance first, then the registered ones by slot', () => {
         const config = createKitConfig(dir, main.root);
 
-        config.store.write({
+        config.registry.write({
             late: { slot: FIRST_WORKTREE_SLOT + 1, root: null },
             early: { slot: FIRST_WORKTREE_SLOT, root: null }
         });

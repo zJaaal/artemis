@@ -2,7 +2,7 @@ import { randomUUID } from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
 
-import { ERROR_CODE, MANIFEST_FILE } from '../constants.js';
+import { ERROR_CODE, JSON_EXTENSION, MANIFEST_FILE, TEMP_SUFFIX } from '../constants.js';
 import { CommandError } from '../errors/errors.js';
 import { messageOf } from '../utils/error-message.js';
 import { isRecord } from '../utils/is-record.js';
@@ -12,6 +12,7 @@ import type {
     CreateExclusiveFn,
     IsFolderFn,
     ListDirectoryFn,
+    ListJsonFilesFn,
     ManifestRead,
     MakeDirectoryFn,
     ModifiedAtFn,
@@ -20,6 +21,7 @@ import type {
     ReadTextIfExistsFn,
     RealPathFn,
     RemoveFileFn,
+    WriteAtomicFn,
     WriteTextFn
 } from '../models.js';
 
@@ -29,6 +31,38 @@ export const listDirectory: ListDirectoryFn = (dir) =>
     fs
         .readdirSync(dir, { withFileTypes: true })
         .map((entry) => ({ name: entry.name, isDirectory: entry.isDirectory() }));
+
+/** Whether a link leads to a file. One that cannot be followed for another reason than leading nowhere (a loop, no permission) is listed too, so `art state` can say why. */
+function linkLeadsToFile(link: string): boolean {
+    try {
+        return fs.statSync(link).isFile();
+    } catch (error) {
+        return codeOf(error) !== ERROR_CODE.MISSING;
+    }
+}
+
+/** A file, or a symbolic link to one: the store reads and writes through links, so a listing must see them. */
+const isFileOrLinkToFile = (dir: string, entry: fs.Dirent): boolean =>
+    entry.isFile() || (entry.isSymbolicLink() && linkLeadsToFile(path.join(dir, entry.name)));
+
+/** Only `*.json` files count: `<doc>.json.lock` and `<doc>.json.<pid>.<token>.tmp` are never listed. */
+export const listJsonFiles: ListJsonFilesFn = (dir) => {
+    try {
+        return fs
+            .readdirSync(dir, { withFileTypes: true })
+            .filter(
+                (entry) => entry.name.endsWith(JSON_EXTENSION) && isFileOrLinkToFile(dir, entry)
+            )
+            .map((entry) => entry.name)
+            .sort();
+    } catch (error) {
+        if (codeOf(error) === ERROR_CODE.MISSING) {
+            return [];
+        }
+
+        throw error;
+    }
+};
 
 export const pathExists: PathExistsFn = (path) => fs.existsSync(path);
 
@@ -43,6 +77,21 @@ export const writeText: WriteTextFn = (file, text) => {
 /** Removing a file that is not there is not an error: the goal is that it is gone. */
 export const removeFile: RemoveFileFn = (file) => {
     fs.rmSync(file, { force: true });
+};
+
+/**
+ * Writes the text next to the file and renames it into place, so a crash or a reader never sees
+ * half a file. The temporary file is named after the process, and removed whatever happens.
+ */
+export const writeAtomic: WriteAtomicFn = (file, text) => {
+    const staging = `${file}.${process.pid}.${randomUUID()}${TEMP_SUFFIX}`;
+
+    try {
+        fs.writeFileSync(staging, text);
+        fs.renameSync(staging, file);
+    } finally {
+        fs.rmSync(staging, { force: true });
+    }
 };
 
 /** The text of a file, or undefined when it is not there (someone may remove it at any moment). */
@@ -64,7 +113,7 @@ export const readTextIfExists: ReadTextIfExistsFn = (file) => {
  * empty or half written, and the link fails if the file already exists.
  */
 export const createExclusive: CreateExclusiveFn = (file, text) => {
-    const staging = `${file}.${randomUUID()}.tmp`;
+    const staging = `${file}.${randomUUID()}${TEMP_SUFFIX}`;
 
     fs.writeFileSync(staging, text);
 

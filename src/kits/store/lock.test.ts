@@ -14,7 +14,7 @@ import {
     TAKEOVER_STALE_MS,
     TAKEOVER_SUFFIX
 } from './constants.js';
-import { withLock } from './lock.js';
+import { withLockSync } from './lock.js';
 
 const folders = createTempFolders();
 
@@ -52,17 +52,17 @@ const nobodyIsAlive = () => false;
 const quietEdges = () =>
     createFakeLockEdges({ isProcessAlive: nobodyIsAlive, timeoutMs: SHORT_TIMEOUT_MS }).edges;
 
-describe('withLock', () => {
+describe('withLockSync', () => {
     test('runs the work and returns its result', () => {
         const { stateFile } = setUp();
 
-        expect(withLock(stateFile, () => 'done', quietEdges())).toBe('done');
+        expect(withLockSync(stateFile, () => 'done', quietEdges())).toBe('done');
     });
 
     test('holds the lock, with the process id and a token in it, while the work runs', () => {
         const { stateFile, lock } = setUp();
 
-        expect(withLock(stateFile, () => fs.readFileSync(lock, 'utf8'), quietEdges())).toBe(
+        expect(withLockSync(stateFile, () => fs.readFileSync(lock, 'utf8'), quietEdges())).toBe(
             `${FAKE_PID} token-1`
         );
     });
@@ -70,7 +70,7 @@ describe('withLock', () => {
     test('releases the lock when the work is done', () => {
         const { stateFile, lock } = setUp();
 
-        withLock(stateFile, () => undefined, quietEdges());
+        withLockSync(stateFile, () => undefined, quietEdges());
 
         expect(fs.existsSync(lock)).toBe(false);
     });
@@ -79,7 +79,7 @@ describe('withLock', () => {
         const { stateFile, lock } = setUp();
 
         thrownBy(() =>
-            withLock(
+            withLockSync(
                 stateFile,
                 () => {
                     throw new Error('work failed');
@@ -94,13 +94,13 @@ describe('withLock', () => {
     test('creates the folder of the state file when it does not exist yet', () => {
         const stateFile = path.join(folders.make('artemis-lock-'), 'not', 'there', 'state.json');
 
-        expect(withLock(stateFile, () => 'done', quietEdges())).toBe('done');
+        expect(withLockSync(stateFile, () => 'done', quietEdges())).toBe('done');
     });
 
     test('leaves no staging files behind', () => {
         const { stateFile, lock } = setUp();
 
-        withLock(stateFile, () => undefined, quietEdges());
+        withLockSync(stateFile, () => undefined, quietEdges());
 
         expect(fs.readdirSync(path.dirname(lock))).toEqual([]);
     });
@@ -108,13 +108,13 @@ describe('withLock', () => {
     test('never deletes a lock that another process holds by the time the work is done', () => {
         const { stateFile, lock } = setUp();
 
-        withLock(stateFile, () => holdFile(lock, `${COMPETITOR_PID} theirs`), quietEdges());
+        withLockSync(stateFile, () => holdFile(lock, `${COMPETITOR_PID} theirs`), quietEdges());
 
         expect(fs.readFileSync(lock, 'utf8')).toBe(`${COMPETITOR_PID} theirs`);
     });
 });
 
-describe('withLock: another process holds the lock', () => {
+describe('withLockSync: another process holds the lock', () => {
     test('a registration waits while another live process holds the registry lock', () => {
         const { stateFile, lock } = setUp();
         const ran: boolean[] = [];
@@ -126,7 +126,7 @@ describe('withLock: another process holds the lock', () => {
         });
 
         holdFile(lock, `${HOLDER_PID} theirs`);
-        withLock(stateFile, () => ran.push(true), edges);
+        withLockSync(stateFile, () => ran.push(true), edges);
 
         expect(pauses).toEqual([LOCK_POLL_MS]);
         expect(ran).toEqual([true]);
@@ -142,7 +142,7 @@ describe('withLock: another process holds the lock', () => {
 
         holdFile(lock, `${DEAD_PID} gone`);
 
-        expect(withLock(stateFile, () => 'took over', edges)).toBe('took over');
+        expect(withLockSync(stateFile, () => 'took over', edges)).toBe('took over');
         expect(pauses).toEqual([]);
         expect(fs.existsSync(lock)).toBe(false);
     });
@@ -157,8 +157,8 @@ describe('withLock: another process holds the lock', () => {
 
         holdFile(lock, `${HOLDER_PID} theirs`);
 
-        expect(thrownBy(() => withLock(stateFile, () => 'never', edges))).toMatchObject({
-            message: `The instance registry is locked by process ${HOLDER_PID}.`
+        expect(thrownBy(() => withLockSync(stateFile, () => 'never', edges))).toMatchObject({
+            message: `${stateFile} is locked by process ${HOLDER_PID}.`
         });
     });
 
@@ -171,7 +171,7 @@ describe('withLock: another process holds the lock', () => {
         });
 
         holdFile(lock, `${HOLDER_PID} theirs`);
-        const error = thrownBy(() => withLock(stateFile, () => 'never', edges));
+        const error = thrownBy(() => withLockSync(stateFile, () => 'never', edges));
 
         expect(error).toBeInstanceOf(CommandError);
         expect(error).toMatchObject({ hint: `If no other command is running, delete ${lock}.` });
@@ -186,13 +186,13 @@ describe('withLock: another process holds the lock', () => {
         });
 
         holdFile(lock, `${HOLDER_PID} theirs`);
-        thrownBy(() => withLock(stateFile, () => 'never', edges));
+        thrownBy(() => withLockSync(stateFile, () => 'never', edges));
 
         expect(fs.readFileSync(lock, 'utf8')).toBe(`${HOLDER_PID} theirs`);
     });
 });
 
-describe('withLock: a lock that is still being written', () => {
+describe('withLockSync: a lock that is still being written', () => {
     test('an empty lock that was just created is not taken over during the grace period', () => {
         const { stateFile, lock } = setUp();
 
@@ -202,7 +202,7 @@ describe('withLock: a lock that is still being written', () => {
         });
 
         holdFile(lock, '');
-        withLock(stateFile, () => undefined, edges);
+        withLockSync(stateFile, () => undefined, edges);
 
         expect(pauses.reduce((total, ms) => total + ms, 0)).toBeGreaterThanOrEqual(LOCK_GRACE_MS);
     });
@@ -217,7 +217,7 @@ describe('withLock: a lock that is still being written', () => {
 
         holdFile(lock, '');
         makeOld(lock, AN_HOUR_MS);
-        withLock(stateFile, () => undefined, edges);
+        withLockSync(stateFile, () => undefined, edges);
 
         expect(pauses).toEqual([]);
     });
@@ -232,13 +232,13 @@ describe('withLock: a lock that is still being written', () => {
 
         holdFile(lock, '');
 
-        expect(thrownBy(() => withLock(stateFile, () => 'never', edges))).toMatchObject({
-            message: 'The instance registry is locked by another process.'
+        expect(thrownBy(() => withLockSync(stateFile, () => 'never', edges))).toMatchObject({
+            message: `${stateFile} is locked by another process.`
         });
     });
 });
 
-describe('withLock: taking over a stale lock', () => {
+describe('withLockSync: taking over a stale lock', () => {
     test('does not remove a lock another process created after the stale one was seen', () => {
         const { stateFile, lock } = setUp();
         let raced = false;
@@ -262,7 +262,7 @@ describe('withLock: taking over a stale lock', () => {
         });
 
         holdFile(lock, `${DEAD_PID} gone`);
-        withLock(stateFile, () => undefined, edges);
+        withLockSync(stateFile, () => undefined, edges);
 
         expect(seenWhileWaiting).toBe(`${COMPETITOR_PID} theirs`);
     });
@@ -279,7 +279,7 @@ describe('withLock: taking over a stale lock', () => {
         holdFile(lock, `${DEAD_PID} gone`);
         holdFile(guard, `${COMPETITOR_PID} taking over`);
 
-        expect(withLock(stateFile, () => 'took over', edges)).toBe('took over');
+        expect(withLockSync(stateFile, () => 'took over', edges)).toBe('took over');
         expect(pauses.length).toBeGreaterThan(0);
     });
 
@@ -295,7 +295,7 @@ describe('withLock: taking over a stale lock', () => {
         holdFile(guard, `${COMPETITOR_PID} died while taking over`);
         makeOld(guard, TAKEOVER_STALE_MS + AN_HOUR_MS);
 
-        expect(withLock(stateFile, () => 'took over', edges)).toBe('took over');
+        expect(withLockSync(stateFile, () => 'took over', edges)).toBe('took over');
         expect(fs.existsSync(guard)).toBe(false);
     });
 
@@ -303,8 +303,76 @@ describe('withLock: taking over a stale lock', () => {
         const { stateFile, lock, guard } = setUp();
 
         holdFile(lock, `${DEAD_PID} gone`);
-        withLock(stateFile, () => undefined, quietEdges());
+        withLockSync(stateFile, () => undefined, quietEdges());
 
         expect(fs.existsSync(guard)).toBe(false);
+    });
+});
+
+describe('withLockSync: reentrancy', () => {
+    test('a nested call on the lock this call holds runs without waiting', () => {
+        const { stateFile } = setUp();
+
+        const { edges, pauses } = createFakeLockEdges({
+            isProcessAlive: nobodyIsAlive,
+            timeoutMs: SHORT_TIMEOUT_MS
+        });
+
+        const result = withLockSync(
+            stateFile,
+            () => withLockSync(stateFile, () => 'inner', edges),
+            edges
+        );
+
+        expect(result).toBe('inner');
+        expect(pauses).toEqual([]);
+    });
+
+    test('a nested call does not release the lock when it ends', () => {
+        const { stateFile, lock } = setUp();
+        const edges = quietEdges();
+
+        const stillThere = withLockSync(
+            stateFile,
+            () => {
+                withLockSync(stateFile, () => undefined, edges);
+
+                return fs.existsSync(lock);
+            },
+            edges
+        );
+
+        expect(stillThere).toBe(true);
+    });
+
+    test('a nested call on another file takes that file lock', () => {
+        const { stateFile } = setUp();
+        const otherFile = path.join(path.dirname(stateFile), 'other.json');
+        const edges = quietEdges();
+
+        const otherIsLocked = withLockSync(
+            stateFile,
+            () => withLockSync(otherFile, () => fs.existsSync(`${otherFile}${LOCK_SUFFIX}`), edges),
+            edges
+        );
+
+        expect(otherIsLocked).toBe(true);
+    });
+
+    test('the lock is taken again after work that threw, not mistaken for held', () => {
+        const { stateFile, lock } = setUp();
+        const edges = quietEdges();
+
+        thrownBy(() =>
+            withLockSync(
+                stateFile,
+                () => {
+                    throw new Error('work failed');
+                },
+                edges
+            )
+        );
+
+        expect(withLockSync(stateFile, () => fs.existsSync(lock), edges)).toBe(true);
     });
 });

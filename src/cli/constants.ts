@@ -1,3 +1,5 @@
+import type { Builtin } from '../models.js';
+
 /** A word the shipped `art` handles itself, like `help`: it makes a folder a project. */
 export const INIT_WORD = 'init';
 export const INIT_USAGE_LINE = `${INIT_WORD} [--json]`;
@@ -40,3 +42,55 @@ export const SHADOW_WARNING =
     'This project has a command or topic called "init", and the init word of this binary hides it: it cannot be run through here. Rename it.';
 export const CRLF = '\r\n';
 export const LF = '\n';
+
+/** `state` is the second word of the shipped binary that is not a command file: it lists, shows and resets what the app keeps. */
+export const STATE_WORD = 'state';
+export const STATE_USAGE_LINE = `${STATE_WORD} [<doc>] [--reset] [--yes] [--json]`;
+export const STATE_HELP = `Usage: ${STATE_USAGE_LINE}
+
+Lists the documents the app keeps in its state folder, shows one, or resets one so the app starts again from its defaults.
+
+  ${STATE_WORD}                   list the documents
+  ${STATE_WORD} <doc>             show one
+  ${STATE_WORD} <doc> --reset     delete it (asks first; --yes skips the question)
+
+The folder is "artemis".stateDir in package.json (default "state").`;
+
+export const STATE_FLAGS = {
+    json: '--json',
+    help: '--help',
+    helpShort: '-h',
+    yes: '--yes',
+    yesShort: '-y',
+    reset: '--reset'
+} as const;
+
+export const STATE_SHADOW_WARNING =
+    'This project has a command or topic called "state", and the state word of this binary hides it: it cannot be run through here. Rename it.';
+
+export const STATE_RESET_HINT = 'Pass --yes to reset without a question.';
+export const STATE_RECOVERY_HINT = 'Reset it with --reset to start again from the defaults.';
+export const NO_STATE_YET = 'No state yet in';
+
+/** The words of the shipped binary that help lists under "Built-in" and `help --json` under "builtins". */
+export const BUILTINS: readonly Builtin[] = [
+    {
+        id: INIT_WORD,
+        description: 'Make the current folder a project',
+        args: [],
+        flags: {},
+        examples: [INIT_WORD]
+    },
+    {
+        id: STATE_WORD,
+        description: 'List, show or reset the documents the app keeps',
+        args: [{ name: 'doc', description: 'The document to show or reset' }],
+        flags: {
+            reset: {
+                type: 'boolean',
+                description: 'Delete the document so the app starts again from its defaults'
+            }
+        },
+        examples: [STATE_WORD, `${STATE_WORD} steps`, `${STATE_WORD} steps --reset --yes`]
+    }
+];

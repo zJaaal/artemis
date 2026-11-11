@@ -1,7 +1,7 @@
 import path from 'node:path';
 
 import { pathExists } from '../edges/files.js';
-import { createRegistryStore } from '../kits/worktrees/registry-store.js';
+import { defineStore } from '../kits/store/store.js';
 import type { KitConfig } from '../kits/worktrees/models.js';
 import {
     KIT_BASE_PORTS,
@@ -10,7 +10,7 @@ import {
     KIT_SLOT_STEP,
     TEMP_REPO_MARKER
 } from './constants.js';
-import { createFakeLockEdges } from './lock-edges.js';
+import { createFakeLockOptions } from './lock-edges.js';
 
 /** A worktrees kit configuration over a real registry file in `folder`; a marker folder marks a checkout. */
 export const createKitConfig = (
@@ -18,15 +18,17 @@ export const createKitConfig = (
     mainRoot: string,
     overrides: Partial<KitConfig> = {}
 ): KitConfig => {
-    const stateFile = path.join(folder, 'state', 'worktrees.json');
-
-    const { edges } = createFakeLockEdges({
+    const { options } = createFakeLockOptions({
         isProcessAlive: () => false,
         timeoutMs: KIT_LOCK_TIMEOUT_MS
     });
 
+    const registry = defineStore({ dir: path.join(folder, 'state'), ...options }).doc('worktrees', {
+        fallback: {}
+    });
+
     return {
-        stateFile,
+        registry,
         mainRoot,
         ports: KIT_BASE_PORTS,
         isCheckout: (root) => pathExists(path.join(root, TEMP_REPO_MARKER)),
@@ -35,8 +37,6 @@ export const createKitConfig = (
         colors: KIT_COLORS,
         mainName: 'main',
         env: {},
-        store: createRegistryStore(stateFile),
-        lock: edges,
         ...overrides
     };
 };

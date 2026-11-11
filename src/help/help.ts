@@ -11,12 +11,16 @@ import {
 } from '../constants.js';
 import type {
     ArgDefinition,
+    Builtin,
+    BuiltinHelpFn,
     CommandEntry,
     CommandHelpFn,
     CreateStyleFn,
+    DescribeBuiltinsFn,
     FlagDefinition,
     FlagDefinitions,
     HelpChildren,
+    HelpSubject,
     Manifest,
     ManifestArg,
     ManifestCommand,
@@ -52,9 +56,13 @@ export const createStyle: CreateStyleFn = (enabled) => ({
 const argToken = (arg: ArgDefinition): string => (arg.required ? `<${arg.name}>` : `[${arg.name}]`);
 
 /** `art uve config set [url] [flags]` */
-export const usage: UsageFn = (bin, entry) => {
-    const { args, flags } = entry.definition;
-    const parts = [bin, entry.id, ...args.map(argToken)];
+const usageOf = (
+    bin: string,
+    id: string,
+    args: readonly ArgDefinition[],
+    flags: FlagDefinitions
+): string => {
+    const parts = [bin, id, ...args.map(argToken)];
 
     if (Object.keys(flags).length > 0) {
         parts.push('[flags]');
@@ -62,6 +70,9 @@ export const usage: UsageFn = (bin, entry) => {
 
     return parts.join(ID_SEPARATOR);
 };
+
+export const usage: UsageFn = (bin, entry) =>
+    usageOf(bin, entry.id, entry.definition.args, entry.definition.flags);
 
 function table(rows: TableRow[], style: Style): string {
     const width = Math.max(0, ...rows.map(([name]) => name.length));
@@ -154,7 +165,12 @@ function childrenOf(registry: Registry, prefix: string): HelpChildren {
     };
 }
 
-function listing(registry: Registry, prefix: string, style: Style): string {
+function listing(
+    registry: Registry,
+    prefix: string,
+    style: Style,
+    builtins: readonly Builtin[] = []
+): string {
     const { topics, commands } = childrenOf(registry, prefix);
     const sections: string[] = [];
 
@@ -170,15 +186,21 @@ function listing(registry: Registry, prefix: string, style: Style): string {
         sections.push(section('Commands', table(rows, style), style));
     }
 
+    if (builtins.length) {
+        const rows: TableRow[] = builtins.map((builtin) => [builtin.id, builtin.description]);
+
+        sections.push(section('Built-in', table(rows, style), style));
+    }
+
     sections.push(globalFlagsSection(style));
 
     return sections.join(SECTION_SEPARATOR);
 }
 
-export const rootHelp: RootHelpFn = (bin, registry, style) =>
+export const rootHelp: RootHelpFn = (bin, registry, style, builtins) =>
     [
         `${style.bold('Usage')}  ${bin} <topic> <command> [args] [flags]`,
-        listing(registry, '', style),
+        listing(registry, '', style, builtins),
         style.dim(`Run "${bin} <topic>" to list a topic, or "${bin} <command> --help" for details.`)
     ].join(SECTION_SEPARATOR);
 
@@ -188,9 +210,10 @@ export const topicHelp: TopicHelpFn = (_bin, registry, topic, style) =>
         listing(registry, topic.id, style)
     ].join(SECTION_SEPARATOR);
 
-export const commandHelp: CommandHelpFn = (bin, entry, style) => {
-    const { description, args, flags, aliases, examples } = entry.definition;
-    const sections = [description, `${style.bold('Usage')}  ${usage(bin, entry)}`];
+/** The help of one word: its description, usage, arguments, flags, aliases and examples. */
+function subjectHelp(bin: string, subject: HelpSubject, style: Style): string {
+    const { description, args, flags, aliases, examples } = subject;
+    const sections = [description, `${style.bold('Usage')}  ${subject.usage}`];
 
     if (args.length) {
         sections.push(section('Arguments', table(argRows(args), style), style));
@@ -213,7 +236,22 @@ export const commandHelp: CommandHelpFn = (bin, entry, style) => {
     }
 
     return sections.join(SECTION_SEPARATOR);
-};
+}
+
+export const commandHelp: CommandHelpFn = (bin, entry, style) =>
+    subjectHelp(bin, { ...entry.definition, usage: usage(bin, entry) }, style);
+
+/** The help of a word the binary handles itself (`init`, `state`), laid out like a command's. */
+export const builtinHelp: BuiltinHelpFn = (bin, builtin, style) =>
+    subjectHelp(
+        bin,
+        {
+            ...builtin,
+            usage: usageOf(bin, builtin.id, builtin.args, builtin.flags),
+            aliases: []
+        },
+        style
+    );
 
 const describeFlags = (flags: FlagDefinitions): ManifestFlag[] =>
     Object.entries(flags).map(([name, flag]) => ({
@@ -245,12 +283,28 @@ const describeCommand = (bin: string, entry: CommandEntry): ManifestCommand => (
     examples: entry.definition.examples
 });
 
-/** Everything help shows, as data: what an agent reads to know which commands exist and how to call them. */
-export const manifest: ManifestFn = (bin, registry): Manifest => ({
+/** The words of the shipped binary, described like commands so a caller reads both the same way. */
+export const describeBuiltins: DescribeBuiltinsFn = (bin, builtins) =>
+    builtins.map((builtin) => ({
+        id: builtin.id,
+        description: builtin.description,
+        usage: usageOf(bin, builtin.id, builtin.args, builtin.flags),
+        aliases: [],
+        args: describeArgs(builtin.args),
+        flags: describeFlags(builtin.flags),
+        examples: builtin.examples
+    }));
+
+/**
+ * Everything help shows, as data: what an agent reads to know which commands exist and how to call
+ * them. `builtins` is only there when the binary has words of its own (the shipped `art` does).
+ */
+export const manifest: ManifestFn = (bin, registry, builtins): Manifest => ({
     bin,
     topics: [...registry.topics.values()],
     commands: [...registry.commands.values()].map((entry) => describeCommand(bin, entry)),
-    globalFlags: describeFlags(GLOBAL_FLAGS)
+    globalFlags: describeFlags(GLOBAL_FLAGS),
+    ...(builtins === undefined ? {} : { builtins: describeBuiltins(bin, builtins) })
 });
 
 const isWithin = (id: string, topicId: string): boolean =>
@@ -258,10 +312,12 @@ const isWithin = (id: string, topicId: string): boolean =>
 
 /**
  * The manifest of one topic: the topic and its sub-topics, and every command under it. It keeps the
- * shape of the whole manifest, so a caller reads both the same way.
+ * shape of the whole manifest, so a caller reads both the same way. The words of the binary itself
+ * (`builtins`) belong to no topic, so they are not part of it.
  */
 export const topicManifest: TopicManifestFn = (everything, topicId) => ({
-    ...everything,
+    bin: everything.bin,
     topics: everything.topics.filter((topic) => isWithin(topic.id, topicId)),
-    commands: everything.commands.filter((command) => isWithin(command.id, topicId))
+    commands: everything.commands.filter((command) => isWithin(command.id, topicId)),
+    globalFlags: everything.globalFlags
 });

@@ -1,12 +1,5 @@
 import { currentProcess } from '../../edges/process.js';
-import { processId } from '../../edges/system.js';
-import { isProcessAlive, newToken, now, pause } from './lock-edges.js';
-import {
-    DEFAULT_COLORS,
-    DEFAULT_MAIN_NAME,
-    DEFAULT_SLOT_STEP,
-    LOCK_TIMEOUT_MS
-} from './constants.js';
+import { DEFAULT_COLORS, DEFAULT_MAIN_NAME, DEFAULT_SLOT_STEP } from './constants.js';
 import { realPathOrResolve } from '../../edges/files.js';
 import type {
     DefineWorktreesFn,
@@ -15,17 +8,15 @@ import type {
     Operation,
     WorktreesOptions
 } from './models.js';
-import { createRegistryStore } from './registry-store.js';
-import { withLock } from './lock.js';
 import { ensureDetachedInstance, ensureInstance, removeInstance } from './registration.js';
 import { currentInstance, getInstance, listInstances } from './queries.js';
 
 const everyFolderIsACheckout: IsCheckoutFn = () => true;
 
-/** The options with their defaults applied, and the registry file they work on. */
+/** The options with their defaults applied. */
 function configure(options: WorktreesOptions): KitConfig {
     return {
-        stateFile: options.stateFile,
+        registry: options.registry,
         mainRoot: realPathOrResolve(options.mainCheckout),
         ports: options.ports,
         isCheckout: options.isCheckout ?? everyFolderIsACheckout,
@@ -33,16 +24,7 @@ function configure(options: WorktreesOptions): KitConfig {
         slotStep: options.slotStep ?? DEFAULT_SLOT_STEP,
         colors: options.colors ?? DEFAULT_COLORS,
         mainName: options.mainName ?? DEFAULT_MAIN_NAME,
-        env: options.env ?? currentProcess().env,
-        store: createRegistryStore(options.stateFile),
-        lock: {
-            pid: processId(),
-            token: newToken,
-            now: options.now ?? now,
-            isProcessAlive: options.isProcessAlive ?? isProcessAlive,
-            pause: options.pause ?? pause,
-            timeoutMs: options.lockTimeoutMs ?? LOCK_TIMEOUT_MS
-        }
+        env: options.env ?? currentProcess().env
     };
 }
 
@@ -51,7 +33,7 @@ function locked<TArgs extends unknown[], TResult>(
     config: KitConfig,
     operation: Operation<TArgs, TResult>
 ): Operation<TArgs, TResult> {
-    return (...args) => withLock(config.stateFile, () => operation(...args), config.lock);
+    return (...args) => config.registry.locked(() => operation(...args));
 }
 
 /**
@@ -60,7 +42,7 @@ function locked<TArgs extends unknown[], TResult>(
  *
  * Every checkout is a worktree, the main one included. The main checkout is slot 0 and needs no
  * registration; other worktrees register on first use (ensure) and keep their slot until removed.
- * The kit stores nothing of its own: the app says where the registry lives (stateFile).
+ * The kit stores nothing of its own: the app hands it the document the registry lives in.
  */
 export const defineWorktrees: DefineWorktreesFn = (options) => {
     const config = configure(options);

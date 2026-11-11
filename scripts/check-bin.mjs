@@ -209,6 +209,81 @@ try {
     assert.equal(json(withArgument).error, 'init takes no arguments, but got "somewhere"');
     console.log('ok   init takes no arguments, and says so');
 
+    // The store kit and `art state`: a command writes a document through defineStore({ project }) under a
+    // global art with no local copy, and `art state` reads, shows and resets it from the same folder.
+    const stateful = makeProject('stateful', { artemis: { stateDir: 'data' } });
+
+    fs.writeFileSync(
+        path.join(stateful, 'commands', 'save.js'),
+        `import { defineCommand } from '@zjaaal/artemis';
+import { defineStore } from '@zjaaal/artemis/store';
+
+export default defineCommand({
+    description: 'Saves a document',
+    run: () => {
+        const doc = defineStore({ project: import.meta.url }).doc('notes', { fallback: { count: 0 } });
+
+        return doc.update((current) => ({ count: current.count + 1 }));
+    }
+});
+`
+    );
+
+    assert.deepEqual(
+        json(execute(art, ['save', '--json'], stateful)).result,
+        { count: 1 },
+        'the command writes through the store kit, resolved from the running copy'
+    );
+
+    const notes = path.join(stateful, 'data', 'notes.json');
+    const listed = json(execute(art, ['state', '--json'], stateful));
+
+    assert.deepEqual(
+        listed.result,
+        {
+            dir: fs.realpathSync(path.join(stateful, 'data')),
+            documents: [{ name: 'notes', version: 0, file: fs.realpathSync(notes) }]
+        },
+        'art state lists what the command wrote, in the folder of stateDir'
+    );
+
+    assert.deepEqual(
+        json(execute(art, ['state', 'notes', '--json'], path.join(stateful, 'commands'))).result
+            .data,
+        { count: 1 },
+        'art state shows it, from a subfolder'
+    );
+
+    const refused = execute(art, ['state', 'notes', '--reset', '--json'], stateful);
+
+    assert.equal(refused.code, EXIT_FAILED, 'a reset without --yes and nobody to answer fails');
+    assert.equal(json(refused).hint, 'Pass --yes to reset without a question.');
+    assert.ok(fs.existsSync(notes), 'and the file is still there');
+
+    const reset = execute(art, ['state', 'notes', '--reset', '--yes', '--json'], stateful);
+
+    assert.equal(reset.code, 0);
+    assert.equal(json(reset).result.reset, true);
+    assert.ok(!fs.existsSync(notes), 'a reset with --yes deletes the file');
+
+    assert.deepEqual(
+        json(execute(art, ['save', '--json'], stateful)).result,
+        { count: 1 },
+        'after a reset the app starts again from its defaults'
+    );
+
+    const builtins = json(execute(art, ['help', '--json'], stateful)).result.builtins;
+
+    assert.deepEqual(
+        builtins.map((builtin) => builtin.id),
+        ['init', 'state'],
+        'help --json lists the built-in words'
+    );
+
+    console.log(
+        'ok   art state lists, shows and resets what a command wrote through the store kit'
+    );
+
     // 2. A consumer that ships the same CLI under its own name, with the framework as a dependency.
     const consumer = makeProject('consumer', { bin: { mytool: 'bin/mytool.js' } });
     const bin = path.join(consumer, 'bin', 'mytool.js');

@@ -1,9 +1,10 @@
 import type { ResolveHook } from 'node:module';
 import type { ParseArgsConfig } from 'node:util';
 
-import type { PromptObject } from 'prompts';
+import type { AbstractPromptOptions } from '@topcli/prompts';
 
 import type { EXIT_CODE, STYLE_CODES } from './constants.js';
+import type { LockOptions } from './kits/store/models.js';
 import type { CommandError } from './errors/errors.js';
 
 // ---------------------------------------------------------------------------------------------
@@ -86,16 +87,79 @@ export type StyleCodes = Record<string, number>;
 export type Style = Record<keyof typeof STYLE_CODES, StyleFn>;
 
 export type LogFn = (...parts: unknown[]) => void;
-export type PromptOptions = { hint?: string };
-export type PromptFn = (
-    questions: PromptObject | PromptObject[],
-    options?: PromptOptions
-) => Promise<Record<string, unknown>>;
 export type InvokeFn = (id: string, argv?: string[]) => Promise<unknown>;
 
-/** What the prompts edge returns: the answers, and whether the user cancelled. */
-export type PromptResult = { answers: Record<string, unknown>; cancelled: boolean };
-export type AskFn = (questions: PromptObject | PromptObject[]) => Promise<PromptResult>;
+// ---------------------------------------------------------------------------------------------
+// ctx.prompt: Artemis's own types, so no question format of a library is promised. Values are
+// strings because the library returns strings, and a CLI answer is text anyway.
+// ---------------------------------------------------------------------------------------------
+
+/** The hint of the error thrown when nobody can answer. */
+/** Whether a question can be asked, and whether `--yes` or `--json` is why it cannot. */
+export type PrompterMode = { interactive: boolean; flagsSkipQuestions: boolean };
+export type PromptOptions = { hint?: string };
+export type ConfirmOptions = PromptOptions & { initial?: boolean };
+export type TextOptions = PromptOptions & { initial?: string };
+export type Choice<TValue extends string> = {
+    label: string;
+    value: TValue;
+    description?: string;
+};
+export type SelectOptions<TValue extends string> = PromptOptions & {
+    choices: readonly Choice<TValue>[];
+};
+export type MultiselectOptions<TValue extends string> = PromptOptions & {
+    choices: readonly (Choice<TValue> & { selected?: boolean })[];
+};
+
+/** `ctx.prompt`: four questions that return the answer itself. */
+export type Prompter = {
+    /** Yes or no. `initial` is what pressing Return answers; default false. */
+    confirm: (message: string, options?: ConfirmOptions) => Promise<boolean>;
+    /** Free text. `initial` is returned when the user just presses Return. */
+    text: (message: string, options?: TextOptions) => Promise<string>;
+    /** One of the choices, by its `value`. */
+    select: <const TValue extends string>(
+        message: string,
+        options: SelectOptions<TValue>
+    ) => Promise<TValue>;
+    /** Any number of the choices, by their `value`s. */
+    multiselect: <const TValue extends string>(
+        message: string,
+        options: MultiselectOptions<TValue>
+    ) => Promise<TValue[]>;
+};
+
+/** One question as the edge receives it, before it is mapped onto the library. */
+export type Question =
+    | { kind: 'confirm'; message: string; options: ConfirmOptions }
+    | { kind: 'text'; message: string; options: TextOptions }
+    | { kind: 'select'; message: string; options: SelectOptions<string> }
+    | { kind: 'multiselect'; message: string; options: MultiselectOptions<string> };
+
+/** The terminal a question is asked on: stdin to read keys from, stdout to draw on. */
+export type PromptStreams = {
+    stdin: NonNullable<AbstractPromptOptions['stdin']>;
+    stdout: NonNullable<AbstractPromptOptions['stdout']>;
+};
+
+/** Asks one question of the library with these streams and signal; resolves with the raw answer. */
+export type AskFn = (
+    question: Question,
+    streams: PromptStreams,
+    signal: AbortSignal
+) => Promise<unknown>;
+
+/** What came of a question: the answer, or the user gave up (Ctrl+C). */
+export type PromptOutcome = { kind: 'answered'; answer: unknown } | { kind: 'cancelled' };
+
+/** Asks a question on the terminal, and reports Ctrl+C as a cancellation. */
+export type AskQuestionFn = (question: Question, streams?: PromptStreams) => Promise<PromptOutcome>;
+
+export type IsAbortFn = (error: unknown) => boolean;
+export type IsBooleanFn = (value: unknown) => value is boolean;
+export type IsTextFn = (value: unknown) => value is string;
+export type IsTextListFn = (value: unknown) => value is string[];
 
 /** The `ctx` a command receives. */
 export type CommandContext = {
@@ -107,7 +171,7 @@ export type CommandContext = {
     /** Progress and warnings on stderr; they never mix with --json output. */
     warn: LogFn;
     /** Asks the user, or throws a CommandError with a hint when nobody can answer. */
-    prompt: PromptFn;
+    prompt: Prompter;
     /** Every discovered command. */
     commands: CommandEntry[];
     /** Runs another command by id or alias and returns its result. Inherits --json and --yes. */
@@ -275,8 +339,13 @@ export type ErrorCodeFn = (error: unknown) => string | undefined;
 export type GitRootFn = (cwd: string) => string | null;
 export type WriteTextFn = (file: string, text: string) => void;
 export type RemoveFileFn = (file: string) => void;
+/** Replaces a file with this text so that nobody ever reads it half written. */
+export type WriteAtomicFn = (file: string, text: string) => void;
+/** The `*.json` files of a folder, by name: never a temporary file or a lock. A missing folder has none. */
+export type ListJsonFilesFn = (dir: string) => string[];
 export type HomeDirectoryFn = () => string;
 export type ImportDefaultFn = (file: string) => Promise<unknown>;
+export type IsThenableFn = (value: unknown) => value is PromiseLike<unknown>;
 export type MessageOfFn = (error: unknown) => string;
 
 export type Resolution =
@@ -294,7 +363,12 @@ export type BeforeTerminatorFn = (argv: readonly string[]) => string[];
 export type JsonRequestedFn = (argv: readonly string[]) => boolean;
 /** The exit code of a failure: the one a tagged error carries when it is a failure code, else 1. */
 export type FailureCodeOfFn = (value: unknown) => ExitCode;
-export type SuggestFn = (registry: Registry, name: string) => string | undefined;
+/** `extraNames` are words the registry does not know but a caller may mean (the binary's built-ins). */
+export type SuggestFn = (
+    registry: Registry,
+    name: string,
+    extraNames?: readonly string[]
+) => string | undefined;
 export type FindCommandFn = (registry: Registry, id: string) => CommandEntry | undefined;
 
 // ---------------------------------------------------------------------------------------------
@@ -309,7 +383,12 @@ export type TableRow = readonly [name: string, text: string | undefined];
 /** What a help listing shows: topics and the commands under them. */
 export type HelpChildren = { topics: TopicEntry[]; commands: CommandEntry[] };
 export type UsageFn = (bin: string, entry: CommandEntry) => string;
-export type RootHelpFn = (bin: string, registry: Registry, style: Style) => string;
+export type RootHelpFn = (
+    bin: string,
+    registry: Registry,
+    style: Style,
+    builtins?: readonly Builtin[]
+) => string;
 export type TopicHelpFn = (
     bin: string,
     registry: Registry,
@@ -317,6 +396,16 @@ export type TopicHelpFn = (
     style: Style
 ) => string;
 export type CommandHelpFn = (bin: string, entry: CommandEntry, style: Style) => string;
+export type BuiltinHelpFn = (bin: string, builtin: Builtin, style: Style) => string;
+/** One word of a binary, as help prints it: a command file's entry and a built-in both fit. */
+export type HelpSubject = {
+    description: string;
+    usage: string;
+    args: readonly ArgDefinition[];
+    flags: FlagDefinitions;
+    aliases: readonly string[];
+    examples: readonly string[];
+};
 
 export type ManifestArg = {
     name: string;
@@ -352,9 +441,26 @@ export type Manifest = {
     topics: TopicEntry[];
     commands: ManifestCommand[];
     globalFlags: ManifestFlag[];
+    /** The words the shipped binary handles itself (`init`, `state`). Absent on a published tool's CLI. */
+    builtins?: ManifestCommand[];
 };
 
-export type ManifestFn = (bin: string, registry: Registry) => Manifest;
+/** A word of the shipped binary that is not a command file: what help needs to list and describe it. */
+export type Builtin = {
+    id: string;
+    description: string;
+    args: readonly ArgDefinition[];
+    flags: FlagDefinitions;
+    examples: readonly string[];
+};
+
+export type DescribeBuiltinsFn = (bin: string, builtins: readonly Builtin[]) => ManifestCommand[];
+
+export type ManifestFn = (
+    bin: string,
+    registry: Registry,
+    builtins?: readonly Builtin[]
+) => Manifest;
 
 /** The manifest narrowed to one topic: the topic and its sub-topics, and every command under it. Same shape. */
 export type TopicManifestFn = (everything: Manifest, topicId: string) => Manifest;
@@ -380,6 +486,8 @@ export type RunOptions = {
     /** Default: stdout is a terminal and NO_COLOR is unset. */
     color?: boolean | undefined;
     env?: NodeJS.ProcessEnv | undefined;
+    /** Words the binary handles itself, listed by help. The shipped `art` passes `init` and `state`; a tool passes none. */
+    builtins?: readonly Builtin[] | undefined;
 };
 
 export type RunCliFn = (argv: string[], options: RunOptions) => Promise<number>;
@@ -415,6 +523,7 @@ export type Session = World & {
     registry: Registry;
     wantsJson: boolean;
     state: RunState;
+    builtins: readonly Builtin[] | undefined;
 };
 
 /** What help prints as text, and what it prints under --json. */
@@ -449,6 +558,8 @@ export type ArtemisConfig = {
     commandsDir?: string;
     /** The name help and usage lines show. */
     bin?: string;
+    /** Where the store kit keeps its documents, relative to the folder of that package.json. Default "state". Read by `art state` and `defineStore({ project })`. */
+    stateDir?: string;
 };
 
 /** The folder holding the nearest qualifying package.json, and what that file says. */
@@ -480,11 +591,17 @@ export type ReadManifestFn = (dir: string) => ManifestRead | undefined;
  * Pure: the disk is only looked at through `readManifest` and `isFolder`.
  */
 export type FindProjectFn = (
-    cwd: string,
+    start: string,
     readManifest: ReadManifestFn,
     isFolder: IsFolderFn,
     route: CliRoute
 ) => Project | undefined;
+
+/** The folder the store kit keeps its documents in (absolute). Throws a CommandError when the "artemis" key has a bad shape. */
+export type ResolveStateDirFn = (project: Project) => string;
+
+/** What to say when no project is found from a folder upwards. */
+export type NoProjectErrorFn = (start: string, route: CliRoute) => CommandError;
 
 /** Throws a CommandError with a hint when the "artemis" key has a bad shape. */
 export type ResolveSettingsFn = (project: Project, route: CliRoute) => CliSettings;
@@ -569,5 +686,70 @@ export type AddKeyFn = (text: string, key: string, valueText: string) => string;
 export type IsInstalledPackageRootFn = (dir: string) => boolean;
 export type PackageNameForFn = (dir: string) => string;
 
+/** What `<word> --help` prints for a built-in word: its usage text, or under --json its manifest entry. */
+export type WordHelpFn = (word: { id: string; text: string; json: boolean }) => string;
+
 /** `art init [folder] [--json]`. Returns the exit code. */
 export type InitCommandFn = (words: string[], options: CliOptions, cwd: string) => number;
+
+// ---------------------------------------------------------------------------------------------
+// `art state`
+// ---------------------------------------------------------------------------------------------
+
+/** What the words after `state` ask for. */
+export type StateWords = {
+    /** The document to show or reset; none lists them all. */
+    name: string | undefined;
+    reset: boolean;
+    yes: boolean;
+    json: boolean;
+    help: boolean;
+};
+
+export type ParseStateWordsFn = (words: readonly string[]) => StateWords;
+
+/** What a state call needs to decide: its words, whether anyone can answer, and which documents exist. */
+export type StateInput = {
+    words: StateWords;
+    interactive: boolean;
+    existing: readonly string[];
+};
+
+/** What to do. `ask` says a reset needs the person to confirm first. */
+export type StatePlan =
+    | { kind: 'list' }
+    | { kind: 'show'; name: string }
+    | { kind: 'unknown'; name: string }
+    | { kind: 'reset'; name: string; ask: boolean }
+    | { kind: 'cannot-ask'; name: string };
+
+export type PlanStateFn = (input: StateInput) => StatePlan;
+
+/** What `art state` is given besides the words: how its lock waits, so a test never sleeps. */
+export type StateEdges = { lock: LockOptions };
+
+/** Refuses a flag typed before `state` that is not a global one (a UsageError). */
+export type AssertLeadingFlagsFn = (leading: readonly string[]) => void;
+
+/** `art state [<doc>] [--reset] [--yes] [--json]`. Returns the exit code. */
+export type StateCommandFn = (
+    words: string[],
+    host: CliOptions,
+    cwd: string,
+    edges?: StateEdges
+) => Promise<number>;
+
+/** What every step of a state call shares: where output goes, which folder, and how it was asked. */
+export type StateRun = {
+    io: IO;
+    /** The state folder, absolute. */
+    dir: string;
+    cwd: string;
+    json: boolean;
+    interactive: boolean;
+    /** The names of the documents in the folder. */
+    existing: readonly string[];
+    lock: LockOptions;
+};
+
+export type ShadowsWordFn = (commandsDir: string, word: string) => boolean;

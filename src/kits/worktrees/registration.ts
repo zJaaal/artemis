@@ -91,7 +91,7 @@ function registerCheckout(
     const finalName = uniqueName(name ?? base, base, isTakenBy(config, records));
     const record = { slot: nextFreeSlot(records), root: target };
 
-    config.store.write({ ...records, [finalName]: record });
+    config.registry.write({ ...records, [finalName]: record });
 
     return describeInstance(config, finalName, record);
 }
@@ -111,7 +111,7 @@ export function ensureInstance(
         return getInstance(config, pinned);
     }
 
-    const records = config.store.read();
+    const records = config.registry.read();
     const explicitRoot = root ? realPathOrResolve(root) : undefined;
 
     if (explicitRoot !== undefined && !isCheckoutRoot(config, explicitRoot)) {
@@ -142,7 +142,7 @@ export function ensureDetachedInstance(
         });
     }
 
-    const records = config.store.read();
+    const records = config.registry.read();
     const existing = recordOf(records, name);
 
     if (existing?.root) {
@@ -153,7 +153,7 @@ export function ensureDetachedInstance(
 
     const record = { slot: existing?.slot ?? nextFreeSlot(records), root: null, meta };
 
-    config.store.write({ ...records, [name]: record });
+    config.registry.write({ ...records, [name]: record });
 
     return describeInstance(config, name, record);
 }
@@ -164,11 +164,13 @@ export function removeInstance(config: KitConfig, name: string): void {
         throw new CommandError('The main checkout is not registered, so it cannot be removed.');
     }
 
-    const records = config.store.read();
+    const records = config.registry.read();
 
     if (!recordOf(records, name)) {
         throw noInstanceError(name);
     }
 
-    config.store.write(Object.fromEntries(Object.entries(records).filter(([key]) => key !== name)));
+    config.registry.write(
+        Object.fromEntries(Object.entries(records).filter(([key]) => key !== name))
+    );
 }

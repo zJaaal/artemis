@@ -1,7 +1,7 @@
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-import { CONFIG_KEY, DEFAULT_COMMANDS_FOLDER, MANIFEST_FILE, URL_LIKE } from '../constants.js';
+import { CONFIG_KEY, MANIFEST_FILE, URL_LIKE } from '../constants.js';
 import { isFolder, readManifest } from '../edges/files.js';
 import { currentProcess } from '../edges/process.js';
 import { workingDirectory } from '../edges/system.js';
@@ -13,9 +13,11 @@ import { resolveWorld } from '../run/world.js';
 import { messageOf } from '../utils/error-message.js';
 import { splitLeadingFlags } from '../resolve/resolve.js';
 import { jsonRequested } from '../utils/terminator.js';
-import { INIT_WORD } from './constants.js';
+import { BUILTINS, INIT_WORD, STATE_WORD } from './constants.js';
 import { initCommand } from './init-command.js';
-import { findProject, resolveSettings } from './settings.js';
+import { assertLeadingFlags } from './state.js';
+import { stateCommand } from './state-command.js';
+import { findProject, noProjectError, resolveSettings } from './settings.js';
 
 /** What `root` stands for as a path, or a CommandError that says what to pass instead. */
 function pathOfRoot(root: string | URL): string {
@@ -41,16 +43,6 @@ const folderOfRoot: FolderOfRootFn = (root) => {
 
     return isFolder(target) ? target : path.dirname(target);
 };
-
-/** What to do when no project is found: the end user can create one, the author of a tool must declare its bin. */
-const noProjectError = (start: string, route: CliRoute): CommandError =>
-    route === 'own'
-        ? new CommandError(`No ${MANIFEST_FILE} with a "bin" field found from ${start} upwards`, {
-              hint: `A published tool is found through the ${MANIFEST_FILE} that declares its "bin" (npm needs it to create the command anyway). If you maintain this tool, declare "bin" there and ship a ${DEFAULT_COMMANDS_FOLDER}/ folder in the package (see "files" in ${MANIFEST_FILE}).`
-          })
-        : new CommandError(`No project found from ${start} upwards`, {
-              hint: `A project is the nearest ${MANIFEST_FILE} with an "${CONFIG_KEY}" key or a ${DEFAULT_COMMANDS_FOLDER}/ folder next to it. Run it inside one, or use its "${INIT_WORD}" command in this folder to create one.`
-          });
 
 /** Whether the commands folder is already outside the project, so pointing it at a parent is no news. */
 const pointsOutside = (commandsDir: string, projectRoot: string): boolean => {
@@ -103,10 +95,15 @@ const settingsFor: SettingsForFn = (start, route) => {
 };
 
 /** A setup failure goes out the way any failure does: one object under --json, text otherwise. */
-function reportSetupFailure(argv: string[], error: unknown, host: HostOptions): number {
+function reportSetupFailure(
+    argv: string[],
+    error: unknown,
+    host: HostOptions,
+    commandId?: string
+): number {
     const { io, style } = resolveWorld(host);
 
-    return reportError(error, { io, style, json: jsonRequested(argv), commandId: undefined });
+    return reportError(error, { io, style, json: jsonRequested(argv), commandId });
 }
 
 /**
@@ -135,6 +132,21 @@ export const launch: CliFn = async (options = {}) => {
         }
     }
 
+    // `state` too: it reads the state folder of the project, and works with no commands folder at all.
+    if (route === 'shipped' && rest[0] === STATE_WORD) {
+        try {
+            assertLeadingFlags(leading);
+
+            return await stateCommand(
+                [...leading, ...rest.slice(1)],
+                host,
+                path.resolve(cwd ?? workingDirectory())
+            );
+        } catch (error) {
+            return reportSetupFailure(argv, error, host, STATE_WORD);
+        }
+    }
+
     let settings;
 
     try {
@@ -147,5 +159,9 @@ export const launch: CliFn = async (options = {}) => {
         return reportSetupFailure(argv, error, host);
     }
 
-    return run(argv, { ...host, ...settings });
+    return run(argv, {
+        ...host,
+        ...settings,
+        ...(route === 'shipped' ? { builtins: BUILTINS } : {})
+    });
 };

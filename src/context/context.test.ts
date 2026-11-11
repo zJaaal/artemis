@@ -1,10 +1,16 @@
 import { beforeAll, describe, expect, test } from 'vitest';
 
 import { createContext } from './context.js';
-import { EXIT_CODE, NOT_INTERACTIVE_HINT } from '../constants.js';
+import { ASKS_REGARDLESS_HINT, EXIT_CODE, NOT_INTERACTIVE_HINT } from '../constants.js';
 import { discover } from '../discover/discover.js';
 import { CommandError } from '../errors/errors.js';
-import type { ContextParts, GlobalFlags, Registry } from '../models.js';
+import type {
+    CommandContext,
+    ContextParts,
+    GlobalFlags,
+    PromptOptions,
+    Registry
+} from '../models.js';
 import { COMMANDS_FIXTURE_DIR } from '../test/constants.js';
 import { createSink } from '../test/sink.js';
 
@@ -96,47 +102,112 @@ describe('ctx fields', () => {
     });
 });
 
-describe('ctx.prompt when nobody can answer', () => {
-    test('throws a CommandError instead of waiting forever', async () => {
+const CHOICES = [
+    { label: 'Node', value: 'node' },
+    { label: 'Deno', value: 'deno' }
+] as const;
+
+/** Each of the four questions, asked the same way, so each is tested on its own. */
+const QUESTIONS: {
+    method: string;
+    ask: (ctx: CommandContext, options: PromptOptions) => Promise<unknown>;
+}[] = [
+    { method: 'confirm', ask: (ctx, options) => ctx.prompt.confirm('Sure?', options) },
+    { method: 'text', ask: (ctx, options) => ctx.prompt.text('Name?', options) },
+    {
+        method: 'select',
+        ask: (ctx, options) => ctx.prompt.select('Runner?', { ...options, choices: CHOICES })
+    },
+    {
+        method: 'multiselect',
+        ask: (ctx, options) => ctx.prompt.multiselect('Runners?', { ...options, choices: CHOICES })
+    }
+];
+
+describe('ctx.prompt has exactly four questions', () => {
+    test('confirm, text, select and multiselect', () => {
         const { ctx } = setUp();
 
-        await expect(
-            ctx.prompt({ type: 'confirm', name: 'ok', message: 'Sure?' })
-        ).rejects.toBeInstanceOf(CommandError);
+        expect(Object.keys(ctx.prompt).sort()).toEqual([
+            'confirm',
+            'multiselect',
+            'select',
+            'text'
+        ]);
     });
+});
 
-    test('says the command needs input', async () => {
+describe('ctx.prompt when nobody can answer', () => {
+    test.each(QUESTIONS)(
+        '$method throws a CommandError instead of waiting forever',
+        async ({ ask }) => {
+            const { ctx } = setUp();
+
+            await expect(ask(ctx, {})).rejects.toBeInstanceOf(CommandError);
+        }
+    );
+
+    test.each(QUESTIONS)('$method says the command needs input', async ({ ask }) => {
         const { ctx } = setUp();
 
-        await expect(ctx.prompt({ type: 'confirm', name: 'ok', message: 'Sure?' })).rejects.toThrow(
+        await expect(ask(ctx, {})).rejects.toThrow(
             'This command needs input, but it is not running interactively.'
         );
     });
 
-    test('the default hint tells the caller to pass the flags that answer', async () => {
+    test.each(QUESTIONS)(
+        '$method has a default hint that tells the caller to pass the flags that answer',
+        async ({ ask }) => {
+            const { ctx } = setUp();
+
+            await expect(ask(ctx, {})).rejects.toMatchObject({ hint: NOT_INTERACTIVE_HINT });
+        }
+    );
+
+    test.each(QUESTIONS)(
+        '$method says the command asks regardless when --yes was passed, not to pass --yes again',
+        async ({ ask }) => {
+            const { ctx } = setUp({ global: { ...quietFlags, yes: true } });
+
+            await expect(ask(ctx, {})).rejects.toMatchObject({ hint: ASKS_REGARDLESS_HINT });
+        }
+    );
+
+    test.each(QUESTIONS)(
+        '$method says the command asks regardless when --json was passed',
+        async ({ ask }) => {
+            const { ctx } = setUp({ global: { ...quietFlags, json: true } });
+
+            await expect(ask(ctx, {})).rejects.toMatchObject({ hint: ASKS_REGARDLESS_HINT });
+        }
+    );
+
+    test.each(QUESTIONS)(
+        "$method keeps the command's own hint even when --yes was passed",
+        async ({ ask }) => {
+            const { ctx } = setUp({ global: { ...quietFlags, yes: true } });
+
+            await expect(ask(ctx, { hint: 'Pass --branch.' })).rejects.toMatchObject({
+                hint: 'Pass --branch.'
+            });
+        }
+    );
+
+    test.each(QUESTIONS)(
+        '$method takes the hint from the command when it has one',
+        async ({ ask }) => {
+            const { ctx } = setUp();
+
+            await expect(ask(ctx, { hint: 'Pass --yes to accept.' })).rejects.toMatchObject({
+                hint: 'Pass --yes to accept.'
+            });
+        }
+    );
+
+    test.each(QUESTIONS)('$method fails with an expected error that exits 1', async ({ ask }) => {
         const { ctx } = setUp();
-        const failure = ctx.prompt({ type: 'confirm', name: 'ok', message: 'Sure?' });
 
-        await expect(failure).rejects.toMatchObject({ hint: NOT_INTERACTIVE_HINT });
-    });
-
-    test('a hint from the command replaces the default', async () => {
-        const { ctx } = setUp();
-
-        const failure = ctx.prompt(
-            { type: 'confirm', name: 'ok', message: 'Sure?' },
-            { hint: 'Pass --yes to accept.' }
-        );
-
-        await expect(failure).rejects.toMatchObject({ hint: 'Pass --yes to accept.' });
-    });
-
-    test('the failure is an expected one that exits 1', async () => {
-        const { ctx } = setUp();
-
-        const error = await ctx
-            .prompt({ type: 'confirm', name: 'ok', message: 'Sure?' })
-            .catch((caught: unknown) => caught);
+        const error = await ask(ctx, {}).catch((caught: unknown) => caught);
 
         expect(error).toMatchObject({ exitCode: EXIT_CODE.FAILED });
     });
