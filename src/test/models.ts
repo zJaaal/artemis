@@ -50,3 +50,15 @@ export type FakeLockEdges = {
     /** Every pause the lock asked for, in ms. */
     pauses: number[];
 };
+
+/** The `prompts` package as the test fake sees it. */
+export type PromptsFake = {
+    /** How many times the `prompts` module was loaded since the last reset. */
+    loads: number;
+    /** What the user "typed". */
+    answers: Record<string, unknown>;
+    /** Whether the user pressed Ctrl-C. */
+    cancel: boolean;
+};
+
+export type PromptsCallbacks = { onCancel: () => unknown };
