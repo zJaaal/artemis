@@ -17,7 +17,8 @@ const testRules = {
         'vitest/no-conditional-expect': 'error',
         'vitest/no-disabled-tests': 'error',
         'vitest/no-focused-tests': 'error',
-        'vitest/expect-expect': 'error',
+        // Type tests assert with expectTypeOf.
+        'vitest/expect-expect': ['error', { assertFunctionNames: ['expect', 'expectTypeOf'] }],
         'vitest/valid-title': 'error',
         'vitest/no-identical-title': 'error',
         'vitest/no-standalone-expect': 'error'

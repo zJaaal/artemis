@@ -7,5 +7,8 @@ export default defineConfig({
         // Fixture command files are plain .js that import the package by name, like a consumer's.
         alias: { '@zjaaal/artemis': fileURLToPath(new URL('./src/index.ts', import.meta.url)) }
     },
-    test: {}
+    test: {
+        // Type tests (`*.test-d.ts`) pin the args/flags inference with expectTypeOf.
+        typecheck: { enabled: true, include: ['src/**/*.test-d.ts'] }
+    }
 });

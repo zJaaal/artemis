@@ -68,7 +68,7 @@ export type InferArgs<TArgs extends ArgDefinitions> = {
 
 /** Boolean flags are booleans, string flags strings, `multiple` ones arrays; a default removes `undefined`. */
 export type InferFlags<TFlags extends FlagDefinitions> = {
-    [TName in keyof TFlags]: FlagValue<TFlags[TName]>;
+    -readonly [TName in keyof TFlags]: FlagValue<TFlags[TName]>;
 };
 
 // ---------------------------------------------------------------------------------------------
@@ -141,7 +141,11 @@ export type Command<
     examples: readonly string[];
 };
 
-export type TopicDefinition = { description?: string; [extra: string]: unknown };
+/** What `defineTopic` takes: only the description is kept. */
+export type TopicDefinition = { description?: string };
+
+/** What `defineTopic` returns. */
+export type Topic = { readonly description: string };
 
 export type DefineCommandFn = <
     const TArgs extends ArgDefinitions = [],
@@ -150,9 +154,12 @@ export type DefineCommandFn = <
     definition: CommandDefinition<TArgs, TFlags>
 ) => Command<TArgs, TFlags>;
 
-export type DefineTopicFn = (definition?: TopicDefinition) => TopicDefinition;
+/** Reads the tag a definition carries at runtime. */
+export type IsTaggedFn = (value: unknown, tag: symbol) => boolean;
+
+export type DefineTopicFn = (definition?: TopicDefinition) => Topic;
 export type IsCommandFn = (value: unknown) => value is Command;
-export type IsTopicFn = (value: unknown) => value is TopicDefinition;
+export type IsTopicFn = (value: unknown) => value is Topic;
 
 // ---------------------------------------------------------------------------------------------
 // Errors
@@ -160,8 +167,12 @@ export type IsTopicFn = (value: unknown) => value is TopicDefinition;
 
 export type ExitCode = (typeof EXIT_CODE)[keyof typeof EXIT_CODE];
 
-export type CommandErrorOptions = { hint?: string; exitCode?: ExitCode; cause?: unknown };
-export type UsageErrorOptions = { hint?: string; usage?: string };
+export type CommandErrorOptions = {
+    hint?: string | undefined;
+    exitCode?: ExitCode;
+    cause?: unknown;
+};
+export type UsageErrorOptions = { hint?: string | undefined; usage?: string | undefined };
 
 // ---------------------------------------------------------------------------------------------
 // Parsing
