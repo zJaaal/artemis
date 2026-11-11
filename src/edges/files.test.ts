@@ -7,6 +7,7 @@ import { createTempFolders } from '../test/temp.js';
 import { thrownBy } from '../test/thrown.js';
 import {
     createExclusive,
+    isFolder,
     listDirectory,
     makeDirectory,
     modifiedAt,
@@ -201,5 +202,23 @@ describe('readManifest', () => {
             message: expect.stringContaining('must contain a JSON object'),
             hint: expect.stringContaining('"name"')
         });
+    });
+});
+
+describe('isFolder', () => {
+    test('is true for a folder', () => {
+        expect(isFolder(folders.make('artemis-files-'))).toBe(true);
+    });
+
+    test('is false for a file', () => {
+        const file = path.join(folders.make('artemis-files-'), 'a.txt');
+
+        writeText(file, 'x');
+
+        expect(isFolder(file)).toBe(false);
+    });
+
+    test('is false for a path that does not exist', () => {
+        expect(isFolder(path.join(folders.make('artemis-files-'), 'nope'))).toBe(false);
     });
 });

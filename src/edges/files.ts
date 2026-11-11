@@ -10,6 +10,7 @@ import { codeOf } from '../utils/error-code.js';
 
 import type {
     CreateExclusiveFn,
+    IsFolderFn,
     ListDirectoryFn,
     MakeDirectoryFn,
     ModifiedAtFn,
@@ -122,3 +123,6 @@ export const readManifest: ReadManifestFn = (dir) => {
         hint: 'A package.json is an object, such as { "name": "my-project" }.'
     });
 };
+
+export const isFolder: IsFolderFn = (target) =>
+    fs.statSync(target, { throwIfNoEntry: false })?.isDirectory() ?? false;

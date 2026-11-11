@@ -1,0 +1,212 @@
+import fs from 'node:fs';
+import path from 'node:path';
+
+import { afterEach, describe, expect, test } from 'vitest';
+
+import { EXIT_CODE } from '../constants.js';
+import type { Manifest } from '../models.js';
+import type { Envelope } from '../test/models.js';
+import { makeProject } from '../test/project.js';
+import { createSink } from '../test/sink.js';
+import { createTempFolders } from '../test/temp.js';
+import { cli } from './cli.js';
+
+const folders = createTempFolders();
+
+afterEach(() => folders.cleanUp());
+
+/** Runs the shipped command as if typed in `cwd`. */
+const art = async (argv: string[], cwd: string) => {
+    const stdout = createSink();
+    const stderr = createSink();
+
+    const code = await cli(argv, {
+        cwd,
+        stdout,
+        stderr,
+        env: {},
+        interactive: false,
+        color: false
+    });
+
+    return { code, out: stdout.text, err: stderr.text };
+};
+
+const envelope = (out: string): Envelope => JSON.parse(out) as Envelope;
+
+const greeting = async (cwd: string): Promise<unknown> =>
+    envelope((await art(['hello', '--json'], cwd)).out).result;
+
+describe('cli: which project it runs', () => {
+    test('runs the commands folder of the project it is run in, with no bin file', async () => {
+        const root = folders.make('artemis-cli-');
+
+        makeProject(root, { greeting: 'project' });
+
+        expect(await greeting(root)).toEqual({ greeting: 'project' });
+    });
+
+    test('runs it from a folder deep inside the project', async () => {
+        const root = folders.make('artemis-cli-');
+        const deep = path.join(root, 'src', 'deep');
+
+        makeProject(root, { greeting: 'project' });
+        fs.mkdirSync(deep, { recursive: true });
+
+        expect(await greeting(deep)).toEqual({ greeting: 'project' });
+    });
+
+    test('in a monorepo, the package you stand in is the project', async () => {
+        const root = folders.make('artemis-cli-');
+        const inner = path.join(root, 'packages', 'inner');
+
+        makeProject(root, { greeting: 'outer' });
+        makeProject(inner, { greeting: 'inner' });
+
+        expect(await greeting(path.join(inner, 'src'))).toEqual({ greeting: 'inner' });
+    });
+
+    test('two projects on one machine run only their own commands', async () => {
+        const work = folders.make('artemis-cli-');
+
+        makeProject(path.join(work, 'a'), { greeting: 'a' });
+        makeProject(path.join(work, 'b'), { greeting: 'b' });
+
+        expect([
+            await greeting(path.join(work, 'a')),
+            await greeting(path.join(work, 'b'))
+        ]).toEqual([{ greeting: 'a' }, { greeting: 'b' }]);
+    });
+
+    test('"artemis".commandsDir moves the commands folder', async () => {
+        const root = folders.make('artemis-cli-');
+
+        makeProject(root, {
+            greeting: 'moved',
+            manifest: { artemis: { commandsDir: 'tools/commands' } },
+            commandsFolder: 'tools/commands'
+        });
+
+        expect(await greeting(root)).toEqual({ greeting: 'moved' });
+    });
+
+    test('exits with the code of the command line it ran', async () => {
+        const root = folders.make('artemis-cli-');
+
+        makeProject(root, { greeting: 'project' });
+
+        expect((await art(['nope'], root)).code).toBe(EXIT_CODE.USAGE);
+    });
+});
+
+describe('cli: the name it shows', () => {
+    const manifestOf = async (cwd: string) =>
+        envelope((await art(['help', '--json'], cwd)).out).result as Manifest;
+
+    test('is art by default', async () => {
+        const root = folders.make('artemis-cli-');
+
+        makeProject(root, { greeting: 'project' });
+
+        expect((await manifestOf(root)).bin).toBe('art');
+    });
+
+    test('is the "artemis".bin setting when there is one', async () => {
+        const root = folders.make('artemis-cli-');
+
+        makeProject(root, { greeting: 'project', manifest: { artemis: { bin: 'mytool' } } });
+
+        expect((await manifestOf(root)).bin).toBe('mytool');
+    });
+
+    test('is the single key of the project’s own bin field', async () => {
+        const root = folders.make('artemis-cli-');
+
+        makeProject(root, { greeting: 'project', manifest: { bin: { mytool: 'bin/mytool.js' } } });
+
+        expect((await manifestOf(root)).bin).toBe('mytool');
+    });
+
+    test('shows up in the usage lines of the text help', async () => {
+        const root = folders.make('artemis-cli-');
+
+        makeProject(root, { greeting: 'project', manifest: { artemis: { bin: 'mytool' } } });
+
+        expect((await art(['help'], root)).out).toContain('mytool <topic> <command>');
+    });
+});
+
+describe('cli: when it cannot find what to run', () => {
+    test('with no package.json up the tree it fails and says what to create', async () => {
+        const nowhere = folders.make('artemis-cli-');
+        const result = await art(['hello'], nowhere);
+
+        expect(result.code).toBe(EXIT_CODE.FAILED);
+        expect(result.err).toContain(`No package.json found from ${nowhere} upwards`);
+        expect(result.err).toContain('create a package.json with a commands/ folder next to it');
+    });
+
+    test('under --json that is one object with a null command', async () => {
+        const nowhere = folders.make('artemis-cli-');
+        const result = await art(['hello', '--json'], nowhere);
+
+        expect(envelope(result.out)).toEqual({
+            ok: false,
+            command: null,
+            error: `No package.json found from ${nowhere} upwards`,
+            hint: 'Run art inside a project, or create a package.json with a commands/ folder next to it.'
+        });
+
+        expect(result.err).toBe('');
+    });
+
+    test('a project with no commands folder says which folder to create', async () => {
+        const root = folders.make('artemis-cli-');
+
+        fs.writeFileSync(path.join(root, 'package.json'), '{ "name": "empty" }');
+
+        const result = await art(['hello', '--json'], root);
+
+        expect(envelope(result.out)).toMatchObject({
+            ok: false,
+            command: null,
+            error: `Commands folder not found: ${path.join(root, 'commands')}`,
+            hint: `Create ${path.join(root, 'commands')}, or set "artemis": { "commandsDir" } in ${path.join(root, 'package.json')}.`
+        });
+    });
+
+    test('the nearest package.json wins even when a parent has commands', async () => {
+        const root = folders.make('artemis-cli-');
+        const inner = path.join(root, 'packages', 'inner');
+
+        makeProject(root, { greeting: 'outer' });
+        fs.mkdirSync(inner, { recursive: true });
+        fs.writeFileSync(path.join(inner, 'package.json'), '{ "name": "inner" }');
+
+        expect((await art(['hello'], inner)).code).toBe(EXIT_CODE.FAILED);
+    });
+
+    test('a bad "artemis" key fails and names the field', async () => {
+        const root = folders.make('artemis-cli-');
+
+        makeProject(root, { greeting: 'project', manifest: { artemis: { commandsDir: 5 } } });
+
+        const result = await art(['hello', '--json'], root);
+
+        expect(envelope(result.out)).toMatchObject({
+            ok: false,
+            command: null,
+            error: `"artemis".commandsDir must be a non-empty string (in ${path.join(root, 'package.json')})`
+        });
+    });
+
+    test('a package.json that is not valid JSON fails and names the file', async () => {
+        const root = folders.make('artemis-cli-');
+
+        fs.writeFileSync(path.join(root, 'package.json'), '{ nope');
+
+        expect((await art(['hello'], root)).err).toContain(
+            `${path.join(root, 'package.json')} is not valid JSON`
+        );
+    });
+});

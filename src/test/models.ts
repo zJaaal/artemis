@@ -64,3 +64,12 @@ export type PromptsFake = {
 };
 
 export type PromptsCallbacks = { onCancel: () => unknown };
+
+export type ProjectOptions = {
+    /** What the project's `hello` command answers. */
+    greeting: string;
+    /** Extra fields for its package.json, such as `{ artemis: { commandsDir: 'tools' } }`. */
+    manifest?: Record<string, unknown>;
+    /** Folder of the commands, relative to the project. Default "commands". */
+    commandsFolder?: string;
+};
