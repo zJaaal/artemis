@@ -58,6 +58,61 @@ describe('run: resolving and running a command', () => {
     });
 });
 
+describe('run: flags and the command line', () => {
+    test('a global flag before the command name works like one after it', async () => {
+        const result = await art(['--json', 'math', 'add', '1', '2']);
+
+        expect(envelope(result)).toEqual({ ok: true, command: 'math add', result: { sum: 3 } });
+    });
+
+    test('several global flags before the command name all apply', async () => {
+        const result = await art(['--json', '--yes', 'confirm'], { interactive: true });
+
+        expect(envelope(result).result).toEqual({ value: true, asked: false });
+    });
+
+    test('a global flag alone shows help', async () => {
+        const result = await art(['--json']);
+
+        expect(envelope(result)).toMatchObject({ ok: true, command: 'help' });
+    });
+
+    test('--help before the command name shows that command help', async () => {
+        const result = await art(['--help', 'hello']);
+
+        expect(result.out).toMatch(/art hello \[name\]/);
+    });
+
+    test('a flag that is not global before the command name is a usage error', async () => {
+        const result = await art(['--bogus']);
+
+        expect(result.code).toBe(EXIT_CODE.USAGE);
+        expect(result.err).toMatch(/Unknown option "--bogus"/);
+    });
+
+    test('a command flag typed before its command is a usage error with a hint', async () => {
+        const result = await art(['--shout', 'hello', '--json']);
+
+        expect(envelope(result)).toMatchObject({
+            ok: false,
+            hint: 'Flags go after the command: art <command> --shout'
+        });
+    });
+
+    test('after -- everything is a plain argument, even --json', async () => {
+        const result = await art(['echo', '--', '--json']);
+
+        expect(result.out).toBe('--json\n');
+    });
+
+    test('--json after -- does not turn on JSON mode for errors either', async () => {
+        const result = await art(['nope', '--', '--json']);
+
+        expect(result.err).toMatch(/Unknown command "nope"/);
+        expect(result.out).toBe('');
+    });
+});
+
 describe('run: usage errors', () => {
     test('a missing required arg is a usage error that shows the usage', async () => {
         const result = await art(['math', 'add', '1']);
@@ -153,9 +208,39 @@ describe('run: prompts and nested commands', () => {
         expect(envelope(result).hint).toMatch(/--yes/);
     });
 
+    test('--json never prompts, even in an interactive run', async () => {
+        const result = await art(['confirm', '--json'], { interactive: true });
+
+        expect(envelope(result).result).toEqual({ value: true, asked: false });
+    });
+
     test('ctx.invoke runs another command and returns its result', async () => {
         const result = await art(['calls-hello', '--json']);
 
         expect(envelope(result).result).toEqual({ greeting: 'hello bob' });
+    });
+
+    test('ctx.invoke with --help is refused, not run with empty arguments', async () => {
+        const result = await art(['invokes-help', '--json']);
+
+        expect(envelope(result)).toMatchObject({
+            ok: false,
+            error: 'ctx.invoke("hello"): --help is not something a command can invoke'
+        });
+    });
+
+    test('a bad ctx.invoke call is the calling command failing, exit 1, not a usage error', async () => {
+        const result = await art(['invokes-badly']);
+
+        expect(result.code).toBe(EXIT_CODE.FAILED);
+    });
+
+    test('a bad ctx.invoke call says which command and shows its usage', async () => {
+        const result = await art(['invokes-badly', '--json']);
+
+        expect(envelope(result)).toMatchObject({
+            error: 'ctx.invoke("math add"): Missing required argument "b"',
+            hint: 'Usage: art math add <a> <b>'
+        });
     });
 });

@@ -65,7 +65,7 @@ describe('the prompts edge', () => {
 
         const { art } = await freshArt();
 
-        await art(['confirm', '--json'], { interactive: true });
+        await art(['confirm'], { interactive: true });
 
         expect(fake.loads).toBe(1);
     });
@@ -73,19 +73,27 @@ describe('the prompts edge', () => {
     test('the answers come back to the command', async () => {
         fake.answers = { value: false };
 
-        const { art, envelope } = await freshArt();
-        const result = await art(['confirm', '--json'], { interactive: true });
+        const { art } = await freshArt();
+        const result = await art(['confirm'], { interactive: true });
 
-        expect(envelope(result).result).toEqual({ value: false, asked: true });
+        expect(JSON.parse(result.out)).toEqual({ value: false, asked: true });
     });
 
     test('a cancelled prompt is a failed command', async () => {
         fake.cancel = true;
 
+        const { art } = await freshArt();
+        const result = await art(['confirm'], { interactive: true });
+
+        expect(result.code).toBe(EXIT_CODE.FAILED);
+        expect(result.err).toContain('Cancelled.');
+    });
+
+    test('--json never prompts either, so stdout stays one JSON object', async () => {
         const { art, envelope } = await freshArt();
         const result = await art(['confirm', '--json'], { interactive: true });
 
-        expect(result.code).toBe(EXIT_CODE.FAILED);
-        expect(envelope(result)).toMatchObject({ ok: false, error: 'Cancelled.' });
+        expect(envelope(result).result).toEqual({ value: true, asked: false });
+        expect(fake.loads).toBe(0);
     });
 });

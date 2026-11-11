@@ -116,6 +116,7 @@ export type DescribeInstanceFn = (
 ) => WorktreeInstance;
 
 export type NextFreeSlotFn = (records: WorktreeRecords) => number;
+export type RecordOfFn = (records: WorktreeRecords, name: string) => WorktreeRecord | undefined;
 
 /** A name that is not taken by a registered worktree or by the main checkout. */
 export type UniqueNameFn = (wanted: string, base: string, taken: NameCheck) => string;

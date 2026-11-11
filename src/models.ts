@@ -271,6 +271,12 @@ export type Resolution =
     | { kind: 'unknown'; name: string };
 
 export type ResolveFn = (registry: Registry, argv: readonly string[]) => Resolution;
+
+/** The flags typed before the command name, and everything from the command name on. */
+export type LeadingFlags = { leading: string[]; rest: string[] };
+export type SplitLeadingFlagsFn = (argv: readonly string[]) => LeadingFlags;
+export type IsGlobalFlagTokenFn = (token: string) => boolean;
+export type BeforeTerminatorFn = (argv: readonly string[]) => string[];
 export type SuggestFn = (registry: Registry, name: string) => string | undefined;
 export type FindCommandFn = (registry: Registry, id: string) => CommandEntry | undefined;
 

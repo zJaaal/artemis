@@ -3,6 +3,7 @@ import { describe, expect, test } from 'vitest';
 import { discover } from './discover.js';
 import {
     ALIAS_CLASH_FIXTURE_DIR,
+    ALIAS_TOPIC_FIXTURE_DIR,
     BAD_COMMANDS_FIXTURE_DIR,
     COMMANDS_FIXTURE_DIR,
     MISSING_FIXTURE_DIR
@@ -71,5 +72,12 @@ describe('discover', () => {
         const registry = await discover(MISSING_FIXTURE_DIR);
 
         expect(registry.warnings).toEqual([`commands folder not found: ${MISSING_FIXTURE_DIR}`]);
+    });
+
+    test('an alias that is the name of a topic is ignored with a warning, so the topic stays reachable', async () => {
+        const registry = await discover(ALIAS_TOPIC_FIXTURE_DIR);
+
+        expect(registry.warnings).toEqual(['alias "math" of "solo" is already taken; ignored']);
+        expect(registry.aliases.has('math')).toBe(false);
     });
 });

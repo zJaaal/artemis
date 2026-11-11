@@ -9,6 +9,9 @@ export const TOPIC_TAG = Symbol.for('artemis.topic');
 
 export const FLAG_TYPES = ['boolean', 'string'] as const;
 
+/** A short flag is a single character (`-s`); the parser rejects anything else. */
+export const SHORT_FLAG_LENGTH = 1;
+
 /** The flags every command gets. Their names and shorts are reserved. */
 export const GLOBAL_FLAGS = {
     help: { type: 'boolean', short: 'h', description: 'Show help for the command' },
@@ -22,11 +25,19 @@ export const GLOBAL_FLAGS = {
 
 export const RESERVED_FLAGS: readonly string[] = Object.keys(GLOBAL_FLAGS);
 
+/** The global flags as typed on a command line: `--json`, `-y`, ... */
+export const GLOBAL_FLAG_TOKENS: readonly string[] = Object.entries(GLOBAL_FLAGS).flatMap(
+    ([name, flag]) => [`--${name}`, ...('short' in flag ? [`-${flag.short}`] : [])]
+);
+
 export const RESERVED_SHORTS: readonly string[] = Object.values(GLOBAL_FLAGS).flatMap((flag) =>
     'short' in flag ? [flag.short] : []
 );
 
 export const HELP_WORD = 'help';
+
+/** Ends the flags: everything after it is a plain argument. */
+export const TERMINATOR = '--';
 export const JSON_FLAG = '--json';
 export const FLAG_PREFIX = '-';
 
@@ -64,7 +75,7 @@ export const DEFAULT_COLOR_ENV = 'NO_COLOR';
 export const NOT_INTERACTIVE_MESSAGE =
     'This command needs input, but it is not running interactively.';
 export const NOT_INTERACTIVE_HINT =
-    'Run it in a terminal, or pass the flags that answer the question (see --help).';
+    'Pass --yes to run without questions, or pass the flags that answer them (see --help).';
 export const CANCELLED_MESSAGE = 'Cancelled.';
 
 export const TABLE_INDENT = '  ';

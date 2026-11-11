@@ -412,3 +412,36 @@ describe('two registrations at once', () => {
         expect(first.slot).not.toBe(second.slot);
     });
 });
+
+describe('names that look like members of an object', () => {
+    test('can be registered like any other name, with real ports', () => {
+        expect(kit().ensureDetached({ name: 'constructor' })).toMatchObject({
+            name: 'constructor',
+            slot: FIRST_WORKTREE_SLOT,
+            ports: portsAt(FIRST_WORKTREE_SLOT)
+        });
+    });
+
+    test('can be read back and removed', () => {
+        kit().ensureDetached({ name: 'constructor' });
+        kit().remove('constructor');
+
+        expect(
+            kit()
+                .list()
+                .map((instance) => instance.name)
+        ).toEqual(['main']);
+    });
+
+    test('are the no-instance error when nothing was registered under them', () => {
+        expect(thrownBy(() => kit().remove('constructor'))).toMatchObject({
+            message: 'There is no instance named "constructor".'
+        });
+    });
+
+    test('are not found by ensure outside a checkout when nothing was registered under them', () => {
+        expect(thrownBy(() => kit().ensure({ cwd: dir, name: 'constructor' }))).toBeInstanceOf(
+            UsageError
+        );
+    });
+});

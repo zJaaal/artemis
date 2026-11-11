@@ -1,5 +1,5 @@
 import { FIRST_SUFFIX, FIRST_WORKTREE_SLOT, MAIN_SLOT } from './constants.js';
-import type { DescribeInstanceFn, NextFreeSlotFn, UniqueNameFn } from './models.js';
+import type { DescribeInstanceFn, NextFreeSlotFn, RecordOfFn, UniqueNameFn } from './models.js';
 
 /** A record of the registry as an instance: its ports shifted by slot, and its color by slot. */
 export const describeInstance: DescribeInstanceFn = (config, name, record) => ({
@@ -16,6 +16,10 @@ export const describeInstance: DescribeInstanceFn = (config, name, record) => ({
         ])
     )
 });
+
+/** The record of a registered name. Only the registry's own entries count, never `constructor` and friends. */
+export const recordOf: RecordOfFn = (records, name) =>
+    Object.hasOwn(records, name) ? records[name] : undefined;
 
 /** The lowest slot no registered worktree uses. Slot 0 is the main checkout. */
 export const nextFreeSlot: NextFreeSlotFn = (records) => {

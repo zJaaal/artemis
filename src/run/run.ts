@@ -26,7 +26,14 @@ import type {
 } from '../models.js';
 import { parse } from '../parse/parse.js';
 import { reportError } from './report.js';
-import { findCommand, resolve, suggest } from '../resolve/resolve.js';
+import {
+    findCommand,
+    isGlobalFlagToken,
+    resolve,
+    splitLeadingFlags,
+    suggest
+} from '../resolve/resolve.js';
+import { beforeTerminator } from '../utils/terminator.js';
 
 const isFlagToken = (token: string): boolean => token.startsWith(FLAG_PREFIX);
 
@@ -67,6 +74,38 @@ const unknownHint = (bin: string, registry: Registry, name: string): string => {
 const unknownCommand = ({ bin, registry }: Session, name: string): UsageError =>
     new UsageError(`Unknown command "${name}".`, { hint: unknownHint(bin, registry, name) });
 
+/** A bad call to `ctx.invoke` is the calling command's bug, not a wrong command line: exit 1. */
+function parseNested(
+    session: Session,
+    target: CommandEntry,
+    id: string,
+    argv: string[]
+): ParsedCommandLine {
+    try {
+        const nested = parse(target.definition, argv, usage(session.bin, target));
+
+        if (nested.global.help) {
+            throw new CommandError(
+                `ctx.invoke("${id}"): --help is not something a command can invoke`,
+                {
+                    hint: `Call it with its arguments, or read its help with "${session.bin} help ${id}".`
+                }
+            );
+        }
+
+        return nested;
+    } catch (error) {
+        if (!(error instanceof UsageError)) {
+            throw error;
+        }
+
+        throw new CommandError(`ctx.invoke("${id}"): ${error.message}`, {
+            hint: error.usage ? `Usage: ${error.usage}` : error.hint,
+            cause: error
+        });
+    }
+}
+
 /** `ctx.invoke`: runs another command, which inherits --json and --yes from the caller. */
 const createInvoke =
     (session: Session, caller: GlobalFlags): InvokeFn =>
@@ -77,7 +116,7 @@ const createInvoke =
             throw new CommandError(`ctx.invoke: there is no command "${id}"`);
         }
 
-        const nested = parse(target.definition, argv, usage(session.bin, target));
+        const nested = parseNested(session, target, id, argv);
 
         const global = {
             ...nested.global,
@@ -96,7 +135,8 @@ async function execute(
     const ctx = createContext({
         io: session.io,
         global: parsed.global,
-        interactive: session.canPrompt && !parsed.global.yes,
+        // --json promises exactly one object on stdout, so nothing may prompt there either
+        interactive: session.canPrompt && !parsed.global.yes && !parsed.global.json,
         style: session.style,
         registry: session.registry,
         invoke: createInvoke(session, parsed.global)
@@ -148,16 +188,27 @@ function showHelpFor(session: Session, words: string[]): void {
 
 /** Works out what the command line asks for and does it. */
 async function dispatch(session: Session, argv: string[]): Promise<number> {
-    const words = argv.filter((token) => !isFlagToken(token));
-    const wantsHelp = !words.length || argv[0] === HELP_WORD;
+    const { leading, rest } = splitLeadingFlags(argv);
+    const stray = leading.find((token) => !isGlobalFlagToken(token));
 
-    if (wantsHelp) {
-        showHelpFor(session, argv[0] === HELP_WORD ? words.slice(1) : []);
+    if (stray) {
+        throw new UsageError(`Unknown option "${stray}"`, {
+            hint: `Flags go after the command: ${session.bin} <command> ${stray}`
+        });
+    }
+
+    const [first] = rest;
+
+    if (first === undefined || first === HELP_WORD) {
+        showHelpFor(
+            session,
+            rest.slice(1).filter((token) => !isFlagToken(token))
+        );
 
         return EXIT_CODE.OK;
     }
 
-    const target = resolve(session.registry, argv);
+    const target = resolve(session.registry, rest);
 
     if (target.kind === 'unknown') {
         throw unknownCommand(session, target.name);
@@ -171,7 +222,11 @@ async function dispatch(session: Session, argv: string[]): Promise<number> {
 
     session.state.commandId = target.entry.id;
 
-    const parsed = parse(target.entry.definition, target.rest, usage(session.bin, target.entry));
+    const parsed = parse(
+        target.entry.definition,
+        [...leading, ...target.rest],
+        usage(session.bin, target.entry)
+    );
 
     if (parsed.global.help) {
         showHelpFor(session, target.entry.id.split(ID_SEPARATOR));
@@ -196,7 +251,7 @@ async function dispatch(session: Session, argv: string[]): Promise<number> {
  */
 export const run: RunCliFn = async (argv, options) => {
     const world = resolveWorld(options);
-    const wantsJson = argv.includes(JSON_FLAG);
+    const wantsJson = beforeTerminator(argv).includes(JSON_FLAG);
     const state: RunState = { commandId: undefined };
 
     try {

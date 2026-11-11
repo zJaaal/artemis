@@ -33,6 +33,7 @@ export type WarpOptions = {
     open?: OpenLinkFn;
 };
 
+export type CheckTabIdFn = (id: string) => string;
 export type WarpFn = (options?: WarpOptions) => Terminal;
 export type OpenTabsFn = (terminal: Terminal, tabs: readonly TerminalTab[]) => void;
 

@@ -3,15 +3,19 @@ import {
     FLAG_PREFIX,
     HELP_WORD,
     ID_SEPARATOR,
+    GLOBAL_FLAG_TOKENS,
     SUGGEST_LENGTH_DIVISOR,
-    SUGGEST_MIN_DISTANCE
+    SUGGEST_MIN_DISTANCE,
+    TERMINATOR
 } from '../constants.js';
 import type {
     CommandEntry,
     FindCommandFn,
+    IsGlobalFlagTokenFn,
     Registry,
     ResolveFn,
     Resolution,
+    SplitLeadingFlagsFn,
     SuggestFn,
     TopicEntry
 } from '../models.js';
@@ -141,4 +145,17 @@ export const resolve: ResolveFn = (registry, argv) => {
     const words = leadingWords(tokens);
 
     return matchLongest(registry, tokens, words) ?? { kind: 'unknown', name: words[0] ?? first };
+};
+
+export const isGlobalFlagToken: IsGlobalFlagTokenFn = (token) => GLOBAL_FLAG_TOKENS.includes(token);
+
+/**
+ * Splits off the flags typed before the command name (`art --json math add 1 2`). They belong to
+ * the run, not to a command; `--` ends them like it ends any flags.
+ */
+export const splitLeadingFlags: SplitLeadingFlagsFn = (argv) => {
+    const firstWord = argv.findIndex((token) => !isFlagToken(token) || token === TERMINATOR);
+    const end = firstWord === -1 ? argv.length : firstWord;
+
+    return { leading: argv.slice(0, end), rest: argv.slice(end) };
 };

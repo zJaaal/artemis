@@ -3,7 +3,9 @@ import path from 'node:path';
 
 import { afterEach, describe, expect, test } from 'vitest';
 
+import { CommandError } from '../../errors/errors.js';
 import { createTempFolders } from '../../test/temp.js';
+import { thrownBy } from '../../test/thrown.js';
 import type { TerminalTab } from './models.js';
 import { openTabs } from './open-tabs.js';
 import { warp } from './warp.js';
@@ -169,5 +171,55 @@ describe('the warp adapter: layout trees', () => {
         });
 
         expect(toml).toContain('directory = "/work/my \\"app\\""');
+    });
+});
+
+describe('the warp adapter: tab ids', () => {
+    const badIds = [
+        { id: '../../.zshrc' },
+        { id: 'wt/x' },
+        { id: 'a b' },
+        { id: 'x#y' },
+        { id: 'x?y' },
+        { id: '' }
+    ];
+
+    test.each(badIds)('writing a tab with the id "$id" is refused', ({ id }) => {
+        const terminal = warp({ configDir: folders.make('artemis-warp-'), open: () => undefined });
+
+        expect(
+            thrownBy(() => terminal.write({ id, name: 'x', panes: [{ dir: '/x' }] }))
+        ).toMatchObject({
+            message: `"${id}" is not a valid tab id.`
+        });
+    });
+
+    test.each(badIds)('opening the id "$id" is refused', ({ id }) => {
+        const terminal = warp({ configDir: folders.make('artemis-warp-'), open: () => undefined });
+
+        expect(thrownBy(() => terminal.open(id))).toBeInstanceOf(CommandError);
+    });
+
+    test.each(badIds)('removing the id "$id" is refused', ({ id }) => {
+        const terminal = warp({ configDir: folders.make('artemis-warp-'), open: () => undefined });
+
+        expect(thrownBy(() => terminal.remove(id))).toBeInstanceOf(CommandError);
+    });
+
+    test('a refused id writes nothing outside the config folder', () => {
+        const parent = folders.make('artemis-warp-');
+        const terminal = warp({ configDir: path.join(parent, 'tabs'), open: () => undefined });
+
+        thrownBy(() => terminal.write({ id: '../escape', name: 'x', panes: [{ dir: '/x' }] }));
+
+        expect(fs.existsSync(path.join(parent, 'escape.toml'))).toBe(false);
+    });
+
+    test('the error says which characters a tab id may have', () => {
+        const terminal = warp({ configDir: folders.make('artemis-warp-'), open: () => undefined });
+
+        expect(thrownBy(() => terminal.open('x y'))).toMatchObject({
+            hint: 'Use letters, digits, dashes and underscores only, e.g. "demo_dotcms".'
+        });
     });
 });

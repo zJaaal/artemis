@@ -12,7 +12,7 @@ import type {
     WorktreeInstance,
     WorktreeRecords
 } from './models.js';
-import { describeInstance, nextFreeSlot, uniqueName } from './instances.js';
+import { describeInstance, nextFreeSlot, recordOf, uniqueName } from './instances.js';
 import { isValidName, toWorktreeName } from './names.js';
 import {
     currentInstance,
@@ -52,7 +52,7 @@ function ensureOutsideCheckout(
     cwd: string,
     name: string | undefined
 ): WorktreeInstance {
-    const existing = name ? records[name] : undefined;
+    const existing = name ? recordOf(records, name) : undefined;
 
     if (name && existing) {
         return describeInstance(config, name, existing);
@@ -143,7 +143,7 @@ export function ensureDetachedInstance(
     }
 
     const records = config.store.read();
-    const existing = records[name];
+    const existing = recordOf(records, name);
 
     if (existing?.root) {
         throw new UsageError(`Instance "${name}" already belongs to ${existing.root}.`, {
@@ -164,11 +164,11 @@ export function removeInstance(config: KitConfig, name: string): void {
         throw new CommandError('The main checkout is not registered, so it cannot be removed.');
     }
 
-    const { [name]: removed, ...rest } = config.store.read();
+    const records = config.store.read();
 
-    if (!removed) {
+    if (!recordOf(records, name)) {
         throw noInstanceError(name);
     }
 
-    config.store.write(rest);
+    config.store.write(Object.fromEntries(Object.entries(records).filter(([key]) => key !== name)));
 }

@@ -110,7 +110,10 @@ function registerAliases(registry: Registry): void {
     );
 
     claims.forEach(({ alias, id }) => {
-        const isTaken = registry.commands.has(alias) || registry.aliases.has(alias);
+        const isTaken =
+            registry.commands.has(alias) ||
+            registry.topics.has(alias) ||
+            registry.aliases.has(alias);
 
         if (isTaken) {
             registry.warnings.push(`alias "${alias}" of "${id}" is already taken; ignored`);

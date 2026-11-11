@@ -92,6 +92,71 @@ describe('defineCommand: flags', () => {
     });
 });
 
+describe('defineCommand: flags the parser would reject', () => {
+    test('a short flag with more than one character is refused', () => {
+        expect(() =>
+            defineCommand({
+                description: 'x',
+                run,
+                flags: { round: { type: 'boolean', short: 'rr' } }
+            })
+        ).toThrow('defineCommand: short flag "-rr" of "--round" must be a single character');
+    });
+
+    test('a string default on a boolean flag is refused', () => {
+        expect(() =>
+            defineCommand({
+                description: 'x',
+                run,
+                flags: { loud: { type: 'boolean', default: 'yes' } }
+            })
+        ).toThrow('defineCommand: the default of flag "--loud" must be a boolean');
+    });
+
+    test('a boolean default on a string flag is refused', () => {
+        expect(() =>
+            defineCommand({
+                description: 'x',
+                run,
+                flags: { name: { type: 'string', default: true } }
+            })
+        ).toThrow('defineCommand: the default of flag "--name" must be a string');
+    });
+
+    test('a repeatable flag needs an array of strings as its default', () => {
+        expect(() =>
+            defineCommand({
+                description: 'x',
+                run,
+                flags: { tag: { type: 'string', multiple: true, default: 'a' } }
+            })
+        ).toThrow('defineCommand: the default of flag "--tag" must be an array of strings');
+    });
+
+    test('a repeatable flag with an array default is fine', () => {
+        expect(() =>
+            defineCommand({
+                description: 'x',
+                run,
+                flags: { tag: { type: 'string', multiple: true, default: ['a'] } }
+            })
+        ).not.toThrow();
+    });
+
+    test('the defaults of the right type are fine', () => {
+        expect(() =>
+            defineCommand({
+                description: 'x',
+                run,
+                flags: {
+                    loud: { type: 'boolean', default: false, short: 'l' },
+                    name: { type: 'string', default: 'ana' }
+                }
+            })
+        ).not.toThrow();
+    });
+});
+
 describe('defineCommand: the result', () => {
     test('defaults are filled in', () => {
         const command = defineCommand({ description: 'x', run });

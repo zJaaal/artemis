@@ -3,6 +3,7 @@ import {
     FLAG_TYPES,
     RESERVED_FLAGS,
     RESERVED_SHORTS,
+    SHORT_FLAG_LENGTH,
     TOPIC_TAG
 } from '../constants.js';
 import type {
@@ -52,6 +53,34 @@ function validateArgs(args: ArgDefinitions): void {
 const isReservedShort = (flag: FlagDefinition): boolean =>
     Boolean(flag.short) && RESERVED_SHORTS.includes(flag.short ?? '');
 
+const isMultiCharacterShort = (flag: FlagDefinition): boolean =>
+    flag.short !== undefined && flag.short.length !== SHORT_FLAG_LENGTH;
+
+/** What the default of a flag has to be for the parser to accept it. */
+function expectedDefault({ type, multiple }: FlagDefinition): string {
+    if (type === 'boolean') {
+        return 'a boolean';
+    }
+
+    return multiple ? 'an array of strings' : 'a string';
+}
+
+function hasDefaultOfWrongType({ type, multiple, default: value }: FlagDefinition): boolean {
+    if (value === undefined) {
+        return false;
+    }
+
+    if (type === 'boolean') {
+        return typeof value !== 'boolean';
+    }
+
+    if (multiple) {
+        return !Array.isArray(value) || value.some((item) => typeof item !== 'string');
+    }
+
+    return typeof value !== 'string';
+}
+
 function validateFlag(name: string, flag: FlagDefinition): void {
     if (RESERVED_FLAGS.includes(name)) {
         fail(`flag "--${name}" is reserved by Artemis`);
@@ -61,8 +90,16 @@ function validateFlag(name: string, flag: FlagDefinition): void {
         fail(`short flag "-${flag.short}" is reserved by Artemis`);
     }
 
+    if (isMultiCharacterShort(flag)) {
+        fail(`short flag "-${flag.short}" of "--${name}" must be a single character`);
+    }
+
     if (!FLAG_TYPES.includes(flag.type)) {
         fail(`flag "--${name}" needs type "boolean" or "string"`);
+    }
+
+    if (hasDefaultOfWrongType(flag)) {
+        fail(`the default of flag "--${name}" must be ${expectedDefault(flag)}`);
     }
 }
 

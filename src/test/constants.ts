@@ -24,6 +24,10 @@ export const ALIAS_CLASH_FIXTURE_DIR = fileURLToPath(
     new URL('./fixtures/alias-clash', import.meta.url)
 );
 
+export const ALIAS_TOPIC_FIXTURE_DIR = fileURLToPath(
+    new URL('./fixtures/alias-topic', import.meta.url)
+);
+
 export const MISSING_FIXTURE_DIR = fileURLToPath(new URL('./fixtures/not-there', import.meta.url));
 
 /** Base values for the worktrees kit tests; expectations are built from them, never copied. */
