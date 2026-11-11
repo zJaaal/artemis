@@ -467,11 +467,11 @@ export type ManifestRead = { manifest: Record<string, unknown> } | { error: Comm
 export type ReadManifestFn = (dir: string) => ManifestRead | undefined;
 
 /**
- * The project is the nearest package.json that is a real package: it has a "name", an "artemis" key,
- * or a commands folder next to it. A marker such as `{ "type": "module" }` in `src/` or `dist/` has
- * none of those and is skipped. A package.json that cannot be read or parsed is an error, never
- * skipped: running another project's commands silently would be worse. Pure: the disk is only looked
- * at through `readManifest` and `isFolder`.
+ * The project is the nearest package.json that is not a marker. A marker says nothing but "type" and
+ * has no commands folder beside it, like `{ "type": "module" }` in `src/` or `dist/`; it is skipped.
+ * A package.json that cannot be read or parsed is an error, never skipped: running another project's
+ * commands silently would be worse. A tool's own package is never a marker, so a search from its bin
+ * file stops there. Pure: the disk is only looked at through `readManifest` and `isFolder`.
  */
 export type FindProjectFn = (
     cwd: string,

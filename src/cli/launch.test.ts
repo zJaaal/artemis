@@ -80,7 +80,26 @@ describe('cli: which project it runs', () => {
 
         expect(envelope(result.out)).toMatchObject({
             ok: false,
-            error: `Commands folder not found: ${path.join(inner, 'commands')}`
+            error: `Commands folder not found: ${path.join(inner, 'commands')}`,
+            hint: expect.stringContaining(
+                'If the commands live in a parent folder, point commandsDir at them'
+            )
+        });
+    });
+
+    test('a template package.json under the project, valid JSON with a name, is a package of its own', async () => {
+        const root = folders.make('artemis-cli-');
+        const templates = path.join(root, 'templates');
+
+        makeProject(root, { greeting: 'project' });
+        fs.mkdirSync(templates);
+        fs.writeFileSync(path.join(templates, 'package.json'), '{ "name": "{{name}}" }');
+
+        const result = await art(['hello', '--json'], templates);
+
+        expect(envelope(result.out)).toMatchObject({
+            ok: false,
+            error: `Commands folder not found: ${path.join(templates, 'commands')}`
         });
     });
 
@@ -182,7 +201,7 @@ describe('cli: when it cannot find what to run', () => {
 
         expect(result.code).toBe(EXIT_CODE.FAILED);
         expect(result.err).toContain(`No project found from ${nowhere} upwards`);
-        expect(result.err).toContain('a folder with a package.json that has a "name"');
+        expect(result.err).toContain('a bare { "type": "module" } is a marker, not a project');
     });
 
     test('a package.json that is only a marker is not a project', async () => {
@@ -218,19 +237,17 @@ describe('cli: when it cannot find what to run', () => {
             ok: false,
             command: null,
             error: `No project found from ${nowhere} upwards`,
-            hint: expect.stringContaining('a folder with a package.json that has a "name"')
+            hint: expect.stringContaining('a bare { "type": "module" } is a marker, not a project')
         });
 
         expect(result.err).toBe('');
     });
 
-    test('a project with no commands folder says which folder to create', async () => {
+    test('a project with no commands folder says which folder to create, and where else to point', async () => {
         const root = folders.make('artemis-cli-');
+        const manifestPath = path.join(root, 'package.json');
 
-        fs.writeFileSync(
-            path.join(root, 'package.json'),
-            JSON.stringify({ name: 'empty', artemis: {} })
-        );
+        fs.writeFileSync(manifestPath, JSON.stringify({ name: 'empty', artemis: {} }));
 
         const result = await art(['hello', '--json'], root);
 
@@ -238,7 +255,9 @@ describe('cli: when it cannot find what to run', () => {
             ok: false,
             command: null,
             error: `Commands folder not found: ${path.join(root, 'commands')}`,
-            hint: `Create ${path.join(root, 'commands')}, or set "artemis": { "commandsDir" } in ${path.join(root, 'package.json')}.`
+            hint:
+                `Create ${path.join(root, 'commands')}, or set "artemis": { "commandsDir" } in ${manifestPath}. ` +
+                'If the commands live in a parent folder, point commandsDir at them, for example "../commands".'
         });
     });
 
@@ -300,7 +319,11 @@ describe('cli: when it cannot find what to run', () => {
 
         const result = await art(['hello', '--json'], inner);
 
-        expect(envelope(result.out)).toMatchObject({ ok: false, command: null });
+        expect(envelope(result.out)).toMatchObject({
+            ok: false,
+            command: null,
+            error: expect.stringContaining(`${path.join(inner, 'package.json')} is not valid JSON`)
+        });
     });
 
     test('a package.json that cannot be read fails and names the file, with no stack trace', async () => {
@@ -442,6 +465,22 @@ describe('cli: a project’s own bin file', () => {
         expect(envelope(result.out)).toMatchObject({
             ok: false,
             command: null,
+            error: `Commands folder not found: ${path.join(tool, 'commands')}`
+        });
+    });
+
+    test('an unnamed private tool without commands never runs the commands of the project that installed it', async () => {
+        const user = folders.make('artemis-cli-');
+        const tool = path.join(user, 'node_modules', 'mytool');
+
+        makeProject(user, { greeting: 'the user' });
+        fs.mkdirSync(path.join(tool, 'bin'), { recursive: true });
+        fs.writeFileSync(path.join(tool, 'package.json'), '{ "private": true }');
+
+        const result = await ownArt(['hello', '--json'], path.join(tool, 'bin', 'mytool.js'));
+
+        expect(envelope(result.out)).toMatchObject({
+            ok: false,
             error: `Commands folder not found: ${path.join(tool, 'commands')}`
         });
     });

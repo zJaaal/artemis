@@ -44,15 +44,16 @@ const noProjectError = (start: string, route: CliRoute): CommandError =>
     new CommandError(`No project found from ${start} upwards`, {
         hint:
             route === 'own'
-                ? `This tool has no ${MANIFEST_FILE} with a "name". If you maintain it, ship ${MANIFEST_FILE} and a ${DEFAULT_COMMANDS_FOLDER}/ folder in the package (see "files" in ${MANIFEST_FILE}).`
-                : `Run it inside a project: a folder with a ${MANIFEST_FILE} that has a "name", and a ${DEFAULT_COMMANDS_FOLDER}/ folder next to it (or an "${CONFIG_KEY}" key in the ${MANIFEST_FILE}).`
+                ? `This tool has no ${MANIFEST_FILE} to find its commands from. If you maintain it, ship ${MANIFEST_FILE} and a ${DEFAULT_COMMANDS_FOLDER}/ folder in the package (see "files" in ${MANIFEST_FILE}).`
+                : `A project is the nearest ${MANIFEST_FILE} that says more than "type" (a bare { "type": "module" } is a marker, not a project). Run it inside one, with a ${DEFAULT_COMMANDS_FOLDER}/ folder next to it.`
     });
 
-/** The commands folder is missing: say what to create, and for a published tool, who has to. */
+/** The commands folder is missing: say what to create or point at, and for a published tool, who has to. */
 const missingCommandsError = (commandsDir: string, manifestPath: string, route: CliRoute) =>
     new CommandError(`Commands folder not found: ${commandsDir}`, {
         hint:
-            `Create ${commandsDir}, or set "${CONFIG_KEY}": { "commandsDir" } in ${manifestPath}.` +
+            `Create ${commandsDir}, or set "${CONFIG_KEY}": { "commandsDir" } in ${manifestPath}. ` +
+            `If the commands live in a parent folder, point commandsDir at them, for example "../commands".` +
             (route === 'own'
                 ? ` If this is a published tool, its author has to ship the commands folder (add it to "files" in ${MANIFEST_FILE}).`
                 : '')

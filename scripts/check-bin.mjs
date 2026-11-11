@@ -165,6 +165,27 @@ try {
     assert.match(json(broken).error, /package\.json is not valid JSON/);
     console.log('ok   a package.json that is not valid JSON fails loudly, naming the file');
 
+    // A template that is valid JSON is a package of its own: it stops the search, and the message says which package.json it used.
+    const validTemplate = path.join(project, 'valid-template');
+
+    fs.mkdirSync(validTemplate);
+    fs.writeFileSync(path.join(validTemplate, 'package.json'), '{ "name": "{{name}}" }');
+
+    const stopped = execute(art, ['hello', '--json'], validTemplate);
+
+    assert.equal(stopped.code, EXIT_FAILED);
+
+    assert.equal(
+        json(stopped).error,
+        `Commands folder not found: ${path.join(fs.realpathSync(validTemplate), 'commands')}`
+    );
+
+    assert.match(json(stopped).hint, /point commandsDir at them/);
+
+    console.log(
+        'ok   a valid-JSON template is a package of its own, and the failure says where else to point'
+    );
+
     // 2. A consumer that ships the same CLI under its own name, with the framework as a dependency.
     const consumer = makeProject('consumer', { bin: { mytool: 'bin/mytool.js' } });
     const bin = path.join(consumer, 'bin', 'mytool.js');
@@ -259,6 +280,25 @@ try {
     console.log(
         'ok   a tool that does not ship its commands fails instead of running its installer’s'
     );
+
+    // The same for a private tool with no name: whatever its package.json says besides "type", it is the tool's package.
+    const unnamed = path.join(consumer, 'node_modules', 'unnamed-tool');
+    const unnamedBin = path.join(unnamed, 'bin', 'unnamed-tool.js');
+
+    fs.mkdirSync(path.dirname(unnamedBin), { recursive: true });
+
+    fs.writeFileSync(
+        path.join(unnamed, 'package.json'),
+        JSON.stringify({ private: true, type: 'module' })
+    );
+
+    fs.writeFileSync(unnamedBin, fs.readFileSync(bareBin, 'utf8'));
+
+    const unnamedRun = execute(process.execPath, [unnamedBin, 'hello', '--json'], consumer);
+
+    assert.equal(unnamedRun.code, EXIT_FAILED, 'an unnamed tool with no commands fails');
+    assert.match(json(unnamedRun).error, /^Commands folder not found: /);
+    console.log('ok   an unnamed private tool that does not ship its commands fails too');
 
     // A root that is not a file URL or a path is a reported failure, not a crash.
     const badRootBin = path.join(consumer, 'bin', 'bad-root.js');

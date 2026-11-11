@@ -25,13 +25,13 @@ const isNonEmptyText = (value: unknown): value is string =>
     typeof value === 'string' && value.length > 0;
 
 /**
- * A package.json is a real package, and so a candidate for the project, when it has a name, an
- * "artemis" key, or a commands folder next to it. A `{ "type": "module" }` marker has none.
+ * A marker is a package.json that says nothing but "type" and has no commands folder next to it: the
+ * kind of file put in `src/` or `dist/` only to set how `.js` files are read. Anything else is a
+ * package: it has a name, a version, an "artemis" key, or just a commands folder beside it.
  */
-const isRealPackage = (dir: string, manifest: Record<string, unknown>, isFolder: IsFolderFn) =>
-    isNonEmptyText(manifest.name) ||
-    manifest[CONFIG_KEY] !== undefined ||
-    isFolder(path.join(dir, DEFAULT_COMMANDS_FOLDER));
+const isMarker = (dir: string, manifest: Record<string, unknown>, isFolder: IsFolderFn): boolean =>
+    Object.keys(manifest).every((key) => key === 'type') &&
+    !isFolder(path.join(dir, DEFAULT_COMMANDS_FOLDER));
 
 function searchUpwards(
     dir: string,
@@ -45,7 +45,7 @@ function searchUpwards(
         throw read.error;
     }
 
-    if (read && isRealPackage(dir, read.manifest, isFolder)) {
+    if (read && !isMarker(dir, read.manifest, isFolder)) {
         return { root: dir, manifest: read.manifest };
     }
 
@@ -55,10 +55,11 @@ function searchUpwards(
 }
 
 /**
- * The project of a folder: the nearest package.json that has a name, an "artemis" key or a commands
- * folder next to it, looking in `cwd` and then each parent. A marker such as `{ "type": "module" }`
- * in `src/` or `dist/` is skipped; a package.json that cannot be read or parsed is an error. A tool's
- * own package has a name, so the search from its bin file stops there and never climbs out of it.
+ * The project of a folder: the nearest package.json that is not a marker, looking in `cwd` and then
+ * each parent. A marker such as `{ "type": "module" }` in `src/` or `dist/` is skipped; a package.json
+ * that cannot be read or parsed is an error. The same rule serves a tool's bin file: whatever the
+ * tool's own package says (named or not, private or not), it is more than a marker, so the search
+ * stops there and never climbs out of the tool into the project that installed it.
  * Pure: the disk is only looked at through the two edges.
  */
 export const findProject: FindProjectFn = (cwd, readManifest, isFolder) =>

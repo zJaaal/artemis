@@ -91,17 +91,43 @@ describe('findProject: what counts as a project', () => {
     test('is undefined when only markers exist', () => {
         const project = findProject(
             '/work/app',
-            manifestsAt({ '/work/app': { type: 'module' }, '/work': { private: true } }),
+            manifestsAt({ '/work/app': { type: 'module' }, '/work': {} }),
             noFolders
         );
 
         expect(project).toBeUndefined();
     });
 
-    test('a package.json with an empty name is not named', () => {
+    test('an empty package.json is a marker too', () => {
         expect(
-            findProject('/work/app', manifestsAt({ '/work/app': { name: '' } }), noFolders)
+            findProject('/work/app', manifestsAt({ '/work/app': {} }), noFolders)
         ).toBeUndefined();
+    });
+
+    test('a package.json that says only "type" is a package when a commands folder is next to it', () => {
+        const project = findProject(
+            '/work/app',
+            manifestsAt({ '/work/app': { type: 'module' } }),
+            foldersAt('/work/app/commands')
+        );
+
+        expect(project?.root).toBe('/work/app');
+    });
+
+    test('anything besides "type" makes it a package, even a private package with no name', () => {
+        const project = findProject(
+            '/tool',
+            manifestsAt({ '/tool': { private: true } }),
+            noFolders
+        );
+
+        expect(project?.root).toBe('/tool');
+    });
+
+    test('a package.json with an empty name is still a package: it says more than "type"', () => {
+        expect(
+            findProject('/work/app', manifestsAt({ '/work/app': { name: '' } }), noFolders)?.root
+        ).toBe('/work/app');
     });
 });
 
@@ -133,6 +159,16 @@ describe('findProject: where it looks', () => {
                 '/app/node_modules/mytool': { name: 'mytool' },
                 '/app': { name: 'app' }
             }),
+            noFolders
+        );
+
+        expect(project?.root).toBe('/app/node_modules/mytool');
+    });
+
+    test('never climbs out of an unnamed private tool either', () => {
+        const project = findProject(
+            '/app/node_modules/mytool/bin',
+            manifestsAt({ '/app/node_modules/mytool': { private: true }, '/app': { name: 'app' } }),
             noFolders
         );
 
