@@ -165,26 +165,42 @@ try {
     assert.match(json(broken).error, /package\.json is not valid JSON/);
     console.log('ok   a package.json that is not valid JSON fails loudly, naming the file');
 
-    // A template that is valid JSON is a package of its own: it stops the search, and the message says which package.json it used.
+    // Only an artemis key or a commands folder makes a project, so a template or a marker with any keys is never a candidate.
     const validTemplate = path.join(project, 'valid-template');
+    const esm = path.join(project, 'dist', 'esm');
 
     fs.mkdirSync(validTemplate);
+    fs.mkdirSync(esm, { recursive: true });
     fs.writeFileSync(path.join(validTemplate, 'package.json'), '{ "name": "{{name}}" }');
+    fs.writeFileSync(path.join(esm, 'package.json'), '{ "type": "module", "sideEffects": false }');
 
-    const stopped = execute(art, ['hello', '--json'], validTemplate);
+    assert.deepEqual(json(execute(art, ['hello', '--json'], validTemplate)).result, {
+        greeting: 'hello'
+    });
 
-    assert.equal(stopped.code, EXIT_FAILED);
+    assert.deepEqual(json(execute(art, ['hello', '--json'], esm)).result, { greeting: 'hello' });
+    console.log('ok   a template or a marker with extra keys never stops the search');
 
-    assert.equal(
-        json(stopped).error,
-        `Commands folder not found: ${path.join(fs.realpathSync(validTemplate), 'commands')}`
+    // `art init` makes a folder a project, and the sample it writes runs at once.
+    const fresh = fs.mkdtempSync(path.join(root, 'fresh-'));
+    const initialised = execute(art, ['init', '--json'], fresh);
+
+    assert.equal(initialised.code, 0, 'init succeeds');
+    assert.equal(json(initialised).command, 'init');
+
+    assert.deepEqual(
+        json(execute(art, ['hello', '--json'], fresh)).result,
+        { greeting: 'hello world' },
+        'the sample command runs right after init'
     );
 
-    assert.match(json(stopped).hint, /point commandsDir at them/);
-
-    console.log(
-        'ok   a valid-JSON template is a package of its own, and the failure says where else to point'
+    assert.deepEqual(
+        json(execute(art, ['init', '--json'], fresh)).result.created,
+        [],
+        'a second init changes nothing'
     );
+
+    console.log('ok   art init makes a folder a project, and its sample runs at once');
 
     // 2. A consumer that ships the same CLI under its own name, with the framework as a dependency.
     const consumer = makeProject('consumer', { bin: { mytool: 'bin/mytool.js' } });
@@ -222,7 +238,7 @@ try {
     const dist = path.join(consumer, 'dist');
 
     fs.mkdirSync(dist);
-    fs.writeFileSync(path.join(dist, 'package.json'), '{ "type": "module" }');
+    fs.writeFileSync(path.join(dist, 'package.json'), '{ "type": "module", "sideEffects": false }');
 
     fs.writeFileSync(
         path.join(dist, 'bin.js'),
@@ -257,7 +273,11 @@ try {
 
     fs.writeFileSync(
         path.join(bare, 'package.json'),
-        JSON.stringify({ name: 'bare-tool', type: 'module' })
+        JSON.stringify({
+            name: 'bare-tool',
+            type: 'module',
+            bin: { 'bare-tool': 'bin/bare-tool.js' }
+        })
     );
 
     fs.writeFileSync(
@@ -290,7 +310,11 @@ try {
 
     fs.writeFileSync(
         path.join(unnamed, 'package.json'),
-        JSON.stringify({ private: true, type: 'module' })
+        JSON.stringify({
+            private: true,
+            type: 'module',
+            bin: { 'unnamed-tool': 'bin/unnamed-tool.js' }
+        })
     );
 
     fs.writeFileSync(unnamedBin, fs.readFileSync(bareBin, 'utf8'));

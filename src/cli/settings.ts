@@ -11,6 +11,7 @@ import { CommandError } from '../errors/errors.js';
 import type {
     ArtemisConfig,
     FindProjectFn,
+    CliRoute,
     IsFolderFn,
     Project,
     ReadManifestFn,
@@ -25,18 +26,33 @@ const isNonEmptyText = (value: unknown): value is string =>
     typeof value === 'string' && value.length > 0;
 
 /**
- * A marker is a package.json that says nothing but "type" and has no commands folder next to it: the
- * kind of file put in `src/` or `dist/` only to set how `.js` files are read. Anything else is a
- * package: it has a name, a version, an "artemis" key, or just a commands folder beside it.
+ * Shipped route: a package.json is the project when it declares itself, with an "artemis" key (what
+ * `init` writes), or follows the convention, with a commands folder next to it.
  */
-const isMarker = (dir: string, manifest: Record<string, unknown>, isFolder: IsFolderFn): boolean =>
-    Object.keys(manifest).every((key) => key === 'type') &&
-    !isFolder(path.join(dir, DEFAULT_COMMANDS_FOLDER));
+const isProjectOfAPerson = (
+    dir: string,
+    manifest: Record<string, unknown>,
+    isFolder: IsFolderFn
+): boolean =>
+    manifest[CONFIG_KEY] !== undefined || isFolder(path.join(dir, DEFAULT_COMMANDS_FOLDER));
+
+/** Own route: a published tool runs through the package.json that declares its `bin`. */
+const declaresBin = ({ bin }: Record<string, unknown>): boolean =>
+    isRecord(bin) ? Object.keys(bin).length > 0 : isNonEmptyText(bin);
+
+const isTheProject = (
+    dir: string,
+    manifest: Record<string, unknown>,
+    isFolder: IsFolderFn,
+    route: CliRoute
+): boolean =>
+    route === 'own' ? declaresBin(manifest) : isProjectOfAPerson(dir, manifest, isFolder);
 
 function searchUpwards(
     dir: string,
     readManifest: ReadManifestFn,
-    isFolder: IsFolderFn
+    isFolder: IsFolderFn,
+    route: CliRoute
 ): Project | undefined {
     const read = readManifest(dir);
 
@@ -45,25 +61,24 @@ function searchUpwards(
         throw read.error;
     }
 
-    if (read && !isMarker(dir, read.manifest, isFolder)) {
+    if (read && isTheProject(dir, read.manifest, isFolder, route)) {
         return { root: dir, manifest: read.manifest };
     }
 
     const parent = path.dirname(dir);
 
-    return parent === dir ? undefined : searchUpwards(parent, readManifest, isFolder);
+    return parent === dir ? undefined : searchUpwards(parent, readManifest, isFolder, route);
 }
 
 /**
- * The project of a folder: the nearest package.json that is not a marker, looking in `cwd` and then
- * each parent. A marker such as `{ "type": "module" }` in `src/` or `dist/` is skipped; a package.json
- * that cannot be read or parsed is an error. The same rule serves a tool's bin file: whatever the
- * tool's own package says (named or not, private or not), it is more than a marker, so the search
- * stops there and never climbs out of the tool into the project that installed it.
- * Pure: the disk is only looked at through the two edges.
+ * The project of a folder, from positive signals only, looking in `cwd` and then each parent.
+ * Shipped route: the nearest package.json with an "artemis" key or a commands folder next to it.
+ * Own route (`cli({ root })`): the nearest one that declares a `bin`, so the search never stops at a
+ * marker, a template or the project that installed the tool. A package.json that cannot be read or
+ * parsed is an error, never skipped. Pure: the disk is only looked at through the two edges.
  */
-export const findProject: FindProjectFn = (cwd, readManifest, isFolder) =>
-    searchUpwards(path.resolve(cwd), readManifest, isFolder);
+export const findProject: FindProjectFn = (cwd, readManifest, isFolder, route) =>
+    searchUpwards(path.resolve(cwd), readManifest, isFolder, route);
 
 function invalidConfig(project: Project, problem: string): CommandError {
     const manifestPath = path.join(project.root, MANIFEST_FILE);

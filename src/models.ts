@@ -467,16 +467,19 @@ export type ManifestRead = { manifest: Record<string, unknown> } | { error: Comm
 export type ReadManifestFn = (dir: string) => ManifestRead | undefined;
 
 /**
- * The project is the nearest package.json that is not a marker. A marker says nothing but "type" and
- * has no commands folder beside it, like `{ "type": "module" }` in `src/` or `dist/`; it is skipped.
- * A package.json that cannot be read or parsed is an error, never skipped: running another project's
- * commands silently would be worse. A tool's own package is never a marker, so a search from its bin
- * file stops there. Pure: the disk is only looked at through `readManifest` and `isFolder`.
+ * Which package.json is the project, from positive signals only (nothing is inferred about what a
+ * file is not). Shipped route: the nearest one with an "artemis" key (declared, usually by `init`) or
+ * a commands folder next to it (the convention). Own route (`cli({ root })`): the nearest one that
+ * declares a `bin`, because a published tool only runs through the package.json that declares it.
+ * Markers, templates and unrelated packages carry none of these signals and are never candidates.
+ * A package.json that cannot be read or parsed is an error, never skipped. Pure: the disk is only
+ * looked at through `readManifest` and `isFolder`.
  */
 export type FindProjectFn = (
     cwd: string,
     readManifest: ReadManifestFn,
-    isFolder: IsFolderFn
+    isFolder: IsFolderFn,
+    route: CliRoute
 ) => Project | undefined;
 
 /** Throws a CommandError with a hint when the "artemis" key has a bad shape. */
@@ -516,3 +519,44 @@ export type FolderOfRootFn = (root: string | URL) => string;
 
 /** The module resolution hook that falls back to the running copy of the package. */
 export type ResolveHookFn = ResolveHook;
+
+// ---------------------------------------------------------------------------------------------
+// `init`: making a folder a project
+// ---------------------------------------------------------------------------------------------
+
+/** What `init` needs to know about a folder; an edge reads it from the disk. */
+export type InitInput = {
+    dir: string;
+    /** The text of the package.json, or undefined when there is none. */
+    manifestText: string | undefined;
+    manifest: Record<string, unknown> | undefined;
+    /** Where the commands go: the configured folder, or `commands`. Absolute. */
+    commandsDir: string;
+    commandsDirExists: boolean;
+    commandsDirIsEmpty: boolean;
+};
+
+/** One thing `init` does. It never overwrites a file that exists. */
+export type InitStep =
+    { kind: 'folder'; path: string } | { kind: 'file'; path: string; text: string };
+
+export type InitPlan = {
+    steps: InitStep[];
+    /** What was already there and is left alone. */
+    kept: string[];
+    warnings: string[];
+};
+
+/** Pure: decides what to create, from what the folder already has. */
+export type PlanInitFn = (input: InitInput) => InitPlan;
+
+export type InitResult = { root: string; created: string[]; kept: string[]; warnings: string[] };
+
+/** Reads the folder, plans, and does it. Throws a CommandError for a package.json it cannot use. */
+export type InitProjectFn = (dir: string) => InitResult;
+
+export type DetectIndentFn = (text: string) => string;
+export type PackageNameForFn = (dir: string) => string;
+
+/** `art init [folder] [--json]`. Returns the exit code. */
+export type InitCommandFn = (words: string[], options: CliOptions, cwd: string) => number;

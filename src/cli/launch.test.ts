@@ -68,13 +68,28 @@ describe('cli: which project it runs', () => {
         expect(await greeting(path.join(inner, 'src'))).toEqual({ greeting: 'inner' });
     });
 
-    test('a named package without commands, in a monorepo, fails about its own commands instead of running the root’s', async () => {
+    test('a monorepo package with no commands and no key uses the root’s commands', async () => {
         const root = folders.make('artemis-cli-');
         const inner = path.join(root, 'packages', 'inner');
 
         makeProject(root, { greeting: 'outer' });
         fs.mkdirSync(inner, { recursive: true });
         fs.writeFileSync(path.join(inner, 'package.json'), '{ "name": "inner" }');
+
+        expect(await greeting(inner)).toEqual({ greeting: 'outer' });
+    });
+
+    test('a package that declares itself with an artemis key but has no commands fails about its own', async () => {
+        const root = folders.make('artemis-cli-');
+        const inner = path.join(root, 'packages', 'inner');
+
+        makeProject(root, { greeting: 'outer' });
+        fs.mkdirSync(inner, { recursive: true });
+
+        fs.writeFileSync(
+            path.join(inner, 'package.json'),
+            JSON.stringify({ name: 'inner', artemis: {} })
+        );
 
         const result = await art(['hello', '--json'], inner);
 
@@ -87,7 +102,7 @@ describe('cli: which project it runs', () => {
         });
     });
 
-    test('a template package.json under the project, valid JSON with a name, is a package of its own', async () => {
+    test('a template package.json, even valid JSON with a name, does not stop the search', async () => {
         const root = folders.make('artemis-cli-');
         const templates = path.join(root, 'templates');
 
@@ -95,12 +110,22 @@ describe('cli: which project it runs', () => {
         fs.mkdirSync(templates);
         fs.writeFileSync(path.join(templates, 'package.json'), '{ "name": "{{name}}" }');
 
-        const result = await art(['hello', '--json'], templates);
+        expect(await greeting(templates)).toEqual({ greeting: 'project' });
+    });
 
-        expect(envelope(result.out)).toMatchObject({
-            ok: false,
-            error: `Commands folder not found: ${path.join(templates, 'commands')}`
-        });
+    test('a marker with extra keys, such as sideEffects, does not stop the search either', async () => {
+        const root = folders.make('artemis-cli-');
+        const esm = path.join(root, 'dist', 'esm');
+
+        makeProject(root, { greeting: 'project' });
+        fs.mkdirSync(esm, { recursive: true });
+
+        fs.writeFileSync(
+            path.join(esm, 'package.json'),
+            '{ "type": "module", "sideEffects": false }'
+        );
+
+        expect(await greeting(esm)).toEqual({ greeting: 'project' });
     });
 
     test('an unnamed monorepo root with a commands folder is the project', async () => {
@@ -201,21 +226,21 @@ describe('cli: when it cannot find what to run', () => {
 
         expect(result.code).toBe(EXIT_CODE.FAILED);
         expect(result.err).toContain(`No project found from ${nowhere} upwards`);
-        expect(result.err).toContain('a bare { "type": "module" } is a marker, not a project');
+        expect(result.err).toContain('use its "init" command in this folder to create one');
     });
 
-    test('a package.json that is only a marker is not a project', async () => {
+    test('a package.json with neither an artemis key nor a commands folder is not a project', async () => {
         const root = folders.make('artemis-cli-');
 
-        fs.writeFileSync(path.join(root, 'package.json'), '{ "type": "module" }');
+        fs.writeFileSync(path.join(root, 'package.json'), '{ "name": "app", "version": "1.0.0" }');
 
         expect((await art(['hello'], root)).err).toContain(`No project found from ${root} upwards`);
     });
 
-    test('a named package.json with no commands folder is the project, and says so', async () => {
+    test('a package.json with an artemis key and no commands folder is the project, and says so', async () => {
         const root = folders.make('artemis-cli-');
 
-        fs.writeFileSync(path.join(root, 'package.json'), '{ "name": "empty" }');
+        fs.writeFileSync(path.join(root, 'package.json'), '{ "name": "empty", "artemis": {} }');
 
         expect((await art(['hello'], root)).err).toContain(
             `Commands folder not found: ${path.join(root, 'commands')}`
@@ -237,7 +262,7 @@ describe('cli: when it cannot find what to run', () => {
             ok: false,
             command: null,
             error: `No project found from ${nowhere} upwards`,
-            hint: expect.stringContaining('a bare { "type": "module" } is a marker, not a project')
+            hint: expect.stringContaining('use its "init" command in this folder to create one')
         });
 
         expect(result.err).toBe('');
@@ -338,6 +363,9 @@ describe('cli: when it cannot find what to run', () => {
     });
 });
 
+/** A published tool's package.json: it declares the bin that npm links, which is how it is found. */
+const TOOL_PACKAGE = '{ "name": "mytool", "bin": { "mytool": "bin/mytool.js" } }';
+
 describe('cli: a project’s own bin file', () => {
     /** Runs `cli({ root })` the way a published tool's bin file does, from an unrelated folder. */
     const ownArt = async (argv: string[], root: string | URL) => {
@@ -434,8 +462,8 @@ describe('cli: a project’s own bin file', () => {
         expect(envelope(result.out)).toMatchObject({
             ok: false,
             command: null,
-            error: expect.stringContaining('No project found from'),
-            hint: expect.stringContaining('If you maintain it')
+            error: expect.stringContaining('with a "bin" field found from'),
+            hint: expect.stringContaining('If you maintain this tool')
         });
     });
 
@@ -443,9 +471,17 @@ describe('cli: a project’s own bin file', () => {
         const toolRoot = folders.make('artemis-tool-');
         const dist = path.join(toolRoot, 'dist');
 
-        makeProject(toolRoot, { greeting: 'tool', manifest: { name: 'mytool' } });
+        makeProject(toolRoot, {
+            greeting: 'tool',
+            manifest: { name: 'mytool', bin: { mytool: 'dist/bin.js' } }
+        });
+
         fs.mkdirSync(dist);
-        fs.writeFileSync(path.join(dist, 'package.json'), '{ "type": "module" }');
+
+        fs.writeFileSync(
+            path.join(dist, 'package.json'),
+            '{ "type": "module", "sideEffects": false }'
+        );
 
         const result = await ownArt(['hello', '--json'], path.join(dist, 'bin.js'));
 
@@ -458,7 +494,7 @@ describe('cli: a project’s own bin file', () => {
 
         makeProject(user, { greeting: 'the user' });
         fs.mkdirSync(path.join(tool, 'bin'), { recursive: true });
-        fs.writeFileSync(path.join(tool, 'package.json'), '{ "name": "mytool" }');
+        fs.writeFileSync(path.join(tool, 'package.json'), TOOL_PACKAGE);
 
         const result = await ownArt(['hello', '--json'], path.join(tool, 'bin', 'mytool.js'));
 
@@ -475,7 +511,11 @@ describe('cli: a project’s own bin file', () => {
 
         makeProject(user, { greeting: 'the user' });
         fs.mkdirSync(path.join(tool, 'bin'), { recursive: true });
-        fs.writeFileSync(path.join(tool, 'package.json'), '{ "private": true }');
+
+        fs.writeFileSync(
+            path.join(tool, 'package.json'),
+            '{ "private": true, "bin": { "mytool": "bin/mytool.js" } }'
+        );
 
         const result = await ownArt(['hello', '--json'], path.join(tool, 'bin', 'mytool.js'));
 
@@ -488,7 +528,7 @@ describe('cli: a project’s own bin file', () => {
     test('the failure of a tool without commands tells its author what to ship', async () => {
         const tool = folders.make('artemis-tool-');
 
-        fs.writeFileSync(path.join(tool, 'package.json'), '{ "name": "mytool" }');
+        fs.writeFileSync(path.join(tool, 'package.json'), TOOL_PACKAGE);
 
         const result = await ownArt(['hello', '--json'], path.join(tool, 'bin', 'mytool.js'));
 
@@ -498,7 +538,7 @@ describe('cli: a project’s own bin file', () => {
     test('a published tool is never told to point its commands at another package', async () => {
         const tool = folders.make('artemis-tool-');
 
-        fs.writeFileSync(path.join(tool, 'package.json'), '{ "name": "mytool" }');
+        fs.writeFileSync(path.join(tool, 'package.json'), TOOL_PACKAGE);
 
         const result = await ownArt(['hello', '--json'], path.join(tool, 'bin', 'mytool.js'));
 
@@ -521,7 +561,10 @@ describe('cli: a project’s own bin file', () => {
     test('the parent-folder advice is given when commandsDir stays inside the project', async () => {
         const root = folders.make('artemis-cli-');
 
-        fs.writeFileSync(path.join(root, 'package.json'), JSON.stringify({ name: 'app' }));
+        fs.writeFileSync(
+            path.join(root, 'package.json'),
+            JSON.stringify({ name: 'app', artemis: {} })
+        );
 
         const result = await art(['hello', '--json'], root);
 
@@ -583,5 +626,143 @@ describe('cli: a project’s own bin file', () => {
         const result = await ownArt(['hello'], new URL('http://example.com/x'));
 
         expect(result.err).not.toMatch(/\s+at /);
+    });
+});
+
+describe('cli: the init word of the shipped binary', () => {
+    test('makes the current folder a project and says what it created', async () => {
+        const dir = folders.make('artemis-cli-');
+        const result = await art(['init'], dir);
+
+        expect(result.code).toBe(EXIT_CODE.OK);
+        expect(result.out).toContain(`Created ${path.join(dir, 'package.json')}`);
+        expect(result.out).toContain(`Created ${path.join(dir, 'commands', 'hello.js')}`);
+    });
+
+    test('under --json it prints one object with what it created', async () => {
+        const dir = folders.make('artemis-cli-');
+        const result = await art(['init', '--json'], dir);
+
+        expect(envelope(result.out)).toMatchObject({
+            ok: true,
+            command: 'init',
+            result: { root: dir, created: expect.arrayContaining([path.join(dir, 'package.json')]) }
+        });
+    });
+
+    test('takes the folder to initialise', async () => {
+        const dir = folders.make('artemis-cli-');
+        const result = await art(['init', 'sub', '--json'], dir);
+
+        expect(fs.existsSync(path.join(dir, 'sub', 'package.json'))).toBe(true);
+        expect((envelope(result.out).result as { root: string }).root).toBe(path.join(dir, 'sub'));
+    });
+
+    test('a global flag before the word works too', async () => {
+        const dir = folders.make('artemis-cli-');
+        const result = await art(['--json', 'init'], dir);
+
+        expect(envelope(result.out)).toMatchObject({ ok: true, command: 'init' });
+    });
+
+    test('in a folder that already is a project it changes nothing and says so', async () => {
+        const dir = folders.make('artemis-cli-');
+
+        await art(['init'], dir);
+
+        const again = await art(['init'], dir);
+
+        expect(again.out).toContain('Already a project: nothing to create.');
+    });
+
+    test('a project becomes runnable at once: init, then hello', async () => {
+        const dir = folders.make('artemis-cli-');
+
+        await art(['init'], dir);
+
+        expect(await greeting(dir)).toEqual({ greeting: 'hello world' });
+    });
+
+    test('an option it does not know is a usage error, with its usage as the hint', async () => {
+        const result = await art(['init', '--bogus', '--json'], folders.make('artemis-cli-'));
+
+        expect(result.code).toBe(EXIT_CODE.USAGE);
+
+        expect(envelope(result.out)).toMatchObject({
+            ok: false,
+            error: 'Unknown option "--bogus"',
+            hint: expect.stringContaining('Usage: init [folder]')
+        });
+    });
+
+    test('two folders are a usage error', async () => {
+        const result = await art(['init', 'a', 'b'], folders.make('artemis-cli-'));
+
+        expect(result.code).toBe(EXIT_CODE.USAGE);
+        expect(result.err).toContain('init takes at most one folder');
+    });
+
+    test('--help prints how to use it, and creates nothing', async () => {
+        const dir = folders.make('artemis-cli-');
+        const result = await art(['init', '--help'], dir);
+
+        expect(result.out).toContain('Usage: init [folder]');
+        expect(fs.existsSync(path.join(dir, 'package.json'))).toBe(false);
+    });
+
+    test('a package.json that is not valid JSON is reported, and nothing is written', async () => {
+        const dir = folders.make('artemis-cli-');
+
+        fs.writeFileSync(path.join(dir, 'package.json'), '{ nope');
+
+        const result = await art(['init', '--json'], dir);
+
+        expect(envelope(result.out)).toMatchObject({ ok: false, command: null });
+        expect(fs.existsSync(path.join(dir, 'commands'))).toBe(false);
+    });
+
+    test('is reserved like help: a project command called init cannot be run through art', async () => {
+        const dir = folders.make('artemis-cli-');
+
+        makeProject(dir, { greeting: 'project' });
+
+        fs.writeFileSync(
+            path.join(dir, 'commands', 'init.js'),
+            "import { defineCommand } from '@zjaaal/artemis';\nexport default defineCommand({ description: 'mine', run: () => ({ mine: true }) });\n"
+        );
+
+        const result = await art(['init', '--json'], dir);
+
+        expect(envelope(result.out)).toMatchObject({
+            command: 'init',
+            result: { kept: expect.any(Array) }
+        });
+    });
+
+    test('is not reserved for a published tool: its own commands are all its own', async () => {
+        const tool = folders.make('artemis-tool-');
+
+        makeProject(tool, {
+            greeting: 'tool',
+            manifest: { name: 'mytool', bin: { mytool: 'bin/mytool.js' } }
+        });
+
+        const stdout = createSink();
+
+        const code = await cli({
+            argv: ['init', '--json'],
+            root: path.join(tool, 'bin', 'mytool.js'),
+            stdout,
+            stderr: createSink(),
+            env: {},
+            interactive: false
+        });
+
+        expect(code).toBe(EXIT_CODE.USAGE);
+
+        expect(envelope(stdout.text)).toMatchObject({
+            ok: false,
+            error: 'Unknown command "init".'
+        });
     });
 });

@@ -11,7 +11,10 @@ import { reportError } from '../run/report.js';
 import { run } from '../run/run.js';
 import { resolveWorld } from '../run/world.js';
 import { messageOf } from '../utils/error-message.js';
+import { splitLeadingFlags } from '../resolve/resolve.js';
 import { jsonRequested } from '../utils/terminator.js';
+import { INIT_WORD } from './constants.js';
+import { initCommand } from './init-command.js';
 import { findProject, resolveSettings } from './settings.js';
 
 /** What `root` stands for as a path, or a CommandError that says what to pass instead. */
@@ -39,14 +42,15 @@ const folderOfRoot: FolderOfRootFn = (root) => {
     return isFolder(target) ? target : path.dirname(target);
 };
 
-/** What to do when no project is found: the end user can change folder, the author of a tool cannot. */
+/** What to do when no project is found: the end user can create one, the author of a tool must declare its bin. */
 const noProjectError = (start: string, route: CliRoute): CommandError =>
-    new CommandError(`No project found from ${start} upwards`, {
-        hint:
-            route === 'own'
-                ? `This tool has no ${MANIFEST_FILE} to find its commands from. If you maintain it, ship ${MANIFEST_FILE} and a ${DEFAULT_COMMANDS_FOLDER}/ folder in the package (see "files" in ${MANIFEST_FILE}).`
-                : `A project is the nearest ${MANIFEST_FILE} that says more than "type" (a bare { "type": "module" } is a marker, not a project). Run it inside one, with a ${DEFAULT_COMMANDS_FOLDER}/ folder next to it.`
-    });
+    route === 'own'
+        ? new CommandError(`No ${MANIFEST_FILE} with a "bin" field found from ${start} upwards`, {
+              hint: `A published tool is found through the ${MANIFEST_FILE} that declares its "bin" (npm needs it to create the command anyway). If you maintain this tool, declare "bin" there and ship a ${DEFAULT_COMMANDS_FOLDER}/ folder in the package (see "files" in ${MANIFEST_FILE}).`
+          })
+        : new CommandError(`No project found from ${start} upwards`, {
+              hint: `A project is the nearest ${MANIFEST_FILE} with an "${CONFIG_KEY}" key or a ${DEFAULT_COMMANDS_FOLDER}/ folder next to it. Run it inside one, or use its "${INIT_WORD}" command in this folder to create one.`
+          });
 
 /** Whether the commands folder is already outside the project, so pointing it at a parent is no news. */
 const pointsOutside = (commandsDir: string, projectRoot: string): boolean =>
@@ -80,7 +84,7 @@ const missingCommandsError = (commandsDir: string, projectRoot: string, route: C
 /** The project of a folder and where its commands are, or a CommandError that says what to create. */
 const settingsFor: SettingsForFn = (start, route) => {
     // The messages name no binary: it is not known here what the user typed (art, artemis or a tool's name).
-    const project = findProject(start, readManifest, isFolder);
+    const project = findProject(start, readManifest, isFolder, route);
 
     if (!project) {
         throw noProjectError(start, route);
@@ -113,6 +117,20 @@ function reportSetupFailure(argv: string[], error: unknown, host: HostOptions): 
 export const launch: CliFn = async (options = {}) => {
     const { argv = currentProcess().args, cwd, root, ...host } = options;
     const route: CliRoute = root === undefined ? 'shipped' : 'own';
+    const { leading, rest } = splitLeadingFlags(argv);
+
+    // `init` is the shipped binary's own word, like `help`: it has to work where there is no project yet.
+    if (route === 'shipped' && rest[0] === INIT_WORD) {
+        try {
+            return initCommand(
+                [...leading, ...rest.slice(1)],
+                host,
+                path.resolve(cwd ?? workingDirectory())
+            );
+        } catch (error) {
+            return reportSetupFailure(argv, error, host);
+        }
+    }
 
     let settings;
 
