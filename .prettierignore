@@ -8,3 +8,5 @@ src/test/fixtures
 # specs and agent skills are prose; they are not formatted by the code rules
 specs
 .claude
+# the owner's working notes, not formatted by the code rules
+docs/HANDOFF.md
