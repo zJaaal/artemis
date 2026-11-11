@@ -181,7 +181,8 @@ describe('readManifest', () => {
 
     test('reads the package.json of a folder as an object', () => {
         expect(readManifest(manifestIn('{ "name": "app" }').dir)).toEqual({
-            manifest: { name: 'app' }
+            manifest: { name: 'app' },
+            text: '{ "name": "app" }'
         });
     });
 
@@ -208,7 +209,10 @@ describe('readManifest', () => {
     test('a template whose placeholder is inside a string is valid JSON, so it is read as an object', () => {
         const { dir } = manifestIn('{ "name": "{{name}}" }');
 
-        expect(readManifest(dir)).toEqual({ manifest: { name: '{{name}}' } });
+        expect(readManifest(dir)).toEqual({
+            manifest: { name: '{{name}}' },
+            text: '{ "name": "{{name}}" }'
+        });
     });
 
     test('a package.json that is not an object is returned as an error with a hint', () => {

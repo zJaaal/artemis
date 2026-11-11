@@ -53,8 +53,11 @@ const noProjectError = (start: string, route: CliRoute): CommandError =>
           });
 
 /** Whether the commands folder is already outside the project, so pointing it at a parent is no news. */
-const pointsOutside = (commandsDir: string, projectRoot: string): boolean =>
-    path.relative(projectRoot, commandsDir).startsWith('..');
+const pointsOutside = (commandsDir: string, projectRoot: string): boolean => {
+    const relative = path.relative(projectRoot, commandsDir);
+
+    return relative === '..' || relative.startsWith(`..${path.sep}`) || path.isAbsolute(relative);
+};
 
 /**
  * The commands folder is missing. For a person running a project: create it, or point `commandsDir`

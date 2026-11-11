@@ -202,6 +202,13 @@ try {
 
     console.log('ok   art init makes a folder a project, and its sample runs at once');
 
+    // init takes no arguments: it is a fixed word of the binary, not a command.
+    const withArgument = execute(art, ['init', 'somewhere', '--json'], fresh);
+
+    assert.equal(withArgument.code, EXIT_USAGE, 'an argument to init is a usage error');
+    assert.equal(json(withArgument).error, 'init takes no arguments, but got "somewhere"');
+    console.log('ok   init takes no arguments, and says so');
+
     // 2. A consumer that ships the same CLI under its own name, with the framework as a dependency.
     const consumer = makeProject('consumer', { bin: { mytool: 'bin/mytool.js' } });
     const bin = path.join(consumer, 'bin', 'mytool.js');
@@ -330,6 +337,36 @@ try {
     );
 
     console.log('ok   an unnamed private tool that does not ship its commands fails too');
+
+    // A tool that declares no bin, and an installed package with no name, bin or key, are still their own package:
+    // neither climbs into the consumer that holds it.
+    for (const [folder, manifest] of [
+        ['no-bin-tool', { name: 'no-bin-tool', type: 'module' }],
+        ['empty-tool', { private: true, type: 'module' }]
+    ]) {
+        const toolDir = path.join(consumer, 'node_modules', folder);
+        const toolBin = path.join(toolDir, 'bin', `${folder}.js`);
+
+        fs.mkdirSync(path.dirname(toolBin), { recursive: true });
+        fs.writeFileSync(path.join(toolDir, 'package.json'), JSON.stringify(manifest));
+        fs.writeFileSync(toolBin, fs.readFileSync(bareBin, 'utf8'));
+
+        const toolRun = execute(process.execPath, [toolBin, 'hello', '--json'], consumer);
+
+        assert.equal(
+            toolRun.code,
+            EXIT_FAILED,
+            `${folder} fails instead of running the consumer’s commands`
+        );
+
+        assert.equal(
+            json(toolRun).error,
+            `Commands folder not found: ${path.join(fs.realpathSync(toolDir), 'commands')}`,
+            `${folder} names its own commands folder`
+        );
+    }
+
+    console.log('ok   a tool with no bin, or no identity at all, never climbs into its host');
 
     // A root that is not a file URL or a path is a reported failure, not a crash.
     const badRootBin = path.join(consumer, 'bin', 'bad-root.js');

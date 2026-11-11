@@ -5,6 +5,8 @@ import {
     DEFAULT_BIN_NAME,
     DEFAULT_COMMANDS_FOLDER,
     MANIFEST_FILE,
+    NODE_MODULES,
+    SCOPE_FOLDER_PREFIX,
     SCOPE_PREFIX
 } from '../constants.js';
 import { CommandError } from '../errors/errors.js';
@@ -13,6 +15,7 @@ import type {
     FindProjectFn,
     CliRoute,
     IsFolderFn,
+    IsInstalledPackageRootFn,
     Project,
     ReadManifestFn,
     ResolveBinNameFn,
@@ -36,9 +39,29 @@ const isProjectOfAPerson = (
 ): boolean =>
     manifest[CONFIG_KEY] !== undefined || isFolder(path.join(dir, DEFAULT_COMMANDS_FOLDER));
 
-/** Own route: a published tool runs through the package.json that declares its `bin`. */
+/** Whether a package.json declares a `bin`: a string, or an object with at least one command. */
 const declaresBin = ({ bin }: Record<string, unknown>): boolean =>
     isRecord(bin) ? Object.keys(bin).length > 0 : isNonEmptyText(bin);
+
+/**
+ * Own route: a package.json says what a tool's package is when it has a name, declares a `bin`, or has
+ * an "artemis" key. The package.json files above a bin file are a marker or two in its own folders
+ * (no name, no bin, no key), then the tool's package, then the project that holds it, so the first of
+ * these is the tool's own, whether or not it declares a `bin`.
+ */
+const hasToolIdentity = (manifest: Record<string, unknown>): boolean =>
+    isNonEmptyText(manifest.name) || declaresBin(manifest) || manifest[CONFIG_KEY] !== undefined;
+
+/** Whether a folder is the folder of a package installed by npm: `node_modules/pkg` or `node_modules/@scope/pkg`. */
+const isInstalledPackageRoot: IsInstalledPackageRootFn = (dir) => {
+    const parent = path.dirname(dir);
+
+    const container = path.basename(parent).startsWith(SCOPE_FOLDER_PREFIX)
+        ? path.dirname(parent)
+        : parent;
+
+    return path.basename(container) === NODE_MODULES;
+};
 
 const isTheProject = (
     dir: string,
@@ -46,7 +69,7 @@ const isTheProject = (
     isFolder: IsFolderFn,
     route: CliRoute
 ): boolean =>
-    route === 'own' ? declaresBin(manifest) : isProjectOfAPerson(dir, manifest, isFolder);
+    route === 'own' ? hasToolIdentity(manifest) : isProjectOfAPerson(dir, manifest, isFolder);
 
 function searchUpwards(
     dir: string,
@@ -65,17 +88,23 @@ function searchUpwards(
         return { root: dir, manifest: read.manifest };
     }
 
+    // A tool installed by npm is its own package whatever its package.json holds: never look past it.
+    if (route === 'own' && isInstalledPackageRoot(dir)) {
+        return read ? { root: dir, manifest: read.manifest } : undefined;
+    }
+
     const parent = path.dirname(dir);
 
     return parent === dir ? undefined : searchUpwards(parent, readManifest, isFolder, route);
 }
 
 /**
- * The project of a folder, from positive signals only, looking in `cwd` and then each parent.
- * Shipped route: the nearest package.json with an "artemis" key or a commands folder next to it.
- * Own route (`cli({ root })`): the nearest one that declares a `bin`, so the search never stops at a
- * marker, a template or the project that installed the tool. A package.json that cannot be read or
- * parsed is an error, never skipped. Pure: the disk is only looked at through the two edges.
+ * The project of a folder, looking in `cwd` and then each parent. Shipped route: the nearest
+ * package.json with an "artemis" key or a commands folder next to it. Own route (`cli({ root })`):
+ * the nearest one with the identity of a package (a name, a `bin` or an "artemis" key), and never
+ * past the folder of an installed package, so a tool cannot climb into the project that holds it,
+ * with or without a `bin`. A package.json that cannot be read or parsed is an error, never skipped.
+ * Pure: the disk is only looked at through the two edges.
  */
 export const findProject: FindProjectFn = (cwd, readManifest, isFolder, route) =>
     searchUpwards(path.resolve(cwd), readManifest, isFolder, route);

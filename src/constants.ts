@@ -107,6 +107,10 @@ export const PACKAGE_NAME = '@zjaaal/artemis';
 /** The shipped binary finds its project through the nearest package.json. */
 export const MANIFEST_FILE = 'package.json';
 export const CONFIG_KEY = 'artemis';
+
+/** Where npm puts an installed package: a tool in here is always its own package, whatever it holds. */
+export const NODE_MODULES = 'node_modules';
+export const SCOPE_FOLDER_PREFIX = '@';
 export const DEFAULT_COMMANDS_FOLDER = 'commands';
 export const DEFAULT_BIN_NAME = 'art';
 

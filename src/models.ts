@@ -458,7 +458,8 @@ export type CliRoute = 'shipped' | 'own';
 export type CliSettings = { bin: string; commandsDir: string };
 
 /** What a folder's package.json says: an object, or the error of a file that cannot be read or parsed. */
-export type ManifestRead = { manifest: Record<string, unknown> } | { error: CommandError };
+export type ManifestRead =
+    { manifest: Record<string, unknown>; text: string } | { error: CommandError };
 
 /**
  * Reads the package.json of a folder; undefined when the folder has none. An edge. It never throws
@@ -469,11 +470,11 @@ export type ReadManifestFn = (dir: string) => ManifestRead | undefined;
 /**
  * Which package.json is the project, from positive signals only (nothing is inferred about what a
  * file is not). Shipped route: the nearest one with an "artemis" key (declared, usually by `init`) or
- * a commands folder next to it (the convention). Own route (`cli({ root })`): the nearest one that
- * declares a `bin`, because a published tool only runs through the package.json that declares it.
- * Markers, templates and unrelated packages carry none of these signals and are never candidates.
- * A package.json that cannot be read or parsed is an error, never skipped. Pure: the disk is only
- * looked at through `readManifest` and `isFolder`.
+ * a commands folder next to it. Own route (`cli({ root })`): the nearest one with the identity of a
+ * package (a name, a `bin` or an "artemis" key), and never past the folder of an installed package,
+ * so a published tool cannot climb into the project that installed it. Markers and templates carry
+ * none of these signals. A package.json that cannot be read or parsed is an error, never skipped.
+ * Pure: the disk is only looked at through `readManifest` and `isFolder`.
  */
 export type FindProjectFn = (
     cwd: string,
@@ -534,11 +535,15 @@ export type InitInput = {
     commandsDir: string;
     commandsDirExists: boolean;
     commandsDirIsEmpty: boolean;
+    /** Whether a command or topic named `init` is already there, which the `init` word would hide. */
+    shadowsCommand: boolean;
 };
 
 /** One thing `init` does. It never overwrites a file that exists. */
 export type InitStep =
-    { kind: 'folder'; path: string } | { kind: 'file'; path: string; text: string };
+    | { kind: 'folder'; path: string }
+    /** `create` fails if the file appears in the meantime; `update` is the one deliberate rewrite, of package.json. */
+    | { kind: 'file'; mode: 'create' | 'update'; path: string; text: string };
 
 export type InitPlan = {
     steps: InitStep[];
@@ -556,6 +561,9 @@ export type InitResult = { root: string; created: string[]; kept: string[]; warn
 export type InitProjectFn = (dir: string) => InitResult;
 
 export type DetectIndentFn = (text: string) => string;
+/** The text of a JSON object with one more property at the end, and nothing else changed. */
+export type AddKeyFn = (text: string, key: string, valueText: string) => string;
+export type IsInstalledPackageRootFn = (dir: string) => boolean;
 export type PackageNameForFn = (dir: string) => string;
 
 /** `art init [folder] [--json]`. Returns the exit code. */

@@ -1,17 +1,11 @@
-import path from 'node:path';
-
+import { EXIT_CODE } from '../constants.js';
 import { UsageError } from '../errors/errors.js';
 import type { InitCommandFn, InitResult } from '../models.js';
 import { resolveWorld } from '../run/world.js';
-import { INIT_FLAG_HELP, INIT_FLAG_HELP_SHORT, INIT_FLAG_JSON, INIT_WORD } from './constants.js';
+import { INIT_FLAGS, INIT_HELP, INIT_USAGE_LINE, INIT_WORD } from './constants.js';
 import { initProject } from './init.js';
 
-const USAGE = `Usage: ${INIT_WORD} [folder] [${INIT_FLAG_JSON}]\n\nMakes the folder (default: the current one) a project: a package.json with an "artemis" key, a commands/ folder and a sample command. Nothing that exists is overwritten.`;
-
-const isFlag = (word: string): boolean => word.startsWith('-');
-
-const isKnownFlag = (word: string): boolean =>
-    [INIT_FLAG_JSON, INIT_FLAG_HELP, INIT_FLAG_HELP_SHORT].includes(word);
+const KNOWN_WORDS: readonly string[] = Object.values(INIT_FLAGS);
 
 function describeResult({ created, kept, warnings }: InitResult): string {
     const lines = [
@@ -26,36 +20,35 @@ function describeResult({ created, kept, warnings }: InitResult): string {
 }
 
 /**
- * `init [folder] [--json]`: makes a folder a project. Handled by the shipped binary itself, like
- * `help`, because it has to work where there is no project yet. Throws a UsageError for a bad line.
+ * `init [--json]`: makes the current folder a project. Handled by the shipped binary itself, like
+ * `help`, because it has to work where there is no project yet. It is a fixed word and not a command
+ * a person writes, so it takes no arguments and no flags beyond `--json` and `--help`: anything else
+ * is a UsageError (exit 2).
  */
 export const initCommand: InitCommandFn = (words, options, cwd) => {
-    const flags = words.filter(isFlag);
-    const folders = words.filter((word) => !isFlag(word));
-    const unknown = flags.find((flag) => !isKnownFlag(flag));
+    const unexpected = words.find((word) => !KNOWN_WORDS.includes(word));
     const { io } = resolveWorld(options);
 
-    if (unknown) {
-        throw new UsageError(`Unknown option "${unknown}"`, { hint: USAGE });
+    if (unexpected) {
+        throw new UsageError(`${INIT_WORD} takes no arguments, but got "${unexpected}"`, {
+            usage: INIT_USAGE_LINE,
+            hint: 'Go to the folder you want to make a project, then run it.'
+        });
     }
 
-    if (folders.length > 1) {
-        throw new UsageError('init takes at most one folder', { hint: USAGE });
+    if (words.includes(INIT_FLAGS.help) || words.includes(INIT_FLAGS.helpShort)) {
+        io.stdout.write(`${INIT_HELP}\n`);
+
+        return EXIT_CODE.OK;
     }
 
-    if (flags.includes(INIT_FLAG_HELP) || flags.includes(INIT_FLAG_HELP_SHORT)) {
-        io.stdout.write(`${USAGE}\n`);
+    const result = initProject(cwd);
 
-        return 0;
-    }
-
-    const result = initProject(path.resolve(cwd, folders[0] ?? '.'));
-
-    const output = flags.includes(INIT_FLAG_JSON)
+    const output = words.includes(INIT_FLAGS.json)
         ? JSON.stringify({ ok: true, command: INIT_WORD, result })
         : describeResult(result);
 
     io.stdout.write(`${output}\n`);
 
-    return 0;
+    return EXIT_CODE.OK;
 };

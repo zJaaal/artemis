@@ -18,7 +18,7 @@ const manifestsAt =
 
         const manifest = manifests[dir];
 
-        return manifest ? { manifest } : undefined;
+        return manifest ? { manifest, text: JSON.stringify(manifest) } : undefined;
     };
 
 /** The folders that exist, named in full. */
@@ -222,32 +222,36 @@ describe('findProject: a package.json that cannot be read', () => {
 
 describe('findProject, own route: a tool’s bin file', () => {
     const tool = { name: 'mytool', bin: { mytool: 'bin/mytool.js' } };
+    const installed = '/app/node_modules/mytool';
 
-    test('the nearest package.json that declares a bin is the tool’s package', () => {
-        const project = own(
-            '/app/node_modules/mytool/bin',
-            manifestsAt({ '/app/node_modules/mytool': tool })
-        );
+    test('the nearest package.json with a name, a bin or an artemis key is the tool’s package', () => {
+        const project = own(`${installed}/bin`, manifestsAt({ [installed]: tool }));
 
-        expect(project?.root).toBe('/app/node_modules/mytool');
+        expect(project?.root).toBe(installed);
     });
 
     test('a bin written as a string declares one too', () => {
-        const project = own(
-            '/tool/bin',
-            manifestsAt({ '/tool': { name: 'mytool', bin: 'bin/mytool.js' } })
-        );
+        const project = own('/tool/bin', manifestsAt({ '/tool': { bin: 'bin/mytool.js' } }));
 
         expect(project?.root).toBe('/tool');
     });
 
-    test('an unnamed private tool that declares a bin is the tool’s package', () => {
+    test('a tool that declares no bin is still its own package: a name is enough', () => {
+        const project = own('/work/tool/bin', manifestsAt({ '/work/tool': { name: 'mytool' } }));
+
+        expect(project?.root).toBe('/work/tool');
+    });
+
+    test('a tool without a bin never climbs into a host that declares one', () => {
         const project = own(
-            '/tool/bin',
-            manifestsAt({ '/tool': { private: true, bin: { t: 'bin/t.js' } } })
+            '/work/tool/bin',
+            manifestsAt({
+                '/work/tool': { name: 'mytool' },
+                '/work': { name: 'host', bin: { host: 'h.js' } }
+            })
         );
 
-        expect(project?.root).toBe('/tool');
+        expect(project?.root).toBe('/work/tool');
     });
 
     test('a marker in dist next to the bin file is skipped, with any extra keys', () => {
@@ -259,37 +263,65 @@ describe('findProject, own route: a tool’s bin file', () => {
         expect(project?.root).toBe('/tool');
     });
 
-    test('a template package.json is skipped', () => {
+    test('a template without a name, bin or key is skipped too', () => {
         const project = own(
             '/tool/templates/bin',
-            manifestsAt({ '/tool': tool, '/tool/templates': { name: '{{name}}' } })
+            manifestsAt({ '/tool': tool, '/tool/templates': { private: true } })
         );
 
         expect(project?.root).toBe('/tool');
     });
 
-    test('never climbs into the project that installed the tool, as long as the tool declares its bin', () => {
+    test('never climbs into the project that installed the tool', () => {
         const project = own(
-            '/app/node_modules/mytool/bin',
-            manifestsAt({ '/app/node_modules/mytool': tool, '/app': { name: 'app', artemis: {} } })
+            `${installed}/bin`,
+            manifestsAt({ [installed]: tool, '/app': { name: 'app', artemis: {} } })
         );
 
-        expect(project?.root).toBe('/app/node_modules/mytool');
+        expect(project?.root).toBe(installed);
     });
 
-    test('an empty bin declares nothing', () => {
-        expect(
-            own('/tool/bin', manifestsAt({ '/tool': { name: 'mytool', bin: {} } }))
-        ).toBeUndefined();
+    test('an installed package is its own package even when its package.json has no identity', () => {
+        const project = own(
+            `${installed}/bin`,
+            manifestsAt({
+                [installed]: { private: true },
+                '/app': { name: 'app', bin: { app: 'a.js' } }
+            })
+        );
+
+        expect(project?.root).toBe(installed);
     });
 
-    test('a host that declares itself with an artemis key is not the tool: only a bin counts here', () => {
-        expect(
-            own('/tool/bin', manifestsAt({ '/tool': { name: 'mytool' }, '/': { artemis: {} } }))
-        ).toBeUndefined();
+    test('the same for a scoped package: node_modules/@scope/pkg', () => {
+        const scoped = '/app/node_modules/@acme/mytool';
+
+        const project = own(
+            `${scoped}/bin`,
+            manifestsAt({ [scoped]: { private: true }, '/app': { name: 'app', artemis: {} } })
+        );
+
+        expect(project?.root).toBe(scoped);
     });
 
-    test('is undefined when no package.json declares a bin', () => {
+    test('an installed package with no readable package.json has no project, and the host is not tried', () => {
+        const project = own(
+            `${installed}/bin`,
+            manifestsAt({ '/app': { name: 'app', artemis: {} } })
+        );
+
+        expect(project).toBeUndefined();
+    });
+
+    test('a host that only follows the commands convention is not the tool', () => {
+        expect(own('/work/bin', manifestsAt({}))).toBeUndefined();
+    });
+
+    test('an empty bin declares nothing, and without a name or key it is not a tool package', () => {
+        expect(own('/tool/bin', manifestsAt({ '/tool': { bin: {} } }))).toBeUndefined();
+    });
+
+    test('is undefined when no package.json has an identity', () => {
         expect(own('/somewhere/bin', manifestsAt({}))).toBeUndefined();
     });
 });

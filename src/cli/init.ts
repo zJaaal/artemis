@@ -2,14 +2,17 @@ import path from 'node:path';
 
 import { CONFIG_KEY, DEFAULT_COMMANDS_FOLDER, MANIFEST_FILE } from '../constants.js';
 import {
+    createExclusive,
     isFolder,
     listDirectory,
     makeDirectory,
+    pathExists,
     readManifest,
-    readTextIfExists,
     writeText
 } from '../edges/files.js';
+import { CommandError } from '../errors/errors.js';
 import type {
+    AddKeyFn,
     DetectIndentFn,
     InitInput,
     InitPlan,
@@ -19,13 +22,19 @@ import type {
     PlanInitFn
 } from '../models.js';
 import {
+    CRLF,
     DEFAULT_INDENT_SPACES,
     FALLBACK_PACKAGE_NAME,
     INDENT_PATTERN,
+    INIT_DECLARATION,
+    INIT_WORD,
+    LF,
+    NEW_MANIFEST_FIELDS,
     PACKAGE_NAME_EDGES,
     PACKAGE_NAME_INVALID,
     SAMPLE_COMMAND_FILE,
     SAMPLE_COMMAND_SOURCE,
+    SHADOW_WARNING,
     TYPE_WARNING
 } from './constants.js';
 import { resolveSettings } from './settings.js';
@@ -45,27 +54,51 @@ export const packageNameFor: PackageNameForFn = (dir) => {
     return name || FALLBACK_PACKAGE_NAME;
 };
 
-const declaration = { commandsDir: DEFAULT_COMMANDS_FOLDER };
+/** `{ "commandsDir": "commands" }`, on one line, for adding to a file without reformatting it. */
+const declarationText = (): string =>
+    `{ ${Object.entries(INIT_DECLARATION)
+        .map(([key, value]) => `${JSON.stringify(key)}: ${JSON.stringify(value)}`)
+        .join(', ')} }`;
+
+/**
+ * The same JSON object with one more property at the end. Only that changes: every byte before it,
+ * the indentation, inline arrays, key order, line endings (CRLF stays CRLF) and the final newline are
+ * kept, because the text is edited and not parsed and written back.
+ */
+export const addKey: AddKeyFn = (text, key, valueText) => {
+    const closing = /^([\s\S]*)\}(\s*)$/.exec(text);
+    const body = (closing?.[1] ?? text).trimEnd();
+    const after = closing?.[2] ?? '';
+    const comma = body.endsWith('{') ? '' : ',';
+    const property = `${JSON.stringify(key)}: ${valueText}`;
+
+    // A file written on one line stays on one line.
+    if (!text.includes(LF)) {
+        return `${body}${comma} ${property} }${after}`;
+    }
+
+    const eol = text.includes(CRLF) ? CRLF : LF;
+
+    return `${body}${comma}${eol}${detectIndent(text)}${property}${eol}}${after}`;
+};
 
 const newManifest = (dir: string): string =>
     `${JSON.stringify(
-        { name: packageNameFor(dir), private: true, type: 'module', [CONFIG_KEY]: declaration },
+        { name: packageNameFor(dir), ...NEW_MANIFEST_FIELDS, [CONFIG_KEY]: INIT_DECLARATION },
         null,
         ' '.repeat(DEFAULT_INDENT_SPACES)
     )}\n`;
-
-/** The same package.json with the "artemis" key added at the end; nothing else changes. */
-const withDeclaration = (text: string, manifest: Record<string, unknown>): string => {
-    const trailingNewline = text.endsWith('\n') ? '\n' : '';
-
-    return `${JSON.stringify({ ...manifest, [CONFIG_KEY]: declaration }, null, detectIndent(text))}${trailingNewline}`;
-};
 
 function planManifest(input: InitInput, manifestPath: string, plan: InitPlan): void {
     const { dir, manifest, manifestText } = input;
 
     if (manifest === undefined || manifestText === undefined) {
-        plan.steps.push({ kind: 'file', path: manifestPath, text: newManifest(dir) });
+        plan.steps.push({
+            kind: 'file',
+            mode: 'create',
+            path: manifestPath,
+            text: newManifest(dir)
+        });
 
         return;
     }
@@ -75,8 +108,9 @@ function planManifest(input: InitInput, manifestPath: string, plan: InitPlan): v
     } else {
         plan.steps.push({
             kind: 'file',
+            mode: 'update',
             path: manifestPath,
-            text: withDeclaration(manifestText, manifest)
+            text: addKey(manifestText, CONFIG_KEY, declarationText())
         });
     }
 
@@ -88,8 +122,8 @@ function planManifest(input: InitInput, manifestPath: string, plan: InitPlan): v
 /**
  * Decides what making a folder a project takes: a package.json with the "artemis" key (created, or
  * the key added to the one that is there), a commands folder, and a sample command so `hello` works
- * at once. Pure, and it never overwrites a file: the sample is only written into a commands folder
- * that is new or empty, and an existing package.json only gains the one key.
+ * at once. Pure, and it never overwrites: files are only planned where there is none, the sample only
+ * into a commands folder that is new or empty, and an existing package.json only gains the one key.
  */
 export const planInit: PlanInitFn = (input) => {
     const plan: InitPlan = { steps: [], kept: [], warnings: [] };
@@ -105,14 +139,20 @@ export const planInit: PlanInitFn = (input) => {
     if (!input.commandsDirExists || input.commandsDirIsEmpty) {
         plan.steps.push({
             kind: 'file',
+            mode: 'create',
             path: path.join(input.commandsDir, SAMPLE_COMMAND_FILE),
             text: SAMPLE_COMMAND_SOURCE
         });
     }
 
+    if (input.shadowsCommand) {
+        plan.warnings.push(SHADOW_WARNING);
+    }
+
     return plan;
 };
 
+/** Does one step. A file to create is created exclusively: it fails, never overwrites, if it appeared meanwhile. */
 function applyStep(step: InitStep): void {
     if (step.kind === 'folder') {
         makeDirectory(step.path);
@@ -121,12 +161,36 @@ function applyStep(step: InitStep): void {
     }
 
     makeDirectory(path.dirname(step.path));
-    writeText(step.path, step.text);
+
+    if (step.mode === 'update') {
+        writeText(step.path, step.text);
+
+        return;
+    }
+
+    if (!createExclusive(step.path, step.text)) {
+        throw new CommandError(`${step.path} already exists`, {
+            hint: 'init never overwrites a file. Move it, or run init in another folder.'
+        });
+    }
 }
 
+/** A commands path that exists as something other than a folder cannot become one. */
+function assertCommandsDirIsUsable(commandsDir: string): void {
+    if (pathExists(commandsDir) && !isFolder(commandsDir)) {
+        throw new CommandError(`${commandsDir} exists but is not a folder`, {
+            hint: `Move it, or set "${CONFIG_KEY}": { "commandsDir" } in ${MANIFEST_FILE} to another folder.`
+        });
+    }
+}
+
+/** Whether the project already has a command or topic called `init`, which the init word would hide. */
+const shadowsInit = (commandsDir: string): boolean =>
+    [`${INIT_WORD}.js`, INIT_WORD].some((name) => pathExists(path.join(commandsDir, name)));
+
 /**
- * Makes `dir` a project: reads what is there, plans, and does it. Running it again changes nothing.
- * A package.json that cannot be read or parsed is an error: it would be guesswork to edit it.
+ * Makes `dir` a project: reads what is there once, plans, and does it. Running it again changes
+ * nothing. A package.json that cannot be read or parsed is an error: editing it would be guesswork.
  */
 export const initProject: InitProjectFn = (dir) => {
     const read = readManifest(dir);
@@ -141,15 +205,18 @@ export const initProject: InitProjectFn = (dir) => {
         ? resolveSettings({ root: dir, manifest }, 'shipped').commandsDir
         : path.join(dir, DEFAULT_COMMANDS_FOLDER);
 
+    assertCommandsDirIsUsable(commandsDir);
+
     const commandsDirExists = isFolder(commandsDir);
 
     const plan = planInit({
         dir,
         manifest,
-        manifestText: manifest ? readTextIfExists(path.join(dir, MANIFEST_FILE)) : undefined,
+        manifestText: read?.text,
         commandsDir,
         commandsDirExists,
-        commandsDirIsEmpty: commandsDirExists && listDirectory(commandsDir).length === 0
+        commandsDirIsEmpty: commandsDirExists && listDirectory(commandsDir).length === 0,
+        shadowsCommand: shadowsInit(commandsDir)
     });
 
     plan.steps.forEach(applyStep);

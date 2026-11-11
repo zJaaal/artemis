@@ -108,7 +108,7 @@ function parseManifest(file: string, text: string): ManifestRead {
         const parsed: unknown = JSON.parse(text);
 
         if (isRecord(parsed)) {
-            return { manifest: parsed };
+            return { manifest: parsed, text };
         }
     } catch (error) {
         return {

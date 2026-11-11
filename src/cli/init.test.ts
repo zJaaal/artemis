@@ -8,9 +8,14 @@ import type { InitInput } from '../models.js';
 import { createSink } from '../test/sink.js';
 import { createTempFolders } from '../test/temp.js';
 import { thrownBy } from '../test/thrown.js';
-import { SAMPLE_COMMAND_FILE, SAMPLE_COMMAND_SOURCE, TYPE_WARNING } from './constants.js';
+import {
+    SAMPLE_COMMAND_FILE,
+    SAMPLE_COMMAND_SOURCE,
+    SHADOW_WARNING,
+    TYPE_WARNING
+} from './constants.js';
 import { cli } from './index.js';
-import { detectIndent, initProject, packageNameFor, planInit } from './init.js';
+import { addKey, detectIndent, initProject, packageNameFor, planInit } from './init.js';
 
 const folders = createTempFolders();
 
@@ -24,6 +29,7 @@ const fresh = (overrides: Partial<InitInput> = {}): InitInput => ({
     commandsDir: '/work/My App/commands',
     commandsDirExists: false,
     commandsDirIsEmpty: false,
+    shadowsCommand: false,
     ...overrides
 });
 
@@ -119,12 +125,22 @@ describe('planInit: a package.json that already exists', () => {
         });
     });
 
-    test('keeps the indentation and the final newline it had', () => {
+    test('changes nothing but the one added line: indentation and final newline are kept', () => {
         const step = fileStep(planInit(withManifest(text)), '/work/My App/package.json');
 
         expect(step?.kind === 'file' && step.text).toBe(
-            '{\n    "name": "app",\n    "version": "1.0.0",\n    "type": "module",\n    "artemis": {\n        "commandsDir": "commands"\n    }\n}\n'
+            '{\n    "name": "app",\n    "version": "1.0.0",\n    "type": "module",\n    "artemis": { "commandsDir": "commands" }\n}\n'
         );
+    });
+
+    test('the edit of an existing package.json is the one deliberate rewrite; new files are created', () => {
+        const plan = planInit(withManifest(text));
+
+        expect(plan.steps.map((step) => step.kind === 'file' && step.mode)).toEqual([
+            'update',
+            false,
+            'create'
+        ]);
     });
 
     test('adds no final newline to a file that had none', () => {
@@ -258,5 +274,138 @@ describe('initProject: on the disk', () => {
             0,
             { ok: true, command: 'hello', result: { greeting: 'hello world' } }
         ]);
+    });
+});
+
+describe('addKey: the text of a package.json, edited and not rewritten', () => {
+    const value = '{ "commandsDir": "commands" }';
+
+    test('adds the property after the last one, with the comma', () => {
+        expect(addKey('{\n  "name": "app"\n}\n', 'artemis', value)).toBe(
+            '{\n  "name": "app",\n  "artemis": { "commandsDir": "commands" }\n}\n'
+        );
+    });
+
+    test('leaves an inline array exactly as it was written', () => {
+        const text = '{\n  "name": "app",\n  "files": ["dist", "docs"]\n}\n';
+
+        expect(addKey(text, 'artemis', value)).toContain('"files": ["dist", "docs"],\n');
+    });
+
+    test('keeps CRLF line endings, including in the line it adds', () => {
+        const result = addKey('{\r\n  "name": "app"\r\n}\r\n', 'artemis', value);
+
+        expect(result).toBe(
+            '{\r\n  "name": "app",\r\n  "artemis": { "commandsDir": "commands" }\r\n}\r\n'
+        );
+    });
+
+    test('keeps tab indentation', () => {
+        expect(addKey('{\n\t"name": "app"\n}\n', 'artemis', value)).toContain('\t"artemis":');
+    });
+
+    test('keeps the key order, with the new key last', () => {
+        const result = addKey('{\n  "b": 1,\n  "a": 2\n}', 'artemis', value);
+
+        expect(Object.keys(JSON.parse(result) as object)).toEqual(['b', 'a', 'artemis']);
+    });
+
+    test('works on an empty object, with no comma', () => {
+        expect(JSON.parse(addKey('{}', 'artemis', value))).toEqual({
+            artemis: { commandsDir: 'commands' }
+        });
+    });
+
+    test('works when the last property is itself an object', () => {
+        const result = addKey('{\n  "scripts": {\n    "a": "b"\n  }\n}\n', 'artemis', value);
+
+        expect(JSON.parse(result)).toEqual({
+            scripts: { a: 'b' },
+            artemis: { commandsDir: 'commands' }
+        });
+    });
+
+    test('a file written on one line stays on one line', () => {
+        expect(addKey('{"name":"app"}', 'artemis', value)).toBe(
+            '{"name":"app", "artemis": { "commandsDir": "commands" } }'
+        );
+    });
+
+    test('adds no final newline to a file that had none, and keeps one that it had', () => {
+        const none = addKey('{\n  "a": 1\n}', 'artemis', value);
+        const one = addKey('{\n  "a": 1\n}\n', 'artemis', value);
+
+        expect([none.endsWith('\n'), one.endsWith('\n')]).toEqual([false, true]);
+    });
+});
+
+describe('planInit: the init word hiding a command', () => {
+    test('warns when a command or topic called init is already there', () => {
+        expect(planInit(fresh({ shadowsCommand: true })).warnings).toContain(SHADOW_WARNING);
+    });
+
+    test('says nothing otherwise', () => {
+        expect(planInit(fresh()).warnings).not.toContain(SHADOW_WARNING);
+    });
+});
+
+describe('initProject: what gets in the way', () => {
+    test('a commands path that is a file is an error with a hint, and nothing is written', () => {
+        const dir = folders.make('artemis-init-');
+
+        fs.writeFileSync(path.join(dir, 'commands'), 'not a folder');
+
+        expect(thrownBy(() => initProject(dir))).toMatchObject({
+            message: `${path.join(dir, 'commands')} exists but is not a folder`,
+            hint: expect.stringContaining('commandsDir')
+        });
+
+        expect(fs.existsSync(path.join(dir, 'package.json'))).toBe(false);
+    });
+
+    test('warns about a command called init in the project it initialises', () => {
+        const dir = folders.make('artemis-init-');
+
+        fs.mkdirSync(path.join(dir, 'commands'));
+        fs.writeFileSync(path.join(dir, 'commands', 'init.js'), 'export default {};\n');
+
+        expect(initProject(dir).warnings).toContain(SHADOW_WARNING);
+    });
+
+    test('a topic folder called init is hidden too, and warned about', () => {
+        const dir = folders.make('artemis-init-');
+
+        fs.mkdirSync(path.join(dir, 'commands', 'init'), { recursive: true });
+
+        expect(initProject(dir).warnings).toContain(SHADOW_WARNING);
+    });
+
+    test('edits an existing package.json byte for byte except for the added line', () => {
+        const dir = folders.make('artemis-init-');
+        const manifest = path.join(dir, 'package.json');
+
+        const original =
+            '{\r\n    "name": "app",\r\n    "type": "module",\r\n    "files": ["dist"]\r\n}\r\n';
+
+        fs.writeFileSync(manifest, original);
+        initProject(dir);
+
+        expect(fs.readFileSync(manifest, 'utf8')).toBe(
+            original.replace(
+                '["dist"]\r\n}',
+                '["dist"],\r\n    "artemis": { "commandsDir": "commands" }\r\n}'
+            )
+        );
+    });
+
+    test('a commands folder that already has files is left as it is', () => {
+        const dir = folders.make('artemis-init-');
+        const other = path.join(dir, 'commands', 'other.js');
+
+        fs.mkdirSync(path.dirname(other));
+        fs.writeFileSync(other, 'export default {};\n');
+        initProject(dir);
+
+        expect(fs.readdirSync(path.join(dir, 'commands'))).toEqual(['other.js']);
     });
 });
