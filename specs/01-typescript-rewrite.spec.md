@@ -3,7 +3,7 @@
 > **Status:** Approved
 > **Depends on:** none
 > **Date:** 2026-11-10
-> **Amended:** 2026-11-10 (owner): the package ships its own binary, `art` (also `artemis`). See "Amendment: the shipped binary" in the Implementation plan.
+> **Amended:** 2026-11-10 (owner): the package ships its own binary, `art` (also `artemis`). Revised the same day after review: the project is the nearest package.json that has an `artemis` key or a `commands/` folder, and `@zjaaal/artemis/cli` is a function, `cli({ root })`. See "Amendment: the shipped binary" in the Implementation plan.
 > **Objective:** Move Artemis out of the scripts repo into a new public repo as a strict TypeScript, ESM-only npm package with identical behavior, ported tests and CI/release set up.
 
 ## Why this spec exists
@@ -30,7 +30,7 @@ The tagline and the arrow/quiver metaphor are branding only (README intro). The 
 - Package `@zjaaal/artemis` 0.1.0: ESM only, Node >=22, plain `tsc` build to `dist/` (JS + `.d.ts`), subpath exports `@zjaaal/artemis/worktrees` and `@zjaaal/artemis/terminal`.
 - Lint and format as in Falcon's `packages/protocol`: typescript-eslint, prettier, `eslint.spacing.cjs`, vitest rules, no `any`, no enums.
 - Cheap agent-facing changes: `bin` required in `run()`; `AGENTS.md`; `README.md`.
-- **A shipped binary** (amendment): installing the package gives the commands `art` and `artemis` (same file). They find the project through the nearest `package.json` from the current folder and run its commands folder, so a project needs no `bin` file of its own. A `@zjaaal/artemis/cli` entry lets a project ship the same CLI under its own command name with a one-line bin file. `run()` stays for full control.
+- **A shipped binary** (amendment): installing the package gives the commands `art` and `artemis` (same file). They find the project through the nearest `package.json` from the current folder that has an `artemis` key or a `commands/` folder next to it, and run its commands folder, so a project needs no `bin` file of its own. `@zjaaal/artemis/cli` exports `cli({ root })`, so a project can ship the same CLI under its own command name with a short bin file that runs *its own* commands from wherever the user stands. `run()` stays for full control.
 - **Typed args/flags inference in `defineCommand`**: `run({ args, flags })` is typed from the definition (see Data model). All public types are exported, so TypeScript users and JS users with `// @ts-check` get them, even though command files are still `.js`.
 - GitHub Actions CI (PRs and `main`) and a tag-triggered release workflow that publishes with an npm token stored as a GitHub secret (`NPM_TOKEN`).
 - Documented manual steps for the owner: first publish, creating the npm token and storing it as the `NPM_TOKEN` repository secret.
@@ -149,22 +149,34 @@ export type CommandErrorOptions = { hint?: string };
 //                 export class UsageError extends Error { hint?: string }
 // Kits follow the same rule: src/kits/models.ts holds the option, result and function types of both kits.
 
-// The shipped binary (amendment). Its types live in src/models.ts with the rest of the core.
+// The shipped binary (amendment, revised after review). Its types live in src/models.ts with the rest of the core.
 // What a project may put under the "artemis" key of its package.json. Both fields are optional.
 export type ArtemisConfig = {
     commandsDir?: string; // relative to the folder of that package.json; default "commands"
     bin?: string; // the name help and usage lines show; see ResolveBinNameFn for the default
 };
-// Where the binary found the project: the folder holding the nearest package.json and its parsed content.
+// Where the binary found the project: the folder holding the nearest qualifying package.json and its parsed content.
 export type Project = { root: string; manifest: Record<string, unknown> };
+// How a run got started, which decides the default name: the shipped binary (art, artemis) or a project's own bin file.
+export type CliRoute = 'shipped' | 'own';
 // The settings a run uses, after defaults. Resolved by a pure function; reading files happens in src/edges/.
 export type CliSettings = { bin: string; commandsDir: string }; // commandsDir is absolute
-export type FindProjectFn = (cwd: string, readManifest: ReadManifestFn) => Project | undefined; // pure: files are read through readManifest
+// A package.json qualifies as the project when it has an "artemis" key or a commands/ folder next to it.
+// Marker files such as { "type": "module" } inside src/ or dist/ do not, so the search goes on upwards.
+export type FindProjectFn = (cwd: string, readManifest: ReadManifestFn, hasCommandsFolder: IsFolderFn) => Project | undefined; // pure: files are read through the two edges
 export type ReadManifestFn = (dir: string) => Record<string, unknown> | undefined; // edge: undefined when dir has no package.json
-export type ResolveSettingsFn = (project: Project) => CliSettings; // throws CommandError with a hint on a bad "artemis" key
-export type ResolveBinNameFn = (manifest: Record<string, unknown>) => string;
-//   "artemis".bin when set; else the single key of the project's own "bin" field when it has exactly one
-//   (so a project that ships `mytool` through @zjaaal/artemis/cli shows `mytool`); else "art".
+export type IsFolderFn = (path: string) => boolean; // edge (the same one discovery uses)
+export type ResolveSettingsFn = (project: Project, route: CliRoute) => CliSettings; // throws CommandError with a hint on a bad "artemis" key
+export type ResolveBinNameFn = (config: ArtemisConfig, manifest: Record<string, unknown>, route: CliRoute) => string;
+//   shipped route: "artemis".bin when set, else "art". A global art shows its own name, never the unrelated CLI a project publishes.
+//   own route (cli({ root })): "artemis".bin when set; else the single key of the project's own "bin" object, or, when "bin" is a
+//   string, the package name without its scope (npm names the command that way); else "art".
+// What cli() takes: the host options of run() (streams, interactive, color, env) plus where to look for the project.
+export type CliOptions = Pick<RunOptions, 'stdout' | 'stderr' | 'interactive' | 'color' | 'env'> & {
+    cwd?: string; // shipped route: where to start looking (default: the current folder)
+    root?: string | URL; // own route: where the bin file is (import.meta.url); the search starts from its folder, not from the current one
+};
+export type CliFn = (argv: string[], options?: CliOptions) => Promise<number>;
 ```
 
 Conventions:
@@ -181,8 +193,8 @@ Package layout:
 src/                    index.ts (re-exports only), models.ts, constants.ts: the shared public types and constants
   define/ errors/ parse/ resolve/ discover/ context/ help/ run/
                         one folder per module: its source, its foo.test.ts (and foo.test-d.ts) beside it
-  cli/                  the shipped binary (amendment): settings.ts (pure: find the project, resolve CliSettings),
-                        main.ts (the `art` / `artemis` entry, with the shebang), resolve-hook.ts, their tests
+  cli/                  the shipped binary (amendment): index.ts (public entry, re-exports `cli`), launch.ts (finds the project and runs it),
+                        settings.ts (pure), main.ts (the `art` / `artemis` entry, with the shebang), resolve-hook.ts, their tests
   edges/                the only code that touches the outside world (files, modules, prompts, process)
   utils/                small pure helpers
   test/                 test helpers and the fixture command trees; only tests import from it
@@ -194,7 +206,7 @@ AGENTS.md  README.md  LICENSE  docs/CODE_STANDARDS.md  specs/  .claude/skills/ (
 .github/workflows/ci.yml  .github/workflows/release.yml
 ```
 
-`package.json` essentials: `"name": "@zjaaal/artemis"`, `"version": "0.1.0"`, `"type": "module"`, `"engines": { "node": ">=22" }`, `"files": ["dist"]`, `"publishConfig": { "access": "public" }`, `exports` for `.`, `./worktrees`, `./terminal` (each with `types` and `import` pointing into `dist/`), `repository` pointing at `zJaaal/artemis`, scripts `build` (`tsc -p tsconfig.build.json`), `test` (`vitest run`), `test:all` (`tsc --noEmit && eslint . && prettier --check . && vitest run`). `vitest.config.ts` sets `passWithNoTests: true` until step 4 so `test:all` passes on an empty `src/`; step 4 removes it. `packageManager` pins the pnpm version (`pnpm@<exact>`, >=7 days old). `prompts` is the only runtime dependency, loaded lazily in `context.ts` only when a command prompts. Amendment: `"bin": { "art": "dist/cli/main.js", "artemis": "dist/cli/main.js" }`, and a fourth export `"./cli": { "import": "./dist/cli/main.js" }` (no `types`: importing it runs the CLI, it exports nothing).
+`package.json` essentials: `"name": "@zjaaal/artemis"`, `"version": "0.1.0"`, `"type": "module"`, `"engines": { "node": ">=22" }`, `"files": ["dist"]`, `"publishConfig": { "access": "public" }`, `exports` for `.`, `./worktrees`, `./terminal` (each with `types` and `import` pointing into `dist/`), `repository` pointing at `zJaaal/artemis`, scripts `build` (`tsc -p tsconfig.build.json`), `test` (`vitest run`), `test:all` (`tsc --noEmit && eslint . && prettier --check . && vitest run`). `vitest.config.ts` sets `passWithNoTests: true` until step 4 so `test:all` passes on an empty `src/`; step 4 removes it. `packageManager` pins the pnpm version (`pnpm@<exact>`, >=7 days old). `prompts` is the only runtime dependency, loaded lazily in `context.ts` only when a command prompts. Amendment: `"bin": { "art": "dist/cli/main.js", "artemis": "dist/cli/main.js" }`, and a fourth export `"./cli": { "types": "./dist/cli/index.d.ts", "import": "./dist/cli/index.js" }`, which exports the function `cli` and does nothing when imported.
 
 ## Implementation plan
 
@@ -220,25 +232,28 @@ Step 1 is on `main`; the rest are commits on `spec-01`. Each step leaves the rep
 18. **Release workflow.** `.github/workflows/release.yml`: on tag `v*`, `permissions: { contents: read, id-token: write }` (the second is for the provenance statement), Node 24, `pnpm/action-setup`, `pnpm install --frozen-lockfile`, `test:all`, `build`, check the tag equals `package.json` version, `npm publish --provenance --access public` with `NODE_AUTH_TOKEN` taken from `secrets.NPM_TOKEN` (publish stays on the npm CLI, which provenance needs). The token is never written in the repo.
 19. **Review and PR.** Run `/review-standards`, fix findings, push `spec-01`, open one PR to `main`.
 
-### Amendment: the shipped binary (owner, 2026-11-10)
+### Amendment: the shipped binary (owner, 2026-11-10; revised after review)
 
 Steps 20 to 24 land on `spec-01` before PR #1 merges, so `0.1.0` is the first release and already has the binary. They are new work, not a revert of commit `490caad` (that design looked for `.artemis/commands` and a user-level folder; this one does not). Its resolve hook is reused as described in step 22.
 
+Revised after review (same day), three design changes: the project is the nearest package.json that is *a project* (a bare `{ "type": "module" }` marker no longer stops the search); `@zjaaal/artemis/cli` is a function that takes the location of the bin file, so a published tool runs its own commands instead of the current folder's; and a global `art` never shows the name of an unrelated CLI that a project publishes.
+
 How the binary decides what to run:
 
-1. Walk up from the current folder to the **nearest `package.json`**. The first one found is the project, even if it has no `"artemis"` key (in a monorepo, the package you stand in wins). None found: exit 1, `command: null`, error "No package.json found from <cwd> upwards", hint "Run art inside a project, or create a package.json with a commands/ folder next to it."
-2. Read its `"artemis"` key (`ArtemisConfig`). Not an object, or a field that is not a non-empty string: exit 1 with the field named and a hint showing the valid shape.
+1. Walk up from the starting folder to the **nearest `package.json` that is a project**: it has an `"artemis"` key, or a `commands/` folder next to it. The starting folder is the current one for the shipped `art` / `artemis`, and the folder of the bin file for `cli({ root })`. A `package.json` that is neither (a `{ "type": "module" }` marker in `src/` or `dist/`, a monorepo package without commands) is skipped and the search goes on upwards. None found: exit 1, `command: null`, error "No project found from <folder> upwards", hint "A project is a folder with a package.json and a commands/ folder next to it, or an \"artemis\" key in its package.json. Run it inside a project, or create commands/ next to your package.json." The hint names no binary, because the binary does not know what the user typed (`art`, `artemis` or the name of a published tool).
+2. Read its `"artemis"` key (`ArtemisConfig`) and check it once. Not an object, or a field that is not a non-empty string: exit 1 with the field named and a hint showing the valid shape.
 3. `commandsDir` = `"artemis".commandsDir` resolved from the project root, default `<root>/commands`. Missing folder: exit 1, hint "Create <path>, or set \"artemis\": { \"commandsDir\" } in <package.json path>."
-4. `bin` = `ResolveBinNameFn` (Data model).
-5. `run(process.argv.slice(2), { bin, commandsDir })`, and `process.exitCode` is what it returns. Setup failures above go through the same envelope: with `--json` they print `{ ok: false, command: null, error, hint }` on stdout.
+4. `bin` = `ResolveBinNameFn` (Data model), from the checked configuration and the route: the shipped binary shows `"artemis".bin`, else `art`; `cli({ root })` shows `"artemis".bin`, else the single key of the project's own `bin` object (or the package name without its scope when `bin` is a string), else `art`.
+5. `run(argv, { bin, commandsDir, ... })`, and `process.exitCode` is what it returns. Setup failures above go through the same error reporter as any failure: with `--json` they print `{ ok: false, command: null, error, hint }` on stdout. An unreadable `package.json` (a permission error, a folder with that name) is the same kind of failure, with the file named, never a raw stack trace.
+6. Errors are recognised by their `Symbol.for` tags and not by `instanceof`, so a `CommandError` or `UsageError` thrown by a project's own local copy of Artemis, under a global `art`, keeps its hint, its exit code (1 or 2) and its no-stack-trace behavior.
 
 Steps:
 
-20. **Settings.** `src/cli/settings.ts`: `findProject`, `resolveSettings`, `resolveBinName`, pure, with `readManifest` the only way to read a file (the edge lives in `src/edges/files.ts`). Types in `src/models.ts`, the defaults (`"commands"`, `"art"`, the `"artemis"` key) in `src/constants.ts`. Tests beside it cover: nearest wins over a parent, a `package.json` with no `"artemis"` key uses the defaults, `commandsDir` resolves from the root and not from the cwd, every bad shape of the key, the bin name order (config, single `"bin"` key, two `"bin"` keys fall back to `"art"`, default).
-21. **Entry.** `src/cli/main.ts` starts with `#!/usr/bin/env node` (kept by `tsc`), reads `process.cwd()`, resolves the settings, calls `run()`. It never calls `process.exit`. Setup errors are reported by `run()`'s own error path (a `CommandError` with `command: null`), not by new printing code.
-22. **Global installs.** A globally installed `art` runs a project's command files, which `import '@zjaaal/artemis'`. When the project has no local copy, that import must resolve to the running copy: `main.ts` registers a resolve hook (`module.register`, Node >=22) that, only after normal resolution fails with `ERR_MODULE_NOT_FOUND` for `@zjaaal/artemis` or one of its subpaths, resolves it from the running package. A local copy, when present, always wins (the runtime tags of `Symbol.for` keep two copies compatible). Base it on `490caad`'s `src/global/resolve-hook.ts`, changed to fall back instead of always redirecting.
-23. **Package and checks.** Add the `bin` field and the `./cli` export. `scripts/check-exports.mjs` checks that `./cli` **resolves** (`import.meta.resolve`, never imported: importing it runs the CLI). New `scripts/check-bin.mjs`, run by CI after the build: in a temp folder with a `package.json` and a fixture `commands/`, it runs `node dist/cli/main.js help --json`, a command with `--json`, a subfolder of the project (nearest `package.json` still found), a folder with no `package.json` (exit 1, `command: null`), and a temp consumer whose one-line bin file is `import '@zjaaal/artemis/cli'` (help shows its own name). `pnpm pack --dry-run` still lists only `dist/`, `README.md`, `LICENSE`, `package.json`.
-24. **Docs.** README quick start becomes: install, create `commands/hello.js`, `npx art hello`. A section "Your own command name" shows the one-line bin file with `@zjaaal/artemis/cli` and the `"artemis": { "bin" }` key, and a section "Full control" keeps the `run()` bin file. `AGENTS.md` "Running the CLI" says the same in that order. Both say that `art` and `artemis` are the same command.
+20. **Settings.** `src/cli/settings.ts`: `findProject`, `resolveSettings`, `resolveBinName`, pure, with `readManifest` and the folder check the only ways to look at the disk (the edges live in `src/edges/files.ts`). Types in `src/models.ts`, the defaults (`"commands"`, `"art"`, the `"artemis"` key) in `src/constants.ts`. The `"artemis"` key is validated once, and the bin name is computed from that validated configuration. Tests beside it cover: nearest qualifying package.json wins over a parent, a bare marker `package.json` is skipped, a `package.json` with no `"artemis"` key but a `commands/` folder uses the defaults, `commandsDir` resolves from the root and not from the start folder, every bad shape of the key, and the bin name for both routes (config, single `"bin"` key, two keys fall back, string form uses the package name, default).
+21. **Entry.** `src/cli/main.ts` starts with `#!/usr/bin/env node` (kept by `tsc`) and is the shipped binary: it registers the resolve hook and calls `cli()` with the current folder. `src/cli/index.ts` is the public entry of `@zjaaal/artemis/cli` and only re-exports `cli`; the logic is in `src/cli/launch.ts`, which resolves the settings and calls `run()`. Nothing calls `process.exit`. Setup errors go through the same reporter as every other failure (`CommandError`, `command: null`).
+22. **Global installs.** A globally installed `art` runs a project's command files, which `import '@zjaaal/artemis'`. When the project has no local copy, that import must resolve to the running copy: `main.ts` registers a resolve hook (`module.register`, Node >=22) that, only after normal resolution fails with `ERR_MODULE_NOT_FOUND` for `@zjaaal/artemis` or one of its subpaths, resolves it from the running package. A local copy, when present, always wins (the `Symbol.for` tags of commands and of errors keep two copies compatible). Base it on `490caad`'s `src/global/resolve-hook.ts`, changed to fall back instead of always redirecting. `cli({ root })` does not register the hook: a published tool has the framework as its own dependency.
+23. **Package and checks.** Add the `bin` field (both names, `dist/cli/main.js`) and the `./cli` export (`dist/cli/index.js`, with types). `scripts/check-exports.mjs` imports `./cli` and checks it exports `cli`. New `scripts/check-bin.mjs`, run by CI after the build: it packs the package and installs it globally into a temp prefix; in temp projects with nothing installed it runs `art` and `artemis` (`help --json`, a command with `--json`, a subfolder, a subfolder holding a bare `{ "type": "module" }` marker, a folder with no project: exit 1, `command: null`), and checks that a project publishing an unrelated `bin` still shows `art`. A temp consumer installs the tarball locally and has a bin file `cli({ root: import.meta.url })`: run from an unrelated folder it still runs its own commands and shows its own name (single `bin` key, and the string form), and a command that throws a `CommandError` and a `UsageError` keeps its hint and exit code under the global `art`. `pnpm pack --dry-run` still lists only `dist/`, `README.md`, `LICENSE`, `package.json`.
+24. **Docs.** README quick start becomes: install, create `commands/hello.js`, `npx art hello`. A section "Your own command name" shows the bin file with `cli({ root: import.meta.url })` and the `"artemis": { "bin" }` key, and a section "Full control" keeps the `run()` bin file. `AGENTS.md` "Running the CLI" says the same in that order. Both say that `art` and `artemis` are the same command, and what counts as a project.
 
 ### Manual steps for the owner (also in the README "Releasing" section)
 
@@ -271,13 +286,13 @@ Agents cannot log in to npm, so the owner does these once:
 - [ ] The worktrees kit still takes `stateFile` and refuses unregistered worktrees.
 - [ ] `ci.yml` also runs `scripts/check-exports.mjs` and `npm publish --dry-run` after the build.
 - [ ] `pnpm run build` emits `dist/index.js`, `dist/index.d.ts`, `dist/kits/worktrees.js`, `dist/kits/terminal.js` and their `.d.ts`.
-- [ ] `@zjaaal/artemis`, `@zjaaal/artemis/worktrees`, `@zjaaal/artemis/terminal` and `@zjaaal/artemis/cli` resolve through `exports`; any other subpath does not.
-- [ ] Installing the package puts `art` and `artemis` on the PATH (both `dist/cli/main.js`). In a project with `package.json` and `commands/`, `art hello` runs `commands/hello.js` with no bin file in the project, from the root or any subfolder.
-- [ ] The nearest `package.json` from the current folder is the project. `"artemis": { "commandsDir" }` moves the commands folder (resolved from that `package.json`'s folder); without it the folder is `commands/`.
-- [ ] Help and usage show `"artemis".bin` when set, else the single key of the project's `"bin"` field, else `art`.
-- [ ] No `package.json`, a missing commands folder, or a bad `"artemis"` key exits 1 with a hint that says what to create or set; under `--json` it is one `{ ok: false, command: null, error, hint }` object.
-- [ ] A one-line bin file `import '@zjaaal/artemis/cli'` gives a project its own command name with the same behavior.
-- [ ] A globally installed `art` runs a project whose command files import `@zjaaal/artemis` without a local copy; with a local copy, the local one is used.
+- [ ] `@zjaaal/artemis`, `@zjaaal/artemis/worktrees`, `@zjaaal/artemis/terminal` and `@zjaaal/artemis/cli` resolve through `exports` (`cli` exports a function and does nothing when imported); any other subpath does not.
+- [ ] Installing the package puts `art` and `artemis` on the PATH (both `dist/cli/main.js`). In a project with `package.json` and `commands/`, `art hello` runs `commands/hello.js` with no bin file in the project, from the root or any subfolder, including a subfolder that holds a bare `{ "type": "module" }` marker `package.json`.
+- [ ] The nearest `package.json` from the current folder that has an `"artemis"` key or a `commands/` folder next to it is the project. `"artemis": { "commandsDir" }` moves the commands folder (resolved from that `package.json`'s folder); without it the folder is `commands/`.
+- [ ] The shipped `art` / `artemis` shows `"artemis".bin` when set, else `art`, and never the name of an unrelated CLI the project publishes. `cli({ root })` shows `"artemis".bin`, else the single key of the project's `bin` object (or the package name without its scope when `bin` is a string), else `art`.
+- [ ] No project from the starting folder upwards, a missing commands folder, a bad `"artemis"` key, or an unreadable `package.json` exits 1 with a hint that says what to create or set (and never names a binary); under `--json` it is one `{ ok: false, command: null, error, hint }` object.
+- [ ] A bin file with `cli({ root: import.meta.url })` gives a project its own command name and runs the project that the bin file belongs to, wherever the user is standing.
+- [ ] A globally installed `art` runs a project whose command files import `@zjaaal/artemis` without a local copy; with a local copy, the local one is used, and a `CommandError` or `UsageError` thrown by that local copy keeps its hint and exit code.
 - [ ] `scripts/check-bin.mjs` runs in CI after the build and passes.
 - [ ] `pnpm pack --dry-run` lists only `dist/`, `README.md`, `LICENSE` and `package.json`.
 - [ ] `package.json` has exactly one runtime dependency, `prompts`, and every dev dependency is an exact version. `@types/prompts` is an optional peer dependency (plain JavaScript never needs it).
@@ -325,6 +340,9 @@ Agents cannot log in to npm, so the owner does these once:
 
 - **Yes:** `@types/prompts` is an optional peer dependency (owner, 2026-11-10), because the public types mention `PromptObject` and plain JavaScript users never need the types.
 - **Yes:** the package ships a binary (owner, 2026-11-10, reversing the earlier "No"). "Drop one file in a folder and get a CLI command" is the point of the project; asking for a bin file first breaks that promise. Earlier the same day a binary based on `.artemis/commands` and a user-level folder was built (`490caad`) and reverted (`c44b17f`); that design is not revived.
+- **Yes:** `@zjaaal/artemis/cli` is a function, `cli({ root })`, not a side-effect import (review, 2026-11-10). A side-effect import cannot know which bin file imported it, so a published tool would run the commands of whatever project the user stands in. The bin file passes its own location.
+- **Yes:** the shipped binary's name never comes from the project's own `bin` field (review, 2026-11-10): a project that publishes an unrelated CLI `foo` and uses `art` for its dev commands must see `art`. Only `cli({ root })` reads the project's own `bin`.
+- **Yes:** a package.json is the project only when it has an `artemis` key or a `commands/` folder next to it (review, 2026-11-10), so marker files in `src/` or `dist/` do not break "works from any subfolder".
 - **Yes:** the project is the nearest `package.json`, configured by an optional `"artemis": { "commandsDir", "bin" }` key, default `commands/` (owner, 2026-11-10). Works from any subfolder, needs no config file of its own, and an unrelated `commands/` folder higher up is never picked by mistake. Folders are never merged: one run, one commands folder.
 - **Yes:** the binary is named `art` and `artemis`, two names for one file (owner, 2026-11-10). `art` matches the docs; `artemis` is the fallback when another `art` is on the PATH. npm bin names are not scoped, so a clash is possible; the package name `@zjaaal/artemis` is unaffected.
 - **Yes:** `@zjaaal/artemis/cli` for a project's own command name (owner, 2026-11-10). npm fixes a package's bin names, so a user cannot rename `art`; a one-line bin file that imports `./cli` gives the same CLI any name, and the name shown in help follows the project's `"bin"` key.
@@ -341,7 +359,7 @@ Agents cannot log in to npm, so the owner does these once:
 | Worktrees tests depend on the machine's git config | Temp repos set `user.name`, `user.email` and `init.defaultBranch` explicitly; no global config is read. |
 | Lock takeover tests are timing-sensitive | Time and process liveness come in as injectable options; no sleeps in tests. |
 | Another tool named `art` is on the user's PATH | `artemis` is the same command; README says so. |
-| A global `art` and a project's local copy differ in version | The local copy wins when present (step 22); the runtime `Symbol.for` tags keep definitions from either copy recognized. |
+| A global `art` and a project's local copy differ in version | The local copy wins when present (step 22); the runtime `Symbol.for` tags keep definitions and errors from either copy recognized, so a hint and an exit code survive the boundary. |
 | The resolve hook changes how other packages resolve | It acts only on `@zjaaal/artemis` specifiers and only after normal resolution failed; every other specifier goes through untouched (tested). |
 | Importing `./cli` in a check runs the CLI | `check-exports.mjs` only resolves `./cli`; the CLI is exercised by `check-bin.mjs` in temp folders. |
 | Package scope `@zjaaal` not owned on npm | Owner confirms before step 1 of the manual steps; if missing, the owner creates the scope (free for public packages). |
