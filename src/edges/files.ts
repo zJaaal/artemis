@@ -12,6 +12,7 @@ import type {
     CreateExclusiveFn,
     IsFolderFn,
     ListDirectoryFn,
+    ManifestRead,
     MakeDirectoryFn,
     ModifiedAtFn,
     PathExistsFn,
@@ -95,44 +96,51 @@ export const realPathOrResolve: RealPathFn = (folder) => {
     }
 };
 
-/** The text of a package.json. One that cannot be read (permissions, a folder of that name) is an error naming the file. */
-function readManifestText(file: string): string | undefined {
-    try {
-        return readTextIfExists(file);
-    } catch (error) {
-        throw new CommandError(`Cannot read ${file}: ${messageOf(error)}`, {
-            hint: 'Check that it is a readable file, or run from a folder whose package.json is.'
-        });
-    }
-}
+/** A package.json that cannot be read: the file is named, and nothing is thrown. */
+const unreadable = (file: string, error: unknown): ManifestRead => ({
+    error: new CommandError(`Cannot read ${file}: ${messageOf(error)}`, {
+        hint: 'Check that it is a readable file, or run from a folder whose package.json is.'
+    })
+});
 
-/**
- * The package.json of a folder as an object, or undefined when the folder has none. One that is not
- * valid JSON, or not an object, is an error: the nearest package.json defines the project.
- */
-export const readManifest: ReadManifestFn = (dir) => {
-    const file = path.join(dir, MANIFEST_FILE);
-    const text = readManifestText(file);
-
-    if (text === undefined) {
-        return undefined;
-    }
-
+function parseManifest(file: string, text: string): ManifestRead {
     try {
         const parsed: unknown = JSON.parse(text);
 
         if (isRecord(parsed)) {
-            return parsed;
+            return { manifest: parsed };
         }
     } catch (error) {
-        throw new CommandError(`${file} is not valid JSON: ${messageOf(error)}`, {
-            hint: 'Fix the file, or run from a folder whose package.json is valid.'
-        });
+        return {
+            error: new CommandError(`${file} is not valid JSON: ${messageOf(error)}`, {
+                hint: 'Fix the file, or run from a folder whose package.json is valid.'
+            })
+        };
     }
 
-    throw new CommandError(`${file} must contain a JSON object`, {
-        hint: 'A package.json is an object, such as { "name": "my-project" }.'
-    });
+    return {
+        error: new CommandError(`${file} must contain a JSON object`, {
+            hint: 'A package.json is an object, such as { "name": "my-project" }.'
+        })
+    };
+}
+
+/**
+ * What the package.json of a folder says, or undefined when the folder has none. A file that cannot
+ * be read, is not valid JSON or is not an object is returned as an error, not thrown: whether it
+ * matters depends on whether it turns out to be the project.
+ */
+export const readManifest: ReadManifestFn = (dir) => {
+    const file = path.join(dir, MANIFEST_FILE);
+    let text: string | undefined;
+
+    try {
+        text = readTextIfExists(file);
+    } catch (error) {
+        return unreadable(file, error);
+    }
+
+    return text === undefined ? undefined : parseManifest(file, text);
 };
 
 export const isFolder: IsFolderFn = (target) =>

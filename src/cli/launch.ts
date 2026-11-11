@@ -1,7 +1,7 @@
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-import { CONFIG_KEY, DEFAULT_COMMANDS_FOLDER, JSON_FLAG, MANIFEST_FILE } from '../constants.js';
+import { CONFIG_KEY, DEFAULT_COMMANDS_FOLDER, MANIFEST_FILE, URL_LIKE } from '../constants.js';
 import { isFolder, readManifest } from '../edges/files.js';
 import { currentProcess } from '../edges/process.js';
 import { workingDirectory } from '../edges/system.js';
@@ -10,36 +10,72 @@ import type { CliFn, CliRoute, FolderOfRootFn, HostOptions, SettingsForFn } from
 import { reportError } from '../run/report.js';
 import { run } from '../run/run.js';
 import { resolveWorld } from '../run/world.js';
-import { beforeTerminator } from '../utils/terminator.js';
+import { jsonRequested } from '../utils/terminator.js';
 import { findProject, resolveSettings } from './settings.js';
+
+/** What `root` stands for as a path, or a CommandError that says what to pass instead. */
+function pathOfRoot(root: string | URL): string {
+    try {
+        if (typeof root === 'string' && root !== '' && !URL_LIKE.test(root)) {
+            return root;
+        }
+
+        return fileURLToPath(root);
+    } catch {
+        // Nothing is lost: the failure is reported below, with what to pass instead.
+        throw new CommandError(
+            `cli({ root }) needs the location of your bin file, but got ${String(root)}`,
+            {
+                hint: 'Pass import.meta.url from your bin file, or a path.'
+            }
+        );
+    }
+}
 
 /** The folder a bin file is in (`import.meta.url`), or the folder itself when given one. */
 const folderOfRoot: FolderOfRootFn = (root) => {
-    const target =
-        typeof root === 'string' && !root.startsWith('file:') ? root : fileURLToPath(root);
+    const target = pathOfRoot(root);
 
     return isFolder(target) ? target : path.dirname(target);
 };
 
+/** What to do when no project is found: the end user can change folder, the author of a tool cannot. */
+const noProjectError = (start: string, route: CliRoute): CommandError =>
+    route === 'own'
+        ? new CommandError(`No ${MANIFEST_FILE} found from ${start} upwards`, {
+              hint: `This tool is missing its ${MANIFEST_FILE}. If you maintain it, ship ${MANIFEST_FILE} and a ${DEFAULT_COMMANDS_FOLDER}/ folder in the package (see "files" in ${MANIFEST_FILE}).`
+          })
+        : new CommandError(`No project found from ${start} upwards`, {
+              hint: `A project is a folder with a ${MANIFEST_FILE} and a ${DEFAULT_COMMANDS_FOLDER}/ folder next to it, or an "${CONFIG_KEY}" key in its ${MANIFEST_FILE}. Run it inside a project, or create ${DEFAULT_COMMANDS_FOLDER}/ next to your ${MANIFEST_FILE}.`
+          });
+
+/** The commands folder is missing: say what to create, and for a published tool, who has to. */
+const missingCommandsError = (commandsDir: string, manifestPath: string, route: CliRoute) =>
+    new CommandError(`Commands folder not found: ${commandsDir}`, {
+        hint:
+            `Create ${commandsDir}, or set "${CONFIG_KEY}": { "commandsDir" } in ${manifestPath}.` +
+            (route === 'own'
+                ? ` If this is a published tool, its author has to ship the commands folder (add it to "files" in ${MANIFEST_FILE}).`
+                : '')
+    });
+
 /** The project of a folder and where its commands are, or a CommandError that says what to create. */
 const settingsFor: SettingsForFn = (start, route) => {
-    const project = findProject(start, readManifest, isFolder);
-
     // The messages name no binary: it is not known here what the user typed (art, artemis or a tool's name).
+    const project = findProject(start, readManifest, isFolder, route);
+
     if (!project) {
-        throw new CommandError(`No project found from ${start} upwards`, {
-            hint: `A project is a folder with a ${MANIFEST_FILE} and a ${DEFAULT_COMMANDS_FOLDER}/ folder next to it, or an "${CONFIG_KEY}" key in its ${MANIFEST_FILE}. Run it inside a project, or create ${DEFAULT_COMMANDS_FOLDER}/ next to your ${MANIFEST_FILE}.`
-        });
+        throw noProjectError(start, route);
     }
 
     const settings = resolveSettings(project, route);
 
     if (!isFolder(settings.commandsDir)) {
-        const manifestPath = path.join(project.root, MANIFEST_FILE);
-
-        throw new CommandError(`Commands folder not found: ${settings.commandsDir}`, {
-            hint: `Create ${settings.commandsDir}, or set "${CONFIG_KEY}": { "commandsDir" } in ${manifestPath}.`
-        });
+        throw missingCommandsError(
+            settings.commandsDir,
+            path.join(project.root, MANIFEST_FILE),
+            route
+        );
     }
 
     return settings;
@@ -49,12 +85,7 @@ const settingsFor: SettingsForFn = (start, route) => {
 function reportSetupFailure(argv: string[], error: unknown, host: HostOptions): number {
     const { io, style } = resolveWorld(host);
 
-    return reportError(error, {
-        io,
-        style,
-        json: beforeTerminator(argv).includes(JSON_FLAG),
-        commandId: undefined
-    });
+    return reportError(error, { io, style, json: jsonRequested(argv), commandId: undefined });
 }
 
 /**
@@ -69,13 +100,13 @@ export const launch: CliFn = async (options = {}) => {
     const { argv = currentProcess().args, cwd, root, ...host } = options;
     const route: CliRoute = root === undefined ? 'shipped' : 'own';
 
-    const start = path.resolve(
-        root === undefined ? (cwd ?? workingDirectory()) : folderOfRoot(root)
-    );
-
     let settings;
 
     try {
+        const start = path.resolve(
+            root === undefined ? (cwd ?? workingDirectory()) : folderOfRoot(root)
+        );
+
         settings = settingsFor(start, route);
     } catch (error) {
         return reportSetupFailure(argv, error, host);

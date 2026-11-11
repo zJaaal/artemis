@@ -1,3 +1,4 @@
+import type { ExitCode } from '../models.js';
 import type { LockEdges } from '../kits/worktrees/models.js';
 
 /** Types of the test helpers. Only tests import from `src/test`. */
@@ -76,7 +77,9 @@ export type ProjectOptions = {
 
 export type ForeignErrorOptions = {
     hint?: string;
-    exitCode?: number;
+    exitCode?: ExitCode;
+    /** A value that is not an exit code (or `undefined`), as a copy that sends something odd would. */
+    invalidExitCode?: unknown;
     usage?: string;
     /** Whether it is also tagged as a usage error. */
     isUsage?: boolean;

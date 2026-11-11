@@ -11,7 +11,9 @@ import { CommandError } from '../errors/errors.js';
 import type {
     ArtemisConfig,
     FindProjectFn,
+    CliRoute,
     IsFolderFn,
+    ManifestRead,
     Project,
     ReadManifestFn,
     ResolveBinNameFn,
@@ -21,34 +23,51 @@ import { isRecord } from '../utils/is-record.js';
 
 const VALID_SHAPE_HINT = `The key looks like "${CONFIG_KEY}": { "commandsDir": "commands", "bin": "mytool" }, and both fields are optional.`;
 
-/** A package.json is the project when it has an "artemis" key or a commands folder beside it. */
-const isProject = (dir: string, manifest: Record<string, unknown>, isFolder: IsFolderFn): boolean =>
-    manifest[CONFIG_KEY] !== undefined || isFolder(path.join(dir, DEFAULT_COMMANDS_FOLDER));
+const hasCommandsFolder = (dir: string, isFolder: IsFolderFn): boolean =>
+    isFolder(path.join(dir, DEFAULT_COMMANDS_FOLDER));
+
+/** The shipped route: a package.json is the project when it has an "artemis" key or a commands folder beside it. */
+const qualifies = (dir: string, read: ManifestRead, isFolder: IsFolderFn): boolean =>
+    'error' in read
+        ? hasCommandsFolder(dir, isFolder)
+        : read.manifest[CONFIG_KEY] !== undefined || hasCommandsFolder(dir, isFolder);
+
+/** The own route: the nearest package.json is the tool's own, so it is the project, whatever it holds. */
+const isTheProject = (dir: string, read: ManifestRead, isFolder: IsFolderFn, route: CliRoute) =>
+    route === 'own' || qualifies(dir, read, isFolder);
 
 function searchUpwards(
     dir: string,
     readManifest: ReadManifestFn,
-    isFolder: IsFolderFn
+    isFolder: IsFolderFn,
+    route: CliRoute
 ): Project | undefined {
-    const manifest = readManifest(dir);
+    const read = readManifest(dir);
 
-    if (manifest && isProject(dir, manifest, isFolder)) {
-        return { root: dir, manifest };
+    if (read && isTheProject(dir, read, isFolder, route)) {
+        // A package.json that cannot be read only matters once it turns out to be the project.
+        if ('error' in read) {
+            throw read.error;
+        }
+
+        return { root: dir, manifest: read.manifest };
     }
 
     const parent = path.dirname(dir);
 
-    return parent === dir ? undefined : searchUpwards(parent, readManifest, isFolder);
+    return parent === dir ? undefined : searchUpwards(parent, readManifest, isFolder, route);
 }
 
 /**
- * The project is the folder of the nearest package.json that has an "artemis" key or a commands
- * folder next to it, looking in `cwd` and then each parent. A package.json that is neither, such as a
- * `{ "type": "module" }` marker in `src/` or `dist/`, or a monorepo package without commands, is
- * skipped and the search goes on upwards. Pure: the disk is only looked at through the two edges.
+ * The project of a folder. Shipped route: the nearest package.json that has an "artemis" key or a
+ * commands folder next to it, looking in `cwd` and then each parent; a package.json that is neither,
+ * such as a `{ "type": "module" }` marker in `src/`, or that cannot be read, is skipped and the search
+ * goes on upwards. Own route (`cli({ root })`): the nearest package.json is the tool's own package and
+ * ends the search, so it can never climb out of `node_modules/mytool` into someone else's project.
+ * Pure: the disk is only looked at through the two edges.
  */
-export const findProject: FindProjectFn = (cwd, readManifest, isFolder) =>
-    searchUpwards(path.resolve(cwd), readManifest, isFolder);
+export const findProject: FindProjectFn = (cwd, readManifest, isFolder, route) =>
+    searchUpwards(path.resolve(cwd), readManifest, isFolder, route);
 
 const isNonEmptyText = (value: unknown): value is string =>
     typeof value === 'string' && value.length > 0;
@@ -80,18 +99,23 @@ function readConfig(project: Project): ArtemisConfig {
     return declared;
 }
 
-/** The command npm creates for the `bin` field of a package: its single key, or the package name. */
+/**
+ * The command a project's own bin file is known by: the single key of its `bin` object. When `bin`
+ * does not name one command (a string, or several keys) npm names it after the package, so that is
+ * the name, without its `@scope/`. A project with no `bin` at all has no name of its own.
+ */
 function ownBinName(manifest: Record<string, unknown>): string | undefined {
     const { bin, name } = manifest;
+    const keys = isRecord(bin) ? Object.keys(bin) : [];
+    const [only] = keys;
 
-    if (isRecord(bin)) {
-        const keys = Object.keys(bin);
-        const [only] = keys;
-
-        return keys.length === 1 ? only : undefined;
+    if (keys.length === 1) {
+        return only;
     }
 
-    return isNonEmptyText(bin) && isNonEmptyText(name) ? name.replace(SCOPE_PREFIX, '') : undefined;
+    const hasBin = isRecord(bin) ? keys.length > 0 : isNonEmptyText(bin);
+
+    return hasBin && isNonEmptyText(name) ? name.replace(SCOPE_PREFIX, '') : undefined;
 }
 
 /**

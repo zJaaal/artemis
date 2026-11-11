@@ -231,9 +231,10 @@ describe('cli: when it cannot find what to run', () => {
         });
     });
 
-    test('a package.json that is not valid JSON fails and names the file', async () => {
+    test('a package.json that is not valid JSON fails and names the file, when it is the project', async () => {
         const root = folders.make('artemis-cli-');
 
+        fs.mkdirSync(path.join(root, 'commands'));
         fs.writeFileSync(path.join(root, 'package.json'), '{ nope');
 
         expect((await art(['hello'], root)).err).toContain(
@@ -241,9 +242,21 @@ describe('cli: when it cannot find what to run', () => {
         );
     });
 
-    test('a package.json that cannot be read fails and names the file, with no stack trace', async () => {
+    test('a package.json that is not valid JSON does not hide the project above it', async () => {
+        const root = folders.make('artemis-cli-');
+        const templates = path.join(root, 'templates');
+
+        makeProject(root, { greeting: 'project' });
+        fs.mkdirSync(templates);
+        fs.writeFileSync(path.join(templates, 'package.json'), '{ "name": "{{name}}" }');
+
+        expect(await greeting(templates)).toEqual({ greeting: 'project' });
+    });
+
+    test('a package.json that cannot be read fails and names the file, with no stack trace, when it is the project', async () => {
         const root = folders.make('artemis-cli-');
 
+        fs.mkdirSync(path.join(root, 'commands'));
         fs.mkdirSync(path.join(root, 'package.json'));
 
         const result = await art(['hello'], root);
@@ -342,10 +355,88 @@ describe('cli: a project’s own bin file', () => {
         expect((envelope(result.out).result as Manifest).bin).toBe('mytool');
     });
 
-    test('a bin file with no project around it fails like any other setup failure', async () => {
+    test('a bin file with no package.json around it fails with a hint for the tool’s author', async () => {
         const nowhere = folders.make('artemis-tool-');
         const result = await ownArt(['hello', '--json'], path.join(nowhere, 'bin', 'mytool.js'));
 
-        expect(envelope(result.out)).toMatchObject({ ok: false, command: null });
+        expect(envelope(result.out)).toMatchObject({
+            ok: false,
+            command: null,
+            hint: expect.stringContaining('If you maintain it')
+        });
+    });
+
+    test('a tool that does not ship its commands never runs the commands of the project that installed it', async () => {
+        const user = folders.make('artemis-cli-');
+        const tool = path.join(user, 'node_modules', 'mytool');
+
+        makeProject(user, { greeting: 'the user' });
+        fs.mkdirSync(path.join(tool, 'bin'), { recursive: true });
+        fs.writeFileSync(path.join(tool, 'package.json'), '{ "name": "mytool" }');
+
+        const result = await ownArt(['hello', '--json'], path.join(tool, 'bin', 'mytool.js'));
+
+        expect(envelope(result.out)).toMatchObject({
+            ok: false,
+            command: null,
+            error: `Commands folder not found: ${path.join(tool, 'commands')}`
+        });
+    });
+
+    test('the failure of a tool without commands tells its author what to ship', async () => {
+        const tool = folders.make('artemis-tool-');
+
+        fs.writeFileSync(path.join(tool, 'package.json'), '{ "name": "mytool" }');
+
+        const result = await ownArt(['hello', '--json'], path.join(tool, 'bin', 'mytool.js'));
+
+        expect(envelope(result.out).hint).toContain('its author has to ship the commands folder');
+    });
+
+    test('the same failure for the shipped route does not blame an author', async () => {
+        const root = folders.make('artemis-cli-');
+
+        fs.writeFileSync(path.join(root, 'package.json'), JSON.stringify({ artemis: {} }));
+
+        const result = await art(['hello', '--json'], root);
+
+        expect(envelope(result.out).hint).not.toContain('author');
+    });
+
+    test('a tool with several bin names is called after its package', async () => {
+        const toolRoot = folders.make('artemis-tool-');
+
+        makeProject(toolRoot, {
+            greeting: 'tool',
+            manifest: { name: '@acme/mytool', bin: { mytool: 'bin/mytool.js', mt: 'bin/mt.js' } }
+        });
+
+        const result = await ownArt(['help', '--json'], path.join(toolRoot, 'bin', 'mytool.js'));
+
+        expect((envelope(result.out).result as Manifest).bin).toBe('mytool');
+    });
+
+    test('a root that is not a file URL or a path is a reported failure, not a crash', async () => {
+        const result = await ownArt(['hello', '--json'], 'http://example.com/bin/mytool.js');
+
+        expect(envelope(result.out)).toMatchObject({
+            ok: false,
+            command: null,
+            error: 'cli({ root }) needs the location of your bin file, but got http://example.com/bin/mytool.js',
+            hint: 'Pass import.meta.url from your bin file, or a path.'
+        });
+    });
+
+    test('an empty root is a reported failure too', async () => {
+        const result = await ownArt(['hello'], '');
+
+        expect(result.code).toBe(EXIT_CODE.FAILED);
+        expect(result.err).toContain('cli({ root }) needs the location of your bin file');
+    });
+
+    test('a bad root prints no stack trace', async () => {
+        const result = await ownArt(['hello'], new URL('http://example.com/x'));
+
+        expect(result.err).not.toMatch(/\s+at /);
     });
 });

@@ -1,7 +1,11 @@
-import { EXIT_CODE } from '../constants.js';
+import { EXIT_CODE, FAILURE_CODES } from '../constants.js';
 import { isCommandError, isUsageError } from '../errors/errors.js';
-import type { ErrorReport, ReportContext, ReportErrorFn } from '../models.js';
+import type { ErrorReport, FailureCodeOfFn, ReportContext, ReportErrorFn } from '../models.js';
 import { messageOf } from '../utils/error-message.js';
+
+/** The exit code of a tagged error, trusted only when it is a failure code: a failed run never exits 0. */
+const failureCodeOf: FailureCodeOfFn = (value) =>
+    FAILURE_CODES.find((code) => code === value) ?? EXIT_CODE.FAILED;
 
 /** Splits an error into what the user sees; only a plain error (a bug) carries its stack. */
 function describeError(error: unknown): ErrorReport {
@@ -12,7 +16,7 @@ function describeError(error: unknown): ErrorReport {
         hint: isExpected ? error.hint : undefined,
         usage: isUsageError(error) ? error.usage : undefined,
         stack: !isExpected && error instanceof Error ? error.stack : undefined,
-        exitCode: isExpected ? error.exitCode : EXIT_CODE.FAILED
+        exitCode: isExpected ? failureCodeOf(error.exitCode) : EXIT_CODE.FAILED
     };
 }
 

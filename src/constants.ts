@@ -3,6 +3,9 @@ import type { FlagDefinition, StyleCodes } from './models.js';
 /** Exit codes: 0 success, 1 the command failed, 2 the command line was wrong. */
 export const EXIT_CODE = { OK: 0, FAILED: 1, USAGE: 2 } as const;
 
+/** The exit codes of a failure: a failed run never exits with OK. */
+export const FAILURE_CODES = [EXIT_CODE.FAILED, EXIT_CODE.USAGE] as const;
+
 // Symbol.for, so a definition is recognised even if two copies of Artemis end up loaded
 export const COMMAND_TAG = Symbol.for('artemis.command');
 export const TOPIC_TAG = Symbol.for('artemis.topic');
@@ -109,3 +112,6 @@ export const DEFAULT_BIN_NAME = 'art';
 
 /** npm names the command of a string `bin` after the package, without its `@scope/`. */
 export const SCOPE_PREFIX = /^@[^/]+\//;
+
+/** A string that is a URL, such as `file:///app/bin.js` or `http://x`, and not a path (`C:\\x` is a path). */
+export const URL_LIKE = /^(file:|[a-z][a-z0-9+.-]*:\/\/)/i;

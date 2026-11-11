@@ -129,4 +129,25 @@ describe('reportError with an error from another copy of Artemis', () => {
         expect(code).toBe(EXIT_CODE.USAGE);
         expect(err).toContain('Usage  art x <a>');
     });
+
+    test('an exit code that is missing falls back to a failure, never to success', () => {
+        const error = foreignCommandError('Bad input', { invalidExitCode: undefined });
+
+        expect(report(error, false).code).toBe(EXIT_CODE.FAILED);
+    });
+
+    test('an exit code of 0 falls back to a failure: a failed run never exits 0', () => {
+        const error = foreignCommandError('Bad input', { invalidExitCode: EXIT_CODE.OK });
+
+        expect(report(error, false).code).toBe(EXIT_CODE.FAILED);
+    });
+
+    test.each([{ value: 7 }, { value: '2' }, { value: null }, { value: Number.NaN }])(
+        'an exit code of $value falls back to a failure',
+        ({ value }) => {
+            const error = foreignCommandError('Bad input', { invalidExitCode: value });
+
+            expect(report(error, false).code).toBe(EXIT_CODE.FAILED);
+        }
+    );
 });

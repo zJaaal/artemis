@@ -4,6 +4,7 @@ import type { ParseArgsConfig } from 'node:util';
 import type { PromptObject } from 'prompts';
 
 import type { EXIT_CODE, STYLE_CODES } from './constants.js';
+import type { CommandError } from './errors/errors.js';
 
 // ---------------------------------------------------------------------------------------------
 // Definitions: what a command file declares
@@ -174,7 +175,7 @@ export type DefineCommandFn = <
     definition: CommandDefinition<TArgs, TFlags>
 ) => Command<TArgs, TFlags>;
 
-/** Reads the tag a definition carries at runtime. */
+/** Whether a value carries a `Symbol.for` tag (a definition's, or an error's), which survives two copies of the package. */
 export type IsTaggedFn = (value: unknown, tag: symbol) => boolean;
 export type IsCommandErrorFn = (value: unknown) => value is CommandErrorShape;
 export type IsUsageErrorFn = (value: unknown) => value is UsageErrorShape;
@@ -290,6 +291,9 @@ export type LeadingFlags = { leading: string[]; rest: string[] };
 export type SplitLeadingFlagsFn = (argv: readonly string[]) => LeadingFlags;
 export type IsGlobalFlagTokenFn = (token: string) => boolean;
 export type BeforeTerminatorFn = (argv: readonly string[]) => string[];
+export type JsonRequestedFn = (argv: readonly string[]) => boolean;
+/** The exit code of a failure: the one a tagged error carries when it is a failure code, else 1. */
+export type FailureCodeOfFn = (value: unknown) => ExitCode;
 export type SuggestFn = (registry: Registry, name: string) => string | undefined;
 export type FindCommandFn = (registry: Registry, id: string) => CommandEntry | undefined;
 
@@ -453,18 +457,26 @@ export type CliRoute = 'shipped' | 'own';
 /** The settings a run uses, after defaults. `commandsDir` is absolute. */
 export type CliSettings = { bin: string; commandsDir: string };
 
-/** Reads the package.json of a folder; undefined when the folder has none. An edge. */
-export type ReadManifestFn = (dir: string) => Record<string, unknown> | undefined;
+/** What a folder's package.json says: an object, or the error of a file that cannot be read or parsed. */
+export type ManifestRead = { manifest: Record<string, unknown> } | { error: CommandError };
 
 /**
- * A package.json is the project when it has an "artemis" key or a commands folder next to it; marker
- * files such as `{ "type": "module" }` in `src/` do not count. Pure: the disk is only looked at
- * through `readManifest` and `isFolder`.
+ * Reads the package.json of a folder; undefined when the folder has none. An edge. It never throws
+ * for a bad file: the search skips it unless it would have been the project.
+ */
+export type ReadManifestFn = (dir: string) => ManifestRead | undefined;
+
+/**
+ * Shipped route: a package.json is the project when it has an "artemis" key or a commands folder next
+ * to it; marker files such as `{ "type": "module" }` in `src/` do not count. Own route: the nearest
+ * package.json of the bin file is the tool's own package, so it is the project and the search never
+ * climbs out of it. Pure: the disk is only looked at through `readManifest` and `isFolder`.
  */
 export type FindProjectFn = (
     cwd: string,
     readManifest: ReadManifestFn,
-    isFolder: IsFolderFn
+    isFolder: IsFolderFn,
+    route: CliRoute
 ) => Project | undefined;
 
 /** Throws a CommandError with a hint when the "artemis" key has a bad shape. */

@@ -171,47 +171,57 @@ describe('modifiedAt', () => {
 });
 
 describe('readManifest', () => {
-    test('reads the package.json of a folder as an object', () => {
+    const manifestIn = (text: string) => {
         const dir = folders.make('artemis-files-');
 
-        writeText(path.join(dir, 'package.json'), '{ "name": "app" }');
+        writeText(path.join(dir, 'package.json'), text);
 
-        expect(readManifest(dir)).toEqual({ name: 'app' });
+        return { dir, file: path.join(dir, 'package.json') };
+    };
+
+    test('reads the package.json of a folder as an object', () => {
+        expect(readManifest(manifestIn('{ "name": "app" }').dir)).toEqual({
+            manifest: { name: 'app' }
+        });
     });
 
     test('is undefined for a folder with no package.json', () => {
         expect(readManifest(folders.make('artemis-files-'))).toBeUndefined();
     });
 
-    test('a package.json that is not valid JSON is an error naming the file', () => {
-        const dir = folders.make('artemis-files-');
+    test('a package.json that is not valid JSON is returned as an error naming the file', () => {
+        const { dir, file } = manifestIn('{ nope');
 
-        writeText(path.join(dir, 'package.json'), '{ nope');
-
-        expect(thrownBy(() => readManifest(dir))).toMatchObject({
-            message: expect.stringContaining(`${path.join(dir, 'package.json')} is not valid JSON`)
+        expect(readManifest(dir)).toMatchObject({
+            error: { message: expect.stringContaining(`${file} is not valid JSON`) }
         });
     });
 
-    test('a package.json that is not an object is an error with a hint', () => {
-        const dir = folders.make('artemis-files-');
+    test('a template with {{name}} in it is an error to return, not to throw', () => {
+        const { dir } = manifestIn('{ "name": "{{name}}" }');
 
-        writeText(path.join(dir, 'package.json'), '["app"]');
+        expect(() => readManifest(dir)).not.toThrow();
+    });
 
-        expect(thrownBy(() => readManifest(dir))).toMatchObject({
-            message: expect.stringContaining('must contain a JSON object'),
-            hint: expect.stringContaining('"name"')
+    test('a package.json that is not an object is returned as an error with a hint', () => {
+        expect(readManifest(manifestIn('["app"]').dir)).toMatchObject({
+            error: {
+                message: expect.stringContaining('must contain a JSON object'),
+                hint: expect.stringContaining('"name"')
+            }
         });
     });
 
-    test('a package.json that cannot be read is an error naming the file, with a hint', () => {
+    test('a package.json that cannot be read is returned as an error naming the file', () => {
         const dir = folders.make('artemis-files-');
 
         fs.mkdirSync(path.join(dir, 'package.json'));
 
-        expect(thrownBy(() => readManifest(dir))).toMatchObject({
-            message: expect.stringContaining(`Cannot read ${path.join(dir, 'package.json')}`),
-            hint: expect.stringContaining('readable file')
+        expect(readManifest(dir)).toMatchObject({
+            error: {
+                message: expect.stringContaining(`Cannot read ${path.join(dir, 'package.json')}`),
+                hint: expect.stringContaining('readable file')
+            }
         });
     });
 });

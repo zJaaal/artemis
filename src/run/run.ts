@@ -1,5 +1,5 @@
 import { createContext } from '../context/context.js';
-import { EXIT_CODE, FLAG_PREFIX, HELP_WORD, ID_SEPARATOR, JSON_FLAG } from '../constants.js';
+import { EXIT_CODE, FLAG_PREFIX, HELP_WORD, ID_SEPARATOR } from '../constants.js';
 import { discover } from '../discover/discover.js';
 import { CommandError, UsageError, isUsageError } from '../errors/errors.js';
 import { commandHelp, manifest, rootHelp, topicHelp, usage } from '../help/help.js';
@@ -26,7 +26,7 @@ import {
     splitLeadingFlags,
     suggest
 } from '../resolve/resolve.js';
-import { beforeTerminator } from '../utils/terminator.js';
+import { jsonRequested } from '../utils/terminator.js';
 
 const isFlagToken = (token: string): boolean => token.startsWith(FLAG_PREFIX);
 
@@ -233,7 +233,7 @@ async function dispatch(session: Session, argv: string[]): Promise<number> {
  */
 export const run: RunCliFn = async (argv, options) => {
     const world: World = { ...resolveWorld(options), bin: options.bin };
-    const wantsJson = beforeTerminator(argv).includes(JSON_FLAG);
+    const wantsJson = jsonRequested(argv);
     const state: RunState = { commandId: undefined };
 
     try {
