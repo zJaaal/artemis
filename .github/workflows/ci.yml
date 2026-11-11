@@ -34,6 +34,9 @@ jobs:
       # Every entry point resolves through "exports", and nothing else does
       - run: pnpm run check-exports
 
+      # The packed package, installed globally, runs a project's commands; a consumer can ship its own name
+      - run: pnpm run check-bin
+
       # Real processes racing for the registry lock each get their own slot
       - run: pnpm run check-lock
 

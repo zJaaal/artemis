@@ -7,6 +7,10 @@
   "engines": {
     "node": ">=22"
   },
+  "bin": {
+    "art": "dist/cli/main.js",
+    "artemis": "dist/cli/main.js"
+  },
   "files": [
     "dist"
   ],
@@ -25,6 +29,9 @@
     "./terminal": {
       "types": "./dist/kits/terminal/index.d.ts",
       "import": "./dist/kits/terminal/index.js"
+    },
+    "./cli": {
+      "import": "./dist/cli/main.js"
     }
   },
   "repository": {
@@ -37,7 +44,8 @@
     "test": "vitest run",
     "test:all": "tsc --noEmit && eslint . && prettier --check . && vitest run",
     "check-exports": "node scripts/check-exports.mjs",
-    "check-lock": "node scripts/check-lock.mjs"
+    "check-lock": "node scripts/check-lock.mjs",
+    "check-bin": "node scripts/check-bin.mjs"
   },
   "dependencies": {
     "prompts": "2.4.2"
