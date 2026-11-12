@@ -356,7 +356,10 @@ export const briefManifest: BriefManifestFn = (everything, topicId) => {
     const withCommands = new Set(commands.flatMap((command) => topicPrefixes(command.id)));
 
     const topics: BriefTopic[] = everything.topics
-        .filter((topic) => withCommands.has(topic.id))
+        .filter(
+            (topic) =>
+                withCommands.has(topic.id) && (topicId === undefined || isWithin(topic.id, topicId))
+        )
         .map((topic) => ({ id: topic.id, description: topic.description }));
 
     return {

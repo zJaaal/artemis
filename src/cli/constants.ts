@@ -157,3 +157,8 @@ export const BUILTINS: readonly Builtin[] = [
 
 /** Every word the shipped binary handles itself: a project command or topic with one of these names is hidden. */
 export const WORD_NAMES: readonly string[] = BUILTINS.map((builtin) => builtin.id);
+
+/** How `doctor` lays out a check in text: the status label, the id padded to the longest, the fix under it. */
+export const DOCTOR_STATUS_LABEL = { ok: 'ok  ', warn: 'warn', fail: 'FAIL' } as const;
+export const DOCTOR_ID_WIDTH = 'installed'.length;
+export const DOCTOR_FIX_INDENT = '      ';

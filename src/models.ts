@@ -812,6 +812,8 @@ export type RunOptions = {
     env?: NodeJS.ProcessEnv | undefined;
     /** Words the binary handles itself, listed by help. The shipped `art` passes `init` and `state`; a tool passes none. */
     builtins?: readonly Builtin[] | undefined;
+    /** The folder a relative `--log` path is resolved against. Default: the current folder of the process. */
+    cwd?: string | undefined;
 };
 
 export type RunCliFn = (argv: string[], options: RunOptions) => Promise<number>;
@@ -835,7 +837,7 @@ export type HostOptions = Pick<RunOptions, 'stdout' | 'stderr' | 'interactive' |
 /** What a run resolved from the host options and the process, before any command is looked at. */
 export type Environment = { io: IO; style: Style; canPrompt: boolean };
 
-export type World = Environment & { bin: string };
+export type World = Environment & { bin: string; cwd?: string | undefined };
 
 export type ResolveWorldFn = (options: HostOptions) => Environment;
 
@@ -1073,7 +1075,20 @@ export type PlanStateFn = (input: StateInput) => StatePlan;
 export type StateEdges = { lock: LockOptions };
 
 /** Refuses a flag typed before `state` that is not a global one (a UsageError). */
-export type AssertLeadingFlagsFn = (leading: readonly string[]) => void;
+/** The success envelope as one line of JSON: `ok`, `command`, `result`, then `extras` in the order given. */
+export type SuccessEnvelopeFn = (
+    command: string | null,
+    result: unknown,
+    extras?: Record<string, unknown>
+) => string;
+
+export type AssertLeadingFlagsFn = (leading: readonly string[], word: string) => void;
+
+/** A word the shipped binary runs itself: it gets the command line without the word, and the folder it runs in. */
+export type ShippedWord = {
+    word: string;
+    run: (words: string[], host: HostOptions, cwd: string) => number | Promise<number>;
+};
 
 /** `art state [<doc>] [--reset] [--yes] [--json]`. Returns the exit code. */
 export type StateCommandFn = (

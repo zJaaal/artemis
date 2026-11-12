@@ -62,7 +62,8 @@ import {
     splitLeadingFlags,
     suggest
 } from '../resolve/resolve.js';
-import { jsonRequested } from '../utils/terminator.js';
+import { successEnvelope } from './report.js';
+import { jsonRequested, quietRequested } from '../utils/terminator.js';
 
 const isFlagToken = (token: string): boolean => token.startsWith(FLAG_PREFIX);
 
@@ -77,12 +78,7 @@ function print(
     extras: Record<string, unknown> = {}
 ): void {
     const output = session.wantsJson
-        ? JSON.stringify({
-              ok: true,
-              command: session.state.commandId ?? null,
-              result: data,
-              ...extras
-          })
+        ? successEnvelope(session.state.commandId ?? null, data, extras)
         : text;
 
     session.io.stdout.write(`${output}\n`);
@@ -201,7 +197,7 @@ const createInvoke =
 /** Opens the `--log` file the first time a command of the run asks for it. An invoked command writes into the same one. */
 function openLogOnce(session: Session, global: GlobalFlags): void {
     if (global.log !== undefined && session.scope.log === undefined) {
-        session.scope.log = openLogFile(global.log, workingDirectory());
+        session.scope.log = openLogFile(global.log, session.cwd ?? workingDirectory());
     }
 }
 
@@ -498,7 +494,7 @@ async function dispatch(session: Session, argv: string[]): Promise<number> {
  * `{ ok: false, command, error, hint }`.
  */
 export const run: RunCliFn = async (argv, options) => {
-    const world: World = { ...resolveWorld(options), bin: options.bin };
+    const world: World = { ...resolveWorld(options), bin: options.bin, cwd: options.cwd };
     const wantsJson = jsonRequested(argv);
     const state: RunState = { commandId: undefined };
     const scope: RunScope = { plan: [] };
@@ -506,9 +502,11 @@ export const run: RunCliFn = async (argv, options) => {
     try {
         const registry = await discover(options.commandsDir);
 
-        registry.warnings.forEach((warning) =>
-            world.io.stderr.write(`${world.style.yellow('warning:')} ${warning}\n`)
-        );
+        if (!quietRequested(argv)) {
+            registry.warnings.forEach((warning) =>
+                world.io.stderr.write(`${world.style.yellow('warning:')} ${warning}\n`)
+            );
+        }
 
         return await dispatch(
             { ...world, registry, wantsJson, state, builtins: options.builtins, scope },

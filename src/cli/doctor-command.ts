@@ -15,7 +15,7 @@ import type {
     Project,
     Style
 } from '../models.js';
-import { reportError } from '../run/report.js';
+import { reportError, successEnvelope } from '../run/report.js';
 import { resolveWorld } from '../run/world.js';
 import { messageOf } from '../utils/error-message.js';
 import {
@@ -23,7 +23,10 @@ import {
     DOCTOR_HELP,
     DOCTOR_USAGE_LINE,
     DOCTOR_WORD,
-    WORD_NAMES
+    WORD_NAMES,
+    DOCTOR_FIX_INDENT,
+    DOCTOR_ID_WIDTH,
+    DOCTOR_STATUS_LABEL
 } from './constants.js';
 import { doctorFailure, runDoctor } from './doctor.js';
 import { findProject, resolveSettings, resolveStateDir } from './settings.js';
@@ -119,13 +122,11 @@ async function gatherFacts(cwd: string): Promise<DoctorFacts> {
     };
 }
 
-const STATUS_LABEL = { ok: 'ok  ', warn: 'warn', fail: 'FAIL' } as const;
-
 const checkLine = (check: DoctorCheck, style: Style): string => {
     const paint = { ok: style.green, warn: style.yellow, fail: style.red }[check.status];
-    const fix = check.fix ? `\n      fix: ${check.fix}` : '';
+    const fix = check.fix ? `\n${DOCTOR_FIX_INDENT}fix: ${check.fix}` : '';
 
-    return `${paint(STATUS_LABEL[check.status])}  ${check.id.padEnd(9)} ${check.message}${fix}`;
+    return `${paint(DOCTOR_STATUS_LABEL[check.status])}  ${check.id.padEnd(DOCTOR_ID_WIDTH)} ${check.message}${fix}`;
 };
 
 /**
@@ -149,17 +150,11 @@ export const doctorCommand: DoctorCommandFn = async (words, options, cwd) => {
     const failure = doctorFailure(checks);
 
     if (read.json) {
-        io.stdout.write(
-            `${JSON.stringify(
-                failure
-                    ? { ok: false, command: DOCTOR_WORD, ...failure }
-                    : {
-                          ok: true,
-                          command: DOCTOR_WORD,
-                          result: { version: facts.running.version, checks }
-                      }
-            )}\n`
-        );
+        const envelope = failure
+            ? JSON.stringify({ ok: false, command: DOCTOR_WORD, ...failure })
+            : successEnvelope(DOCTOR_WORD, { version: facts.running.version, checks });
+
+        io.stdout.write(`${envelope}\n`);
 
         return failure ? EXIT_CODE.FAILED : EXIT_CODE.OK;
     }

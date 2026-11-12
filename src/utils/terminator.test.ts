@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'vitest';
 
-import { beforeTerminator, jsonRequested } from './terminator.js';
+import { beforeTerminator, jsonRequested, quietRequested } from './terminator.js';
 
 describe('beforeTerminator', () => {
     test('keeps only the words before --', () => {
@@ -31,5 +31,23 @@ describe('jsonRequested', () => {
 
     test('is false when --json only appears after --, where it is a plain argument', () => {
         expect(jsonRequested(['echo', '--', '--json'])).toBe(false);
+    });
+
+    test('is false when --json is the value of --log', () => {
+        expect(jsonRequested(['hello', '--log', '--json'])).toBe(false);
+    });
+
+    test('is true when --json follows the value of --log', () => {
+        expect(jsonRequested(['hello', '--log', 'a.log', '--json'])).toBe(true);
+    });
+});
+
+describe('quietRequested', () => {
+    test('is false when --quiet is the value of --log', () => {
+        expect(quietRequested(['hello', '--log', '--quiet'])).toBe(false);
+    });
+
+    test('is true when --quiet is among the arguments', () => {
+        expect(quietRequested(['hello', '--quiet'])).toBe(true);
     });
 });

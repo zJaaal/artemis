@@ -1,6 +1,7 @@
 import { DEFAULT_BIN_NAME } from '../constants.js';
 import { describeBuiltins } from '../help/help.js';
 import type { WordHelpFn } from '../models.js';
+import { successEnvelope } from '../run/report.js';
 import { BUILTINS } from './constants.js';
 
 /**
@@ -19,5 +20,5 @@ export const wordHelp: WordHelpFn = ({ id, text, json }) => {
         BUILTINS.filter((builtin) => builtin.id === id)
     );
 
-    return JSON.stringify({ ok: true, command: id, result });
+    return successEnvelope(id, result);
 };

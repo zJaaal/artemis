@@ -26,6 +26,7 @@ import {
     STATE_SHADOW_WARNING,
     STATE_WORD
 } from './constants.js';
+import { successEnvelope } from '../run/report.js';
 import { findProject, noProjectError, resolveSettings, resolveStateDir } from './settings.js';
 import { shadowsWord } from './shadow.js';
 import { parseStateWords, planState } from './state.js';
@@ -51,7 +52,7 @@ const shown = (run: StateRun, target: string): string => path.relative(run.cwd, 
 
 /** Text for a person, or under --json the one object the contract promises. */
 function print(run: StateRun, text: string, result: unknown): void {
-    const output = run.json ? JSON.stringify({ ok: true, command: STATE_WORD, result }) : text;
+    const output = run.json ? successEnvelope(STATE_WORD, result) : text;
 
     run.io.stdout.write(`${output}\n`);
 }

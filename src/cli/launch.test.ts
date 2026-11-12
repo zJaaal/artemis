@@ -932,6 +932,39 @@ describe('cli: the init word of the shipped binary', () => {
     });
 });
 
+describe('cli: a flag typed before a built-in word', () => {
+    test.each(['init', 'skill', 'doctor'])('the error names %s, not state', async (word) => {
+        const root = folders.make('artemis-cli-');
+
+        makeProject(root, { greeting: 'project' });
+
+        const result = await art(['--reset', word, '--json'], root);
+
+        expect(envelope(result.out).error).toBe(`"--reset" cannot come before ${word}`);
+    });
+});
+
+describe('cli: --log, --json and --quiet together', () => {
+    test('--json after --log is the log file, so stdout is text and not an envelope', async () => {
+        const root = folders.make('artemis-cli-');
+
+        makeProject(root, { greeting: 'project' });
+
+        const result = await art(['hello', '--log', '--json'], root);
+
+        expect(result.out).not.toMatch(/^\{/);
+    });
+
+    test('a relative --log path is resolved against the cwd the embedder passed', async () => {
+        const root = folders.make('artemis-cli-');
+
+        makeProject(root, { greeting: 'project' });
+        await art(['hello', '--log', 'run.log'], root);
+
+        expect(fs.existsSync(path.join(root, 'run.log'))).toBe(true);
+    });
+});
+
 describe('cli: the global flags on the built-in words', () => {
     test('init accepts --quiet', async () => {
         const root = folders.make('artemis-cli-');

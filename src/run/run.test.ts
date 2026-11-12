@@ -65,6 +65,12 @@ describe('run: resolving and running a command', () => {
         expect(result.code).toBe(EXIT_CODE.OK);
         expect(result.err).toMatch(/oops\.js/);
     });
+
+    test('--quiet hides the warning about a file that did not load', async () => {
+        const result = await art(['good', '--quiet'], { commandsDir: BAD_COMMANDS_FIXTURE_DIR });
+
+        expect(result.err).toBe('');
+    });
 });
 
 describe('run: flags and the command line', () => {

@@ -12,7 +12,8 @@ import type {
     FolderOfRootFn,
     HostOptions,
     Project,
-    SettingsForFn
+    SettingsForFn,
+    ShippedWord
 } from '../models.js';
 import { reportError } from '../run/report.js';
 import { run } from '../run/run.js';
@@ -104,6 +105,13 @@ const settingsFor: SettingsForFn = (start, route) => {
     return { settings, project };
 };
 
+const SHIPPED_WORDS: readonly ShippedWord[] = [
+    { word: INIT_WORD, run: initCommand },
+    { word: STATE_WORD, run: (words, host, cwd) => stateCommand(words, host, cwd) },
+    { word: SKILL_WORD, run: skillCommand },
+    { word: DOCTOR_WORD, run: doctorCommand }
+];
+
 /** Prints the one-line version warning to stderr, when the running Artemis is not the project's. */
 function warnAboutVersion(project: Project, host: HostOptions): void {
     const { io, style } = resolveWorld(host);
@@ -139,61 +147,27 @@ export const launch: CliFn = async (options = {}) => {
     const route: CliRoute = root === undefined ? 'shipped' : 'own';
     const { leading, rest } = splitLeadingFlags(argv);
 
-    // `init` is the shipped binary's own word, like `help`: it has to work where there is no project yet.
-    if (route === 'shipped' && rest[0] === INIT_WORD) {
+    // The shipped binary's own words, like `help`. `init` and `doctor` have to work where there is no project
+    // (`init` makes one, `doctor` reports its absence); `state` and `skill` need none of the commands to load.
+    const word =
+        route === 'shipped' ? SHIPPED_WORDS.find(({ word: name }) => name === rest[0]) : undefined;
+
+    if (word) {
         try {
-            return initCommand(
+            assertLeadingFlags(leading, word.word);
+
+            return await word.run(
                 [...leading, ...rest.slice(1)],
                 host,
                 path.resolve(cwd ?? workingDirectory())
             );
         } catch (error) {
-            return reportSetupFailure(argv, error, host);
-        }
-    }
-
-    // `state` too: it reads the state folder of the project, and works with no commands folder at all.
-    if (route === 'shipped' && rest[0] === STATE_WORD) {
-        try {
-            assertLeadingFlags(leading);
-
-            return await stateCommand(
-                [...leading, ...rest.slice(1)],
+            return reportSetupFailure(
+                argv,
+                error,
                 host,
-                path.resolve(cwd ?? workingDirectory())
+                word.word === INIT_WORD ? undefined : word.word
             );
-        } catch (error) {
-            return reportSetupFailure(argv, error, host, STATE_WORD);
-        }
-    }
-
-    // `skill` writes the SKILL.md from the commands of the project, so it needs one but no setup of its own.
-    if (route === 'shipped' && rest[0] === SKILL_WORD) {
-        try {
-            assertLeadingFlags(leading);
-
-            return await skillCommand(
-                [...leading, ...rest.slice(1)],
-                host,
-                path.resolve(cwd ?? workingDirectory())
-            );
-        } catch (error) {
-            return reportSetupFailure(argv, error, host, SKILL_WORD);
-        }
-    }
-
-    // `doctor` as well: it has to work with no project, where its `project` check is the answer.
-    if (route === 'shipped' && rest[0] === DOCTOR_WORD) {
-        try {
-            assertLeadingFlags(leading);
-
-            return await doctorCommand(
-                [...leading, ...rest.slice(1)],
-                host,
-                path.resolve(cwd ?? workingDirectory())
-            );
-        } catch (error) {
-            return reportSetupFailure(argv, error, host, DOCTOR_WORD);
         }
     }
 
@@ -216,6 +190,7 @@ export const launch: CliFn = async (options = {}) => {
     return run(argv, {
         ...host,
         ...found.settings,
+        cwd,
         ...(route === 'shipped' ? { builtins: BUILTINS } : {})
     });
 };

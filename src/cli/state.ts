@@ -43,13 +43,13 @@ function applyFlag(words: StateWords, flag: string): StateWords {
  * The flags typed before `state` belong to the run, so only the global ones may be there: `art
  * --json state` is fine, `art --reset state steps` is not (it would read as `state steps --reset`).
  */
-export const assertLeadingFlags: AssertLeadingFlagsFn = (leading) => {
+export const assertLeadingFlags: AssertLeadingFlagsFn = (leading, word) => {
     const stray = leading.find((flag) => !GLOBAL_FLAG_TOKENS.includes(flag));
 
     if (stray !== undefined) {
         throw usageError(
-            `"${stray}" cannot come before ${STATE_WORD}`,
-            `Only ${GLOBAL_FLAG_TOKENS.join(', ')} may come first. Try: ${STATE_WORD} <doc> ${stray}`
+            `"${stray}" cannot come before ${word}`,
+            `Only ${GLOBAL_FLAG_TOKENS.join(', ')} may come first. Try: ${word} ${stray}`
         );
     }
 };

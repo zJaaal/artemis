@@ -1,6 +1,12 @@
 import { EXIT_CODE, FAILURE_CODES } from '../constants.js';
 import { isCommandError, isExecError, isUsageError } from '../errors/errors.js';
-import type { ErrorReport, FailureCodeOfFn, ReportContext, ReportErrorFn } from '../models.js';
+import type {
+    ErrorReport,
+    FailureCodeOfFn,
+    ReportContext,
+    ReportErrorFn,
+    SuccessEnvelopeFn
+} from '../models.js';
 import { messageOf } from '../utils/error-message.js';
 
 /** The exit code of a tagged error, trusted only when it is a failure code: a failed run never exits 0. */
@@ -21,6 +27,10 @@ function describeError(error: unknown): ErrorReport {
         exitCode: isExpected ? failureCodeOf(error.exitCode) : EXIT_CODE.FAILED
     };
 }
+
+/** The success envelope, the one place it is built: the built-in words and `run()` all print it. */
+export const successEnvelope: SuccessEnvelopeFn = (command, result, extras = {}) =>
+    JSON.stringify({ ok: true, command, result, ...extras });
 
 /** The failure envelope: the keys of spec 01, then `log` and `tail` when there are any. */
 function toJson(report: ErrorReport, { commandId, log }: ReportContext): string {

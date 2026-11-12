@@ -6,7 +6,8 @@ import { discover } from '../discover/discover.js';
 import { isFolder, makeDirectory, pathExists, readManifest, writeText } from '../edges/files.js';
 import { CommandError } from '../errors/errors.js';
 import { manifest } from '../help/help.js';
-import type { SkillCommandFn, SkillWords } from '../models.js';
+import type { IO, SkillCommandFn, SkillWords } from '../models.js';
+import { successEnvelope } from '../run/report.js';
 import { resolveWorld } from '../run/world.js';
 import {
     SKILL_HELP,
@@ -23,13 +24,8 @@ import { wordHelp } from './word-help.js';
 const isText = (value: unknown): value is string => typeof value === 'string' && value !== '';
 
 /** Text for a person, or under --json the one object the contract promises. */
-function print(
-    io: { stdout: { write: (chunk: string) => unknown } },
-    json: boolean,
-    text: string,
-    result: unknown
-) {
-    io.stdout.write(`${json ? JSON.stringify({ ok: true, command: SKILL_WORD, result }) : text}\n`);
+function print(io: IO, json: boolean, text: string, result: unknown): void {
+    io.stdout.write(`${json ? successEnvelope(SKILL_WORD, result) : text}\n`);
 }
 
 /** Whether the file may be written: it is not there, or `--yes`, or the person says yes. Nobody to ask is an error. */

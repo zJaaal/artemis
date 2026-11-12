@@ -2,6 +2,7 @@ import { EXIT_CODE } from '../constants.js';
 import { UsageError } from '../errors/errors.js';
 import type { InitCommandFn, InitResult } from '../models.js';
 import { resolveWorld } from '../run/world.js';
+import { successEnvelope } from '../run/report.js';
 import { INIT_FLAGS, INIT_HELP, INIT_USAGE_LINE, INIT_WORD } from './constants.js';
 import { initProject } from './init.js';
 import { wordHelp } from './word-help.js';
@@ -50,7 +51,7 @@ export const initCommand: InitCommandFn = (words, options, cwd) => {
     const quiet = words.includes(INIT_FLAGS.quiet);
 
     const output = json
-        ? JSON.stringify({ ok: true, command: INIT_WORD, result })
+        ? successEnvelope(INIT_WORD, result)
         : describeResult(quiet ? { ...result, warnings: [] } : result);
 
     io.stdout.write(`${output}\n`);
