@@ -550,6 +550,22 @@ export type ExecResult = {
 /** Opens the `--log` file, truncated. `cwd` is what a relative path is relative to. */
 export type OpenLogFileFn = (file: string, cwd: string) => LogSink;
 
+// ---------------------------------------------------------------------------------------------
+// Version ranges (the doctor and the every-run warning)
+// ---------------------------------------------------------------------------------------------
+
+/** major, minor, patch. */
+export type Version = readonly [major: number, minor: number, patch: number];
+
+/** Whether a version is inside a range, or the range is a form the checker does not understand. */
+export type RangeVerdict = 'satisfied' | 'unsatisfied' | 'not-checked';
+
+/** One bound a version has to meet: `>= 1.2.3`, `< 2.0.0`, `= 1.2.3`. */
+export type Bound = { op: '>=' | '>' | '<=' | '<' | '='; version: Version };
+
+export type ParseVersionFn = (text: string) => Version | undefined;
+export type CheckRangeFn = (version: string, range: string) => RangeVerdict;
+
 /** What `createExec` needs to know about the run it belongs to. */
 export type ExecRun = {
     io: IO;

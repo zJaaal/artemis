@@ -127,6 +127,16 @@ export const LINE_BREAK = '\n';
 /** `w` creates the file or empties the one that is there. */
 export const LOG_FILE_OPEN_MODE = 'w';
 export const LOG_FILE_HINT = 'Check the folder exists and can be written.';
+/** Version ranges: the forms the checker understands. Anything else is "not checked", never a warning. */
+export const RANGE_OR = '||';
+export const RANGE_WILDCARDS: readonly string[] = ['*', 'x', 'X'];
+export const RANGE_OPERATORS = ['>=', '<=', '>', '<', '^', '~', '='] as const;
+export const VERSION_PREFIXES = ['v', 'V'] as const;
+export const VERSION_PART = /^\d+$/;
+export const VERSION_SEPARATOR = '.';
+export const VERSION_PARTS_MAX = 3;
+export const WHITESPACE = /\s/;
+export const RANGE_PRERELEASE_MARKS: readonly string[] = ['-', '+'];
 export const DRY_RUN_HEADER = 'Dry run, nothing was changed. It would:';
 export const DRY_RUN_EMPTY = 'Nothing to do.';
 export const DRY_RUN_FIRST_HINT = 'Pass --dry-run first to see what it would do.';
