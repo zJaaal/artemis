@@ -212,6 +212,10 @@ export type CommandDefinition<
     flags?: TFlags;
     aliases?: readonly string[];
     examples?: readonly string[];
+    /** Changes or deletes data the user cannot get back. It asks in a terminal and needs `--yes` otherwise. Default false. */
+    destructive?: boolean;
+    /** Honors `ctx.dryRun`: under `--dry-run` it reports what it would do and does none of it. Default false. */
+    dryRun?: boolean;
     [extra: string]: unknown;
 };
 
@@ -224,6 +228,8 @@ export type Command<
     flags: TFlags;
     aliases: readonly string[];
     examples: readonly string[];
+    destructive: boolean;
+    dryRun: boolean;
 };
 
 /** What `defineTopic` takes: only the description is kept. */
@@ -413,6 +419,8 @@ export type HelpSubject = {
     flags: FlagDefinitions;
     aliases: readonly string[];
     examples: readonly string[];
+    destructive?: boolean;
+    dryRun?: boolean;
 };
 
 export type ManifestArg = {
@@ -441,6 +449,8 @@ export type ManifestCommand = {
     args: ManifestArg[];
     flags: ManifestFlag[];
     examples: readonly string[];
+    destructive: boolean;
+    dryRun: boolean;
 };
 
 /** Everything help shows, as data: what an agent reads to know which commands exist. */
@@ -461,6 +471,29 @@ export type Builtin = {
     flags: FlagDefinitions;
     examples: readonly string[];
 };
+
+/** One line of the brief manifest: what an agent needs before it calls. `destructive` and `dryRun` only when true. */
+export type BriefCommand = {
+    id: string;
+    description: string;
+    destructive?: true;
+    dryRun?: true;
+};
+
+export type BriefTopic = { id: string; description: string };
+
+/** `help --json --brief`: ids and one-line descriptions, and how to get one command in full. */
+export type BriefManifest = {
+    bin: string;
+    topics: BriefTopic[];
+    commands: BriefCommand[];
+    /** Only on the shipped binary, as in the full manifest. Never marked destructive. */
+    builtins?: { id: string; description: string }[];
+    more: string;
+};
+
+/** The brief manifest of everything, or of one topic when `topicId` is given. */
+export type BriefManifestFn = (everything: Manifest, topicId?: string) => BriefManifest;
 
 export type DescribeBuiltinsFn = (bin: string, builtins: readonly Builtin[]) => ManifestCommand[];
 

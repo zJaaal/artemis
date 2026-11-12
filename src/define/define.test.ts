@@ -210,3 +210,27 @@ describe('defineTopic', () => {
         ]).toEqual([false, false]);
     });
 });
+
+describe('defineCommand: the destructive and dryRun markers', () => {
+    test('both default to false', () => {
+        const command = defineCommand({ description: 'x', run });
+
+        expect([command.destructive, command.dryRun]).toEqual([false, false]);
+    });
+
+    test('they are kept when declared', () => {
+        const command = defineCommand({ description: 'x', run, destructive: true, dryRun: true });
+
+        expect([command.destructive, command.dryRun]).toEqual([true, true]);
+    });
+
+    test.each([
+        { name: 'destructive', value: 'yes' },
+        { name: 'dryRun', value: 1 },
+        { name: 'destructive', value: null }
+    ])('$name: $value is a TypeError', ({ name, value }) => {
+        expect(() => defineLoosely({ description: 'x', run, [name]: value })).toThrow(
+            `defineCommand: ${name} must be true or false`
+        );
+    });
+});

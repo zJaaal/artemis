@@ -1,5 +1,6 @@
 import { createContext } from '../context/context.js';
 import {
+    BRIEF_FLAG,
     DRY_RUN_FLAG,
     EXIT_CODE,
     FLAG_PREFIX,
@@ -10,6 +11,8 @@ import {
 import { discover } from '../discover/discover.js';
 import { CommandError, UsageError, isUsageError } from '../errors/errors.js';
 import {
+    briefHelp,
+    briefManifest,
     builtinHelp,
     commandHelp,
     describeBuiltins,
@@ -178,6 +181,43 @@ function helpFor(session: Session, target: Exclude<Resolution, { kind: 'unknown'
     };
 }
 
+/** `help --brief`: ids and one-line descriptions of everything, or of one topic. One command is not a listing. */
+function showBriefFor(session: Session, words: string[]): void {
+    const { bin, registry, style, builtins } = session;
+    const everything = manifest(bin, registry, builtins);
+
+    if (!words.length) {
+        session.state.commandId = HELP_WORD;
+
+        const brief = briefManifest(everything);
+
+        print(session, briefHelp(brief, style), brief);
+
+        return;
+    }
+
+    const target = builtinNamed(session, words) ? undefined : resolve(registry, words);
+
+    if (target?.kind === 'unknown') {
+        throw unknownCommand(session, target.name);
+    }
+
+    if (target?.kind !== 'topic') {
+        throw new UsageError(
+            `--brief lists commands; drop it to see ${words.join(ID_SEPARATOR)} in full`,
+            {
+                hint: `Run "${bin} help ${words.join(ID_SEPARATOR)} --json" for the whole entry.`
+            }
+        );
+    }
+
+    session.state.commandId = target.topic.id;
+
+    const brief = briefManifest(everything, target.topic.id);
+
+    print(session, briefHelp(brief, style), brief);
+}
+
 function showHelpFor(session: Session, words: string[]): void {
     if (!words.length) {
         session.state.commandId = HELP_WORD;
@@ -249,10 +289,13 @@ async function dispatch(session: Session, argv: string[]): Promise<number> {
     if (first === undefined || first === HELP_WORD) {
         assertHelpFlags(session, leading, rest);
 
-        showHelpFor(
-            session,
-            rest.slice(1).filter((token) => !isFlagToken(token))
-        );
+        const helpWords = rest.slice(1).filter((token) => !isFlagToken(token));
+
+        if (rest.includes(BRIEF_FLAG)) {
+            showBriefFor(session, helpWords);
+        } else {
+            showHelpFor(session, helpWords);
+        }
 
         return EXIT_CODE.OK;
     }

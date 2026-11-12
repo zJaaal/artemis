@@ -142,7 +142,18 @@ describe('help --json: the manifest', () => {
                     choices: null
                 }
             ],
-            examples: []
+            examples: [],
+            destructive: false,
+            dryRun: false
+        });
+    });
+
+    test('a destructive command with dry-run support says so in the manifest', async () => {
+        const manifest = await manifestOf('help');
+
+        expect(manifest.commands.find((command) => command.id === 'wipe')).toMatchObject({
+            destructive: true,
+            dryRun: true
         });
     });
 
@@ -169,7 +180,9 @@ describe('help --json: the manifest', () => {
             'aliases',
             'args',
             'flags',
-            'examples'
+            'examples',
+            'destructive',
+            'dryRun'
         ]);
     });
 
@@ -248,7 +261,9 @@ describe('help: the binary’s own words', () => {
             'aliases',
             'args',
             'flags',
-            'examples'
+            'examples',
+            'destructive',
+            'dryRun'
         ]);
     });
 

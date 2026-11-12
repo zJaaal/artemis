@@ -116,6 +116,16 @@ export const TABLE_GAP = '  ';
 export const SECTION_SEPARATOR = '\n\n';
 export const NOTE_SEPARATOR = '; ';
 
+/** What help says about the two markers of a command definition. */
+export const DESTRUCTIVE_NOTE =
+    'Changes or deletes data that cannot be recovered. It asks first; pass --yes to confirm without a question.';
+export const DRY_RUN_NOTE = 'Says what it would do and changes nothing.';
+
+/** The tail of the line a brief manifest ends with: how to get one command in full. */
+export const BRIEF_MORE_SUFFIX = 'help <command> --json';
+export const BRIEF_FLAG = '--brief';
+export const AGENTS_FLAG = '--agents';
+
 export const NO_COMMAND = null;
 
 /** What a document file ends with, and what a file being written ends with until it is renamed into place. */
