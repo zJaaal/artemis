@@ -44,7 +44,7 @@ A `flags apply` startup step also failed once in the same run. It could not be r
 - `ctx.exec(command, args, options)` (with `readOnly` for calls that must run even under `--dry-run`), the global `--quiet` and `--log <file>`, `log` in both envelopes, and `tail` (the last lines of a failed child) in the failure envelope.
 - `art skill [--write <path>]`, a built-in word that generates a short `SKILL.md` from the manifest.
 - `art help --agents`, which prints the AGENTS.md of the running copy, so an agent finds it with a global or a local install.
-- `art doctor`, a built-in word that checks the install and the project and gives a fix for each problem, plus a one-line version warning on every run of the shipped binary except `art doctor` itself.
+- `art doctor`, a built-in word that checks the install and the project and gives a fix for each problem, plus a one-line version warning when a command or `help` runs on the shipped binary.
 - `maxSlots` on `defineWorktrees` (default `DEFAULT_MAX_SLOTS = 20`, slot 0 included): `ensure` and `ensureDetached` refuse to give out a slot past it. `defineWorktrees` refuses port bases that meet in two slots below the limit, any slot port outside 1024 to 49151, and a `slotStep` or `maxSlots` that is not a whole number greater than 0, with a `TypeError` that names the keys.
 - When `ensure` or `ensureDetached` gives out a new slot, it skips a slot any of whose ports is already in use on the machine (checked like Vite does, on all interfaces), through an injectable `portsInUse` option.
 - `label` on `store.lock`: a short line written into the named lock, shown to whoever waits and in the "is locked" error.
@@ -100,7 +100,7 @@ export type ExecOptions = {
 };
 export type ExecResult = {
     code: number; // 0 when skipped under --dry-run
-    output: string; // stdout and stderr interleaved; '' when the output was shown on the terminal (inherit mode) or skipped
+    output: string; // stdout and stderr interleaved, in every piped mode (not only capture); '' when the output was shown on the terminal (inherit mode) or skipped
     skipped: boolean; // true under --dry-run for a call without readOnly: nothing ran
 };
 ```
@@ -117,7 +117,7 @@ log: { type: 'string', description: 'Write everything the command and its child 
 
 `--log` parses like every string flag of spec 01: `--log file` and `--log=file` are the same, a repeated `--log` keeps the last value, and the word after `--log` is always its value, so `art --log hello` means the log file `hello` and no command. That is a `UsageError` (exit 2), because `--log` means nothing without a command and the help word does not take it (below).
 
-The built-in words take the new global flags as follows. `--quiet` is accepted by `init`, `state`, `skill`, `doctor` and `help`, where it hides warnings. `--dry-run` and `--log` on any built-in word are a `UsageError` (exit 2), like any other flag a word does not take, because none of them runs `ctx.exec` or has a plan to show.
+The built-in words take the new global flags as follows. `--quiet` is accepted by `init`, `state`, `skill`, `doctor` and `help`, where it hides warnings. `--dry-run` and `--log` on any built-in word are a `UsageError` (exit 2), like any other flag a word does not take, because none of them runs `ctx.exec` or has a plan to show. `--log` with no command (`art --log hello`, `art help --log x`) is a `UsageError` too; its wording is not fixed.
 
 The envelope. New keys come after the spec 01 keys, always in this order: `ok`, `command`, `result` or `error`, `hint`, then `dryRun`, `plan`, `next`, `log`, `tail`, `checks`.
 
@@ -205,11 +205,11 @@ The checks, in order:
 | `installed` | The project's own copy of `@zjaaal/artemis`, found the way Node resolves a package from the project root (each `node_modules` upwards, so a hoisted monorepo or pnpm layout is found), against the running version | `warn` when they differ: "a global art 0.1.1 is running; this project installs 1.1.0", fix "Run npx art, or update the global art." `ok` "not installed in this project; running <version> from <path>" when no copy is found. `ok` when the copy found is the running one |
 | `project` | A project is found, and which `package.json` it is | `fail` when none |
 | `module` | `"type": "module"` in that `package.json` | `warn` |
-| `commands` | The commands folder exists and every file loads (discovery errors listed) | `fail` |
+| `commands` | The commands folder exists, every file loads and no alias is already taken (every discovery warning listed) | `fail` |
 | `words` | No project command or topic is called like a built-in word (`init`, `state`, `skill`, `doctor`), which the word would hide (`shadowsWord`, spec 02) | `warn` naming each hidden one, fix "Rename commands/<word>.js; art <word> runs the built-in." |
 | `state` | `stateDir` (spec 02): exists or not (`ok` either way), and every document parses (`inspectDocument`) | `warn` per unreadable document, fix "art state <doc> --reset" |
 
-The every-run warning is `range` and `installed` only. They are cheap: the project's `package.json` is already read, plus one `package.json` from `node_modules`. It runs on the shipped route, except on `art doctor` itself, and prints **one line** to stderr however many of the two warn. When both warn, the line names both ("art 0.1.1 is running; this project wants ^1.1.0 and installs 1.1.0. Run art doctor."). It is never part of the JSON envelope, so stdout stays one object. `--quiet` hides it, and it names `art doctor` for details.
+The every-run warning is `range` and `installed` only. They are cheap: the project's `package.json` is already read, plus one `package.json` from `node_modules`. It runs on the shipped route when a command or `help` runs, not on the built-in words `init`, `state`, `skill` and `doctor` (`doctor` reports the same facts as checks, and the others are about the project's files, not its commands), and prints **one line** to stderr however many of the two warn. When both warn, the line names both ("art 0.1.1 is running; this project wants ^1.1.0 and installs 1.1.0. Run art doctor."). It is never part of the JSON envelope, so stdout stays one object. `--quiet` hides it, and it names `art doctor` for details.
 
 Version ranges (`src/utils/semver.ts`, pure) follow npm's meaning for the forms they understand:
 
@@ -333,9 +333,9 @@ Files that change for the two new words, beside `launch.ts`: `src/cli/shadow.ts`
 Failures:
 
 - A failed spawn (`ENOENT`) is `CommandError` "<command> was not found", hint "Install it, or check PATH."
-- A non-zero exit with `reject` (the default) is `CommandError` "<command> exited with code N". Its `tail` holds the last `EXEC_TAIL_LINES` lines (no `tail` key in inherit mode, where nothing was kept), and its hint is "Full log: <file>" with `--log`, or "Run again with --log <file> to keep its full output." without. In text mode, when the child's output was not shown (`--quiet` or `capture`), the tail is printed to stderr under the error, so a person sees why the child failed; with `--json` it is only in the envelope.
+- A non-zero exit with `reject` (the default) is `CommandError` "<command> exited with code N". Its `tail` holds the last `EXEC_TAIL_LINES` non-blank lines (no `tail` key in inherit mode, where nothing was kept), and its hint is "Full log: <file>" with `--log`, or "Run again with --log <file> to keep its full output." without. In text mode, when the child's output was not shown (`--quiet` or `capture`), the tail is printed to stderr under the error, so a person sees why the child failed; with `--json` it is only in the envelope.
 - With `reject: false`, a non-zero exit returns `{ code, output, skipped: false }` instead of throwing.
-- A timeout always throws, `reject: false` included: "<command> took longer than N s", where N is `timeoutMs / 1000` written without trailing zeros (`1.5 s`, `30 s`). The kill is SIGTERM, then SIGKILL after `EXEC_KILL_GRACE_MS`.
+- A timeout always throws, `reject: false` included: "<command> took longer than N s", where N is `timeoutMs / 1000` written without trailing zeros (`1.5 s`, `30 s`). The kill is SIGTERM, then SIGKILL after `EXEC_KILL_GRACE_MS`. A timeout carries `tail` and the log hint like any other child failure.
 - Every child `ctx.exec` started during a run is tracked. When `run` returns or throws, any still running is killed the same way (SIGTERM, then SIGKILL after the grace period), concurrent ones included, before the envelope is printed.
 
 **`--quiet`.** It hides `ctx.warn`, the "Next:" lines, the every-run version warning, the built-in words' warnings, and every child's output (above). The result, the dry-run plan, under `--json` the envelope, and errors are always printed. `ctx.log` is unaffected in text mode, because it is the command's result for people. A command that prints progress with `ctx.log` should use `ctx.warn` for it, and AGENTS.md says so.
