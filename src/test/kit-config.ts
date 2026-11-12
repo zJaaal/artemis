@@ -36,6 +36,7 @@ export const createKitConfig = (
         envVar: undefined,
         slotStep: KIT_SLOT_STEP,
         maxSlots: DEFAULT_MAX_SLOTS,
+        newProbe: () => () => new Set(),
         colors: KIT_COLORS,
         mainName: 'main',
         env: {},

@@ -5,6 +5,7 @@ import {
     DEFAULT_MAX_SLOTS,
     DEFAULT_SLOT_STEP
 } from './constants.js';
+import { createPortProbe } from './port-edges.js';
 import { findPortProblems } from './ports.js';
 import { realPathOrResolve } from '../../edges/files.js';
 import type {
@@ -38,6 +39,7 @@ function configure(options: WorktreesOptions): KitConfig {
         envVar: options.envVar,
         slotStep: options.slotStep ?? DEFAULT_SLOT_STEP,
         maxSlots: options.maxSlots ?? DEFAULT_MAX_SLOTS,
+        newProbe: () => options.portsInUse ?? createPortProbe(),
         colors: options.colors ?? DEFAULT_COLORS,
         mainName: options.mainName ?? DEFAULT_MAIN_NAME,
         env: options.env ?? currentProcess().env
