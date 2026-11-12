@@ -37,6 +37,7 @@ import type {
     World
 } from '../models.js';
 import { parse } from '../parse/parse.js';
+import { confirmDestructive } from './destructive.js';
 import { reportError } from './report.js';
 import { resolveWorld } from './world.js';
 import {
@@ -145,16 +146,29 @@ const createInvoke =
         return execute(session, target, { ...nested, global });
     };
 
+/** --json promises exactly one object on stdout, so nothing may prompt there either. */
+const canAsk = (session: Session, global: GlobalFlags): boolean =>
+    session.canPrompt && !global.yes && !global.json;
+
 async function execute(
     session: Session,
     entry: CommandEntry,
     parsed: ParsedCommandLine
 ): Promise<unknown> {
+    await confirmDestructive({
+        bin: session.bin,
+        id: entry.id,
+        destructive: entry.definition.destructive,
+        supportsDryRun: entry.definition.dryRun,
+        dryRun: parsed.global.dryRun,
+        yes: parsed.global.yes,
+        interactive: canAsk(session, parsed.global)
+    });
+
     const ctx = createContext({
         io: session.io,
         global: parsed.global,
-        // --json promises exactly one object on stdout, so nothing may prompt there either
-        interactive: session.canPrompt && !parsed.global.yes && !parsed.global.json,
+        interactive: canAsk(session, parsed.global),
         style: session.style,
         registry: session.registry,
         invoke: createInvoke(session, parsed.global)

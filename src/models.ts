@@ -472,6 +472,22 @@ export type Builtin = {
     examples: readonly string[];
 };
 
+/** What a call to a command says about how it will be confirmed. */
+export type DestructiveCall = {
+    bin: string;
+    id: string;
+    destructive: boolean;
+    supportsDryRun: boolean;
+    dryRun: boolean;
+    yes: boolean;
+    /** Whether anyone can answer: a terminal, and neither `--yes` nor `--json`. */
+    interactive: boolean;
+};
+
+export type DestructivePlan = 'run' | 'ask' | 'refuse';
+export type PlanDestructiveFn = (call: DestructiveCall) => DestructivePlan;
+export type ConfirmDestructiveFn = (call: DestructiveCall) => Promise<void>;
+
 /** One line of the brief manifest: what an agent needs before it calls. `destructive` and `dryRun` only when true. */
 export type BriefCommand = {
     id: string;
