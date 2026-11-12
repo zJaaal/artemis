@@ -504,6 +504,94 @@ export type DestructivePlan = 'run' | 'ask' | 'refuse';
 export type PlanDestructiveFn = (call: DestructiveCall) => DestructivePlan;
 export type ConfirmDestructiveFn = (call: DestructiveCall) => Promise<void>;
 
+// ---------------------------------------------------------------------------------------------
+// ctx.exec
+// ---------------------------------------------------------------------------------------------
+
+export type ExecOptions = {
+    cwd?: string;
+    /** Default: the process environment. */
+    env?: NodeJS.ProcessEnv;
+    /** Return the output instead of showing it (`git rev-parse`, `docker ps`). Default false. */
+    capture?: boolean;
+    /** The call changes nothing, so it runs even under `--dry-run`, captured. Implies `capture`. Default false. */
+    readOnly?: boolean;
+    /** A non-zero exit throws. Default true. A timeout throws regardless. */
+    reject?: boolean;
+    /** Kills the child (SIGTERM, then SIGKILL after the grace period) and throws. Default: none. */
+    timeoutMs?: number;
+};
+
+export type ExecResult = {
+    /** 0 when skipped under `--dry-run`. */
+    code: number;
+    /** Stdout and stderr interleaved; '' when the output went to the terminal (inherit mode) or the call was skipped. */
+    output: string;
+    /** True under `--dry-run` for a call without `readOnly`: nothing ran. */
+    skipped: boolean;
+};
+
+export type ExecFn = (
+    command: string,
+    args?: readonly string[],
+    options?: ExecOptions
+) => Promise<ExecResult>;
+
+/** Which stream a piece of child output came from. */
+export type ChildStream = 'stdout' | 'stderr';
+
+/** What the spawn edge needs to start one child. Never a shell: `args` is an array. */
+export type SpawnRequest = {
+    command: string;
+    args: readonly string[];
+    cwd: string | undefined;
+    env: NodeJS.ProcessEnv | undefined;
+    /** Pipe stdout and stderr (stdin ignored), or inherit all three from the terminal. */
+    pipe: boolean;
+    timeoutMs: number | undefined;
+    /** How long a child gets after SIGTERM before SIGKILL. Default: `EXEC_KILL_GRACE_MS`. */
+    killGraceMs?: number;
+    /** Called with each chunk of output as it arrives (piped only). */
+    onData: (chunk: string, stream: ChildStream) => void;
+};
+
+/** How a child ended. */
+export type SpawnOutcome = {
+    code: number;
+    timedOut: boolean;
+    /** The executable could not be started (ENOENT). */
+    notFound: boolean;
+};
+
+export type ChildHandle = {
+    done: Promise<SpawnOutcome>;
+    /** SIGTERM, then SIGKILL after the grace period; resolves when the child is gone. */
+    stop: () => Promise<void>;
+};
+
+export type SpawnChildFn = (request: SpawnRequest) => ChildHandle;
+
+/** How `ctx.exec` runs a child, decided from the flags of the run and the options of the call. */
+export type ExecMode = {
+    pipe: boolean;
+    /** Where piped output is shown: nowhere, split like the child's own streams, or all on stderr. */
+    echo: 'none' | 'split' | 'stderr';
+    /** Whether the last lines are kept for `tail`. */
+    keep: boolean;
+};
+
+export type ExecModeInput = { capture: boolean; quiet: boolean; json: boolean; log: boolean };
+export type PickExecModeFn = (input: ExecModeInput) => ExecMode;
+
+/** The last lines of a child's output, each cut: what a failed command's envelope carries as `tail`. */
+export type TailRing = {
+    push: (stream: ChildStream, chunk: string) => void;
+    /** Closes the lines still being written and returns the last ones. */
+    lines: () => string[];
+};
+
+export type CreateTailFn = (maxLines: number, maxChars: number) => TailRing;
+
 /** One line of the brief manifest: what an agent needs before it calls. `destructive` and `dryRun` only when true. */
 export type BriefCommand = {
     id: string;
