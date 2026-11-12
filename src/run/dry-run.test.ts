@@ -13,7 +13,11 @@ describe('run: --dry-run on a command that does not support it', () => {
     });
 
     test('never calls run', async () => {
-        expect((await art(['purge', '--dry-run', '--yes'])).out).not.toMatch(/purged/);
+        const run = await art(['purge', '--dry-run', '--yes']);
+
+        expect(run.code).toBe(EXIT_CODE.USAGE);
+        expect(run.err).toMatch(/purge does not support --dry-run/);
+        expect(run.out).not.toMatch(/purged/);
     });
 });
 
@@ -69,7 +73,10 @@ describe('run: --dry-run on a command that supports it', () => {
     });
 
     test('ctx.plan outside --dry-run collects nothing', async () => {
-        expect(envelope(await art(['wipe', '--yes', '--json']))).not.toHaveProperty('plan');
+        const result = envelope(await art(['wipe', '--yes', '--json']));
+
+        expect(result).toMatchObject({ ok: true, result: { wiped: true } });
+        expect(result).not.toHaveProperty('plan');
     });
 
     test('the plan is still printed under --quiet', async () => {
@@ -90,7 +97,11 @@ describe('run: ctx.invoke under --dry-run', () => {
     });
 
     test('and it is never run', async () => {
-        expect((await art(['dry-calls-hello', '--dry-run'])).out).not.toMatch(/hello world/);
+        const run = await art(['dry-calls-hello', '--dry-run']);
+
+        expect(run.code).toBe(EXIT_CODE.FAILED);
+        expect(run.err).toMatch(/does not support --dry-run/);
+        expect(run.out).not.toMatch(/hello world/);
     });
 });
 

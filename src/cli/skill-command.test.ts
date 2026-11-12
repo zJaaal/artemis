@@ -209,7 +209,11 @@ describe('art skill: the word', () => {
             "import { defineCommand } from '@zjaaal/artemis';\nexport default defineCommand({ description: 'mine', run: () => 1 });\n"
         );
 
-        expect((await art(['skill', '--quiet'], root)).err).toBe('');
+        const run = await art(['skill', '--quiet'], root);
+
+        expect(run.code).toBe(EXIT_CODE.OK);
+        expect(run.out).toMatch(/^---/);
+        expect(run.err).toBe('');
     });
 
     test('help --json lists it under builtins', async () => {

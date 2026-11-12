@@ -46,8 +46,10 @@ describe('--log: what the file holds', () => {
         const file = newLog();
 
         fs.writeFileSync(file, 'old old old old old old old old old old old old\n');
-        await art(['logs', '--quiet', '--log', file]);
+        const run = await art(['logs', '--quiet', '--log', file]);
 
+        expect(run.code).toBe(EXIT_CODE.OK);
+        expect(read(file)).toMatch(/log line/);
         expect(read(file)).not.toMatch(/old/);
     });
 
@@ -108,7 +110,10 @@ describe('--log: the envelope', () => {
     });
 
     test('without --log there is no log key', async () => {
-        expect(envelope(await art(['logs', '--json']))).not.toHaveProperty('log');
+        const result = envelope(await art(['logs', '--json']));
+
+        expect(result.ok).toBe(true);
+        expect(result).not.toHaveProperty('log');
     });
 
     test('a failure without --log keeps the hint that says how to ask for one', async () => {
@@ -154,13 +159,19 @@ describe('--log: when it cannot be opened', () => {
     test('and no log key', async () => {
         const file = path.join(folders.make('artemis-run-log-'), 'missing', 'run.log');
 
-        expect(envelope(await art(['logs', '--json', '--log', file]))).not.toHaveProperty('log');
+        const result = envelope(await art(['logs', '--json', '--log', file]));
+
+        expect(result.ok).toBe(false);
+        expect(result).not.toHaveProperty('log');
     });
 
     test('run was never called', async () => {
         const file = path.join(folders.make('artemis-run-log-'), 'missing', 'run.log');
 
-        expect((await art(['logs', '--log', file])).out).not.toMatch(/log line/);
+        const run = await art(['logs', '--log', file]);
+
+        expect(run.code).toBe(EXIT_CODE.FAILED);
+        expect(run.out).not.toMatch(/log line/);
     });
 });
 
@@ -185,7 +196,10 @@ describe('--log: the order before run', () => {
 
 describe('--quiet', () => {
     test('hides ctx.warn', async () => {
-        expect((await art(['logs', '--quiet'])).err).toBe('');
+        const run = await art(['logs', '--quiet']);
+
+        expect(run.code).toBe(EXIT_CODE.OK);
+        expect(run.err).toBe('');
     });
 
     test('does not hide ctx.log in text mode: it is the result for people', async () => {
@@ -204,6 +218,7 @@ describe('--quiet', () => {
         const script = "for (let i = 0; i < 2000; i++) console.log('line ' + i)";
         const run = await art(['exec', script, '--json', '--quiet']);
 
+        expect(envelope(run).ok).toBe(true);
         expect(run.err).toBe('');
     });
 

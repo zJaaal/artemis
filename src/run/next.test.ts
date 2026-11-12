@@ -1,5 +1,6 @@
 import { describe, expect, test } from 'vitest';
 
+import { EXIT_CODE } from '../constants.js';
 import { art, envelope } from '../test/art.js';
 
 describe('run: ctx.next', () => {
@@ -32,7 +33,10 @@ describe('run: ctx.next', () => {
     });
 
     test('--quiet hides the Next: lines', async () => {
-        expect((await art(['follows', '--quiet'])).err).toBe('');
+        const run = await art(['follows', '--quiet']);
+
+        expect(run.code).toBe(EXIT_CODE.OK);
+        expect(run.err).toBe('');
     });
 
     test('--quiet does not remove them from the envelope', async () => {
@@ -40,19 +44,31 @@ describe('run: ctx.next', () => {
     });
 
     test('a failure carries no next', async () => {
-        expect(envelope(await art(['follows-then-fails', '--json']))).not.toHaveProperty('next');
+        const result = envelope(await art(['follows-then-fails', '--json']));
+
+        expect(result.ok).toBe(false);
+        expect(result).not.toHaveProperty('next');
     });
 
     test('a failure prints no Next: line either', async () => {
-        expect((await art(['follows-then-fails'])).err).not.toMatch(/Next:/);
+        const run = await art(['follows-then-fails']);
+
+        expect(run.code).toBe(EXIT_CODE.FAILED);
+        expect(run.err).not.toMatch(/Next:/);
     });
 
     test('what an invoked command suggests is discarded', async () => {
-        expect(envelope(await art(['invokes-follows', '--json']))).not.toHaveProperty('next');
+        const result = envelope(await art(['invokes-follows', '--json']));
+
+        expect(result.ok).toBe(true);
+        expect(result).not.toHaveProperty('next');
     });
 
     test('a command that suggests nothing has no next key', async () => {
-        expect(envelope(await art(['hello', '--json']))).not.toHaveProperty('next');
+        const result = envelope(await art(['hello', '--json']));
+
+        expect(result.ok).toBe(true);
+        expect(result).not.toHaveProperty('next');
     });
 
     test('they are kept under --dry-run too', async () => {

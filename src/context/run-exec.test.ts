@@ -60,7 +60,10 @@ describe('ctx.exec: what it returns', () => {
     });
 
     test('capture shows nothing on stderr', async () => {
-        expect((await art(['exec', HELLO_SCRIPT, '--capture', '--json'])).err).toBe('');
+        const run = await art(['exec', HELLO_SCRIPT, '--capture', '--json']);
+
+        expect(envelope(run).ok).toBe(true);
+        expect(run.err).toBe('');
     });
 
     test('capture still returns the output under --json and --quiet (the first row wins)', async () => {
@@ -134,9 +137,14 @@ describe('ctx.exec: a child that fails', () => {
     });
 
     test('a child with no output has no tail key', async () => {
-        expect(envelope(await art(['exec', 'process.exit(1)', '--json']))).not.toHaveProperty(
-            'tail'
-        );
+        const result = envelope(await art(['exec', 'process.exit(1)', '--json']));
+
+        expect(result).toMatchObject({
+            ok: false,
+            error: expect.stringMatching(/exited with code 1/)
+        });
+
+        expect(result).not.toHaveProperty('tail');
     });
 
     test('a missing executable is "<command> was not found" with a hint', async () => {
@@ -176,7 +184,10 @@ describe('ctx.exec: a child that fails', () => {
     });
 
     test('under --json the tail is only in the envelope, never printed as text', async () => {
-        expect((await art(['exec', NOISY_FAILURE, '--json'])).out).not.toMatch(/Error:/);
+        const run = await art(['exec', NOISY_FAILURE, '--json']);
+
+        expect(envelope(run)).toMatchObject({ ok: false, tail: expect.any(Array) });
+        expect(run.out).not.toMatch(/Error:/);
     });
 });
 

@@ -108,7 +108,11 @@ describe('run: a destructive command', () => {
     });
 
     test('run is not called when it is refused', async () => {
-        expect((await art(['purge'])).out).not.toMatch(/purged/);
+        const run = await art(['purge']);
+
+        expect(run.code).toBe(EXIT_CODE.FAILED);
+        expect(run.err).toMatch(/--yes/);
+        expect(run.out).not.toMatch(/purged/);
     });
 
     test('a command without dry-run support is refused with only the --yes hint', async () => {

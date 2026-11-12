@@ -338,6 +338,7 @@ describe('cli: when it cannot find what to run', () => {
         const nowhere = folders.make('artemis-cli-');
         const result = await art(['hello', '--json'], nowhere);
 
+        expect(envelope(result.out).hint).toMatch(/^[^]*init[^]*$/);
         expect(envelope(result.out).hint).not.toMatch(/\bart\b/);
     });
 
@@ -446,6 +447,7 @@ describe('cli: when it cannot find what to run', () => {
         const result = await art(['hello'], root);
 
         expect(result.err).toContain(`Cannot read ${path.join(root, 'package.json')}`);
+        expect(result.code).toBe(EXIT_CODE.FAILED);
         expect(result.err).not.toMatch(/\s+at /);
     });
 });
@@ -668,6 +670,7 @@ describe('cli: a project’s own bin file', () => {
 
         const result = await ownArt(['hello', '--json'], path.join(tool, 'bin', 'mytool.js'));
 
+        expect(envelope(result.out).hint).toEqual(expect.any(String));
         expect(envelope(result.out).hint).not.toContain('parent folder');
     });
 
@@ -719,6 +722,7 @@ describe('cli: a project’s own bin file', () => {
 
         const result = await art(['hello', '--json'], root);
 
+        expect(envelope(result.out).hint).toEqual(expect.any(String));
         expect(envelope(result.out).hint).not.toContain('author');
     });
 
@@ -963,6 +967,12 @@ describe('cli: a leading --log before a built-in word', () => {
 
         const result = await art(['--log', 'x.log', 'doctor', '--json'], root);
 
+        expect(envelope(result.out)).toMatchObject({
+            command: 'doctor',
+            ok: false,
+            error: expect.stringContaining('--log')
+        });
+
         expect(envelope(result.out).error).not.toMatch(/cannot come before/);
     });
 
@@ -1065,6 +1075,15 @@ describe('cli: the every-run version warning', () => {
     const warnings = (err: string): string[] =>
         err.split('\n').filter((line) => line.includes('Run art doctor.'));
 
+    /** Runs `hello` and fails unless it ran: a crash prints no warning either. */
+    const runHello = async (root: string, extra: string[] = []) => {
+        const run = await art(['hello', ...extra], root);
+
+        expect(run.code).toBe(EXIT_CODE.OK);
+
+        return run;
+    };
+
     test('a range the running version does not satisfy gets one line naming art doctor', async () => {
         const root = projectWanting('^99.0.0');
 
@@ -1106,31 +1125,34 @@ describe('cli: the every-run version warning', () => {
         expect(version).toBeDefined();
         putCopy(root, version ?? '');
 
-        expect(warnings((await art(['hello'], root)).err)).toHaveLength(0);
+        expect(warnings((await runHello(root)).err)).toHaveLength(0);
     });
 
     test('a project with no copy and no dependency says nothing', async () => {
         const root = projectWanting(undefined);
 
-        expect(warnings((await art(['hello'], root)).err)).toHaveLength(0);
+        expect(warnings((await runHello(root)).err)).toHaveLength(0);
     });
 
     test('a form it does not understand (workspace:*) says nothing', async () => {
         const root = projectWanting('workspace:*');
 
-        expect(warnings((await art(['hello'], root)).err)).toHaveLength(0);
+        expect(warnings((await runHello(root)).err)).toHaveLength(0);
     });
 
     test('--quiet hides it', async () => {
         const root = projectWanting('^99.0.0');
 
-        expect(warnings((await art(['hello', '--quiet'], root)).err)).toHaveLength(0);
+        expect(warnings((await runHello(root, ['--quiet'])).err)).toHaveLength(0);
     });
 
     test('--quiet before the command hides it too', async () => {
         const root = projectWanting('^99.0.0');
 
-        expect(warnings((await art(['--quiet', 'hello'], root)).err)).toHaveLength(0);
+        const run = await art(['--quiet', 'hello'], root);
+
+        expect(run.code).toBe(EXIT_CODE.OK);
+        expect(warnings(run.err)).toHaveLength(0);
     });
 
     test('under --json stdout is still exactly one object', async () => {
@@ -1143,7 +1165,10 @@ describe('cli: the every-run version warning', () => {
     test('and the envelope never contains the warning', async () => {
         const root = projectWanting('^99.0.0');
 
-        expect((await art(['hello', '--json'], root)).out).not.toMatch(/doctor/);
+        const run = await art(['hello', '--json'], root);
+
+        expect(envelope(run.out).ok).toBe(true);
+        expect(run.out).not.toMatch(/doctor/);
     });
 
     test('it goes to stderr, and the warning still lets the command run', async () => {

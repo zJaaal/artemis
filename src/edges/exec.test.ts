@@ -81,13 +81,13 @@ describe('spawnChild: how a child ends', () => {
 
         const { outcome } = await runNode('process.exit(0)', { cwd: file });
 
-        expect(outcome.startError).toBeDefined();
+        expect(outcome.startError).toMatch(/ENOTDIR|not a directory/i);
     });
 
     test('an argument with a null byte is a start error, not a thrown exception', async () => {
         const { outcome } = await runNode('process.exit(0)', {}, ['a\0b']);
 
-        expect(outcome.startError).toBeDefined();
+        expect(outcome.startError).toMatch(/null bytes|ERR_INVALID_ARG_VALUE/);
     });
 
     test('a child that leaves a grandchild holding its output does not hang the call', async () => {
@@ -156,6 +156,7 @@ describe('spawnChild: how a child ends', () => {
     test('a child killed by the timeout does not report success', async () => {
         const { outcome } = await runNode(SILENT_JOB, { timeoutMs: SHORT_TIMEOUT_MS });
 
+        expect(outcome).toMatchObject({ timedOut: true, signal: 'SIGTERM' });
         expect(outcome.code).not.toBe(0);
     });
 });
@@ -228,7 +229,10 @@ describe('spawnChild: stop', () => {
 
         await child.stop();
 
-        expect((await child.done).code).not.toBe(0);
+        expect(await child.done).toMatchObject({
+            stopped: true,
+            signal: expect.stringMatching(/^SIG/)
+        });
     });
 
     test('is harmless once the child has already ended', async () => {
@@ -272,6 +276,9 @@ ${SILENT_JOB}`;
         await ready;
         await child.stop();
 
-        expect((await child.done).code).not.toBe(0);
+        expect(await child.done).toMatchObject({
+            stopped: true,
+            signal: expect.stringMatching(/^SIG/)
+        });
     });
 });

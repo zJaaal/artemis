@@ -69,6 +69,7 @@ describe('run: resolving and running a command', () => {
     test('--quiet hides the warning about a file that did not load', async () => {
         const result = await art(['good', '--quiet'], { commandsDir: BAD_COMMANDS_FIXTURE_DIR });
 
+        expect(result.code).toBe(EXIT_CODE.OK);
         expect(result.err).toBe('');
     });
 });

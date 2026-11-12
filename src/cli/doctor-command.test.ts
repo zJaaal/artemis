@@ -207,6 +207,7 @@ describe('art doctor: the every-run warning', () => {
 
         const result = await art(['doctor'], root);
 
+        expect(result.code).toBe(EXIT_CODE.OK);
         expect(result.err).not.toMatch(/Run art doctor/);
     });
 

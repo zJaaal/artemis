@@ -81,6 +81,7 @@ describe('help --brief: the JSON', () => {
     test('a library run without builtins has no builtins key', async () => {
         const result = envelope(await art(['help', '--json', '--brief'])).result as BriefManifest;
 
+        expect(result).toHaveProperty('commands');
         expect(result).not.toHaveProperty('builtins');
     });
 });
@@ -123,6 +124,10 @@ describe('help: a command with markers', () => {
     });
 
     test('a command with no markers shows neither note', async () => {
-        expect((await art(['hello', '--help'])).out).not.toMatch(/Destructive|Supports --dry-run/);
+        const run = await art(['hello', '--help']);
+
+        expect(run.code).toBe(EXIT_CODE.OK);
+        expect(run.out).toMatch(/Usage/i);
+        expect(run.out).not.toMatch(/Destructive|Supports --dry-run/);
     });
 });
