@@ -59,6 +59,43 @@ describe('pickExecMode: the first row that applies wins', () => {
     });
 });
 
+describe('createTail: progress that rewrites its line', () => {
+    test('keeps only the last state of a line rewritten with carriage returns', () => {
+        const tail = createTail(EXEC_TAIL_LINES, EXEC_TAIL_LINE_CHARS);
+
+        tail.push('stdout', '10%\r20%\r30%\n');
+
+        expect(tail.lines()).toEqual(['30%']);
+    });
+
+    test('a half-written line never grows past the cut', () => {
+        const tail = createTail(EXEC_TAIL_LINES, 10);
+
+        Array.from({ length: 1000 }, () => 'progress ').forEach((chunk) =>
+            tail.push('stdout', chunk)
+        );
+
+        expect(tail.lines()[0]?.length).toBeLessThanOrEqual(10);
+    });
+
+    test('the last state of a bar that never ends a line is what the tail shows', () => {
+        const tail = createTail(EXEC_TAIL_LINES, EXEC_TAIL_LINE_CHARS);
+
+        tail.push('stdout', 'pulling 10%\rpulling 20%\rpulling 99%');
+
+        expect(tail.lines()).toEqual(['pulling 99%']);
+    });
+
+    test('a carriage return that ends a line before its newline arrives is not lost', () => {
+        const tail = createTail(EXEC_TAIL_LINES, EXEC_TAIL_LINE_CHARS);
+
+        tail.push('stdout', 'done\r');
+        tail.push('stdout', '\n');
+
+        expect(tail.lines()).toEqual(['done']);
+    });
+});
+
 describe('createTail', () => {
     test('keeps whole lines of one stream', () => {
         const tail = createTail(EXEC_TAIL_LINES, EXEC_TAIL_LINE_CHARS);

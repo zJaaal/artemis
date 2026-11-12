@@ -73,6 +73,22 @@ describe('spawnChild: how a child ends', () => {
         expect(outcome).toMatchObject({ notFound: false, cwdMissing: true });
     });
 
+    test('a cwd that is a file is a start error, not a thrown exception', async () => {
+        const file = path.join(folders.make('artemis-exec-'), 'plain.txt');
+
+        fs.writeFileSync(file, 'x');
+
+        const { outcome } = await runNode('process.exit(0)', { cwd: file });
+
+        expect(outcome.startError).toBeDefined();
+    });
+
+    test('an argument with a null byte is a start error, not a thrown exception', async () => {
+        const { outcome } = await runNode('process.exit(0)', {}, ['a\0b']);
+
+        expect(outcome.startError).toBeDefined();
+    });
+
     test('a child that leaves a grandchild holding its output does not hang the call', async () => {
         const started = Date.now();
 

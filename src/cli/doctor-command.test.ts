@@ -106,6 +106,36 @@ describe('art doctor: with only warnings', () => {
     });
 });
 
+describe('art doctor: a command that hides a built-in word through an alias or a folder', () => {
+    const command = (aliases: string): string =>
+        `import { defineCommand } from '@zjaaal/artemis';\nexport default defineCommand({ description: 'mine', aliases: ${aliases}, run: () => 1 });\n`;
+
+    test('an alias called like a word is reported, naming the command it belongs to', async () => {
+        const root = newProject();
+
+        fs.writeFileSync(path.join(root, 'commands', 'check.js'), command("['doctor']"));
+
+        const { out } = await art(['doctor', '--json'], root);
+
+        expect(checksOf(out).find((check) => check.id === 'words')?.message).toContain(
+            '"doctor" (an alias of "check")'
+        );
+    });
+
+    test('a topic folder called like a word is reported with a fix that names the folder', async () => {
+        const root = newProject();
+
+        fs.mkdirSync(path.join(root, 'commands', 'state'));
+        fs.writeFileSync(path.join(root, 'commands', 'state', 'x.js'), command('[]'));
+
+        const { out } = await art(['doctor', '--json'], root);
+
+        expect(checksOf(out).find((check) => check.id === 'words')?.fix).toContain(
+            'Rename the folder'
+        );
+    });
+});
+
 describe('art doctor: with a failure', () => {
     test('a commands folder that is missing fails, exit 1', async () => {
         const root = newProject();

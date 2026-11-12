@@ -610,6 +610,9 @@ export type InstallFacts = {
 
 export type InstallCheckFn = (facts: InstallFacts) => DoctorCheck;
 
+/** A built-in word that something of the project hides: a command file, a topic folder or an alias (of `target`). */
+export type HiddenWord = { word: string; by: 'file' | 'folder' | 'alias'; target?: string };
+
 /** What the doctor found out about the project, read by edges: the checks decide from it. */
 export type DoctorFacts = {
     running: RunningPackage;
@@ -618,9 +621,17 @@ export type DoctorFacts = {
     project: Project | undefined;
     /** The commands folder: whether it is there, what discovery warned about, or why the settings could not be read. */
     commands:
-        { dir: string; exists: boolean; warnings: readonly string[]; problem?: string } | undefined;
-    /** The built-in words a project command or topic hides. */
-    hiddenWords: readonly string[];
+        | {
+              dir: string;
+              exists: boolean;
+              warnings: readonly string[];
+              problem?: string;
+              /** Every alias with the id of its command, to see which one is called like a built-in word. */
+              aliases?: readonly (readonly [alias: string, id: string])[];
+          }
+        | undefined;
+    /** The built-in words a project command, topic or alias hides, and what hides each. */
+    hiddenWords: readonly HiddenWord[];
     /** The state folder: whether it is there, the documents that cannot be read, or why it cannot be listed. */
     state:
         | {
@@ -684,6 +695,8 @@ export type ExecRun = {
     children: Set<ChildHandle>;
     /** Where a skipped call adds itself under `--dry-run`. */
     plan: string[];
+    /** The folder the run was given: where a child starts, and what a relative `cwd` is relative to. */
+    cwd?: string | undefined;
 };
 
 /** The `--log` file: an open file everything is copied into. */
@@ -692,6 +705,8 @@ export type LogSink = {
     path: string;
     write: (text: string) => void;
     close: () => void;
+    /** Why the file could not be written (a full disk), once it failed: later text is dropped, the run goes on. */
+    failure: () => string | undefined;
 };
 
 export type ExecFn = (
@@ -732,6 +747,12 @@ export type SpawnOutcome = {
     startError: string | undefined;
     /** The signal that ended it (an OOM kill, a crash), when it had no exit code. */
     signal: string | undefined;
+};
+
+/** What a child's end is built from: the exit code, and why it did not run or how it was ended when that applies. */
+export type SpawnFinish = Pick<SpawnOutcome, 'code' | 'notFound' | 'cwdMissing'> & {
+    startError?: string | undefined;
+    signal?: string | undefined;
 };
 
 export type ChildHandle = {
@@ -1086,8 +1107,27 @@ export type StateEdges = { lock: LockOptions };
 /** What a built-in word prints when it succeeds: the envelope under `--json`, the text otherwise. */
 export type PrintResultFn = (
     io: IO,
-    print: { json: boolean; command: string; text: string; result: unknown }
+    print: {
+        json: boolean;
+        command: string | null;
+        text: string;
+        result: unknown;
+        /** The envelope keys after `result`, already in their fixed order. */
+        extras?: Record<string, unknown>;
+    }
 ) => void;
+
+/** The failure envelope as one line of JSON: `ok`, `command`, `error`, then `hint`, `log`, `tail` and `checks` when there are any. */
+export type FailureEnvelopeFn = (
+    command: string | null,
+    error: string,
+    keys?: {
+        hint?: string | undefined;
+        log?: string | undefined;
+        tail?: readonly string[] | undefined;
+        checks?: readonly DoctorCheck[] | undefined;
+    }
+) => string;
 
 /** The success envelope as one line of JSON: `ok`, `command`, `result`, then `extras` in the order given. */
 export type SuccessEnvelopeFn = (

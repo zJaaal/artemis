@@ -1,3 +1,5 @@
+import path from 'node:path';
+
 import {
     EXEC_LOG_HINT_PREFIX,
     EXEC_NO_LOG_HINT,
@@ -93,7 +95,7 @@ function failure(
  * `ctx.exec`: runs a child and routes its output by the flags of the run. Under `--dry-run` a call
  * that is not `readOnly` starts nothing: it adds itself to the plan and says it was skipped.
  */
-export const createExec =
+const execute =
     (run: ExecRun): ExecFn =>
     async (
         command: string,
@@ -123,7 +125,7 @@ export const createExec =
         const child = spawnChild({
             command,
             args,
-            cwd: options.cwd,
+            cwd: run.cwd === undefined ? options.cwd : path.resolve(run.cwd, options.cwd ?? ''),
             env: options.env,
             pipe: mode.pipe,
             timeoutMs: options.timeoutMs,
@@ -155,4 +157,19 @@ export const createExec =
         } finally {
             run.children.delete(child);
         }
+    };
+
+/**
+ * `ctx.exec`. A call nobody awaits that fails on its own must not take the process down with an
+ * unhandled rejection: whoever awaits still gets the error, and a run that does not look away
+ * from the child is told by `run` ending, which stops it.
+ */
+export const createExec =
+    (run: ExecRun): ExecFn =>
+    (command, args, options) => {
+        const result = execute(run)(command, args, options);
+
+        result.catch(() => undefined);
+
+        return result;
     };

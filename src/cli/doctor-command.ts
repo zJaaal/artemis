@@ -12,10 +12,11 @@ import type {
     DoctorCommandFn,
     DoctorFacts,
     DoctorWordsRead,
+    HiddenWord,
     Project,
     Style
 } from '../models.js';
-import { reportError, successEnvelope } from '../run/report.js';
+import { failureEnvelope, reportError, successEnvelope } from '../run/report.js';
 import { resolveWorld } from '../run/world.js';
 import { messageOf } from '../utils/error-message.js';
 import {
@@ -30,7 +31,6 @@ import {
 } from './constants.js';
 import { doctorFailure, runDoctor } from './doctor.js';
 import { findProject, resolveSettings, resolveStateDir } from './settings.js';
-import { shadowsWord } from './shadow.js';
 import { wordHelp } from './word-help.js';
 
 const KNOWN_WORDS: readonly string[] = Object.values(DOCTOR_FLAGS);
@@ -63,17 +63,38 @@ async function readCommands(project: Project): Promise<DoctorFacts['commands']> 
 
         const registry = await discover(commandsDir);
 
-        return { dir: commandsDir, exists: true, warnings: registry.warnings };
+        return {
+            dir: commandsDir,
+            exists: true,
+            warnings: registry.warnings,
+            aliases: [...registry.aliases.entries()]
+        };
     } catch (error) {
         return { dir: '', exists: false, warnings: [], problem: messageOf(error) };
     }
 }
 
-/** The built-in words a command or topic of the project hides. */
-function readHiddenWords(commands: DoctorFacts['commands']): string[] {
-    const dir = commands?.exists ? commands.dir : undefined;
+/** What hides a built-in word, if anything: a command file, a topic folder, or an alias of a command. */
+function hiding(
+    commands: NonNullable<DoctorFacts['commands']>,
+    word: string
+): HiddenWord | undefined {
+    if (pathExists(path.join(commands.dir, `${word}.js`))) {
+        return { word, by: 'file' };
+    }
 
-    return dir === undefined ? [] : WORD_NAMES.filter((word) => shadowsWord(dir, word));
+    if (pathExists(path.join(commands.dir, word))) {
+        return { word, by: 'folder' };
+    }
+
+    const target = commands.aliases?.find(([alias]) => alias === word)?.[1];
+
+    return target === undefined ? undefined : { word, by: 'alias', target };
+}
+
+/** The built-in words a command, topic or alias of the project hides. */
+function readHiddenWords(commands: DoctorFacts['commands']): HiddenWord[] {
+    return commands?.exists ? WORD_NAMES.flatMap((word) => hiding(commands, word) ?? []) : [];
 }
 
 /** The documents of the state folder, and the ones that cannot be read. */
@@ -151,7 +172,10 @@ export const doctorCommand: DoctorCommandFn = async (words, options, cwd) => {
 
     if (read.json) {
         const envelope = failure
-            ? JSON.stringify({ ok: false, command: DOCTOR_WORD, ...failure })
+            ? failureEnvelope(DOCTOR_WORD, failure.error, {
+                  hint: failure.hint,
+                  checks: failure.checks
+              })
             : successEnvelope(DOCTOR_WORD, { version: facts.running.version, checks });
 
         io.stdout.write(`${envelope}\n`);

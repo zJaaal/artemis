@@ -3,6 +3,7 @@ import { isCommandError, isExecError, isUsageError } from '../errors/errors.js';
 import type {
     ErrorReport,
     FailureCodeOfFn,
+    FailureEnvelopeFn,
     ReportContext,
     PrintResultFn,
     ReportErrorFn,
@@ -34,21 +35,29 @@ export const successEnvelope: SuccessEnvelopeFn = (command, result, extras = {})
     JSON.stringify({ ok: true, command, result, ...extras });
 
 /** The one way a built-in word prints a success: the envelope under `--json`, the text otherwise. */
-export const printResult: PrintResultFn = (io, { json, command, text, result }) => {
-    io.stdout.write(`${json ? successEnvelope(command, result) : text}\n`);
+export const printResult: PrintResultFn = (io, { json, command, text, result, extras }) => {
+    io.stdout.write(`${json ? successEnvelope(command, result, extras) : text}\n`);
 };
 
-/** The failure envelope: the keys of spec 01, then `log` and `tail` when there are any. */
-function toJson(report: ErrorReport, { commandId, log }: ReportContext): string {
-    return JSON.stringify({
+/** The failure envelope, the one place it is built: `run()`'s errors and a failing `doctor` both print it. */
+export const failureEnvelope: FailureEnvelopeFn = (command, error, keys = {}) =>
+    JSON.stringify({
         ok: false,
-        command: commandId ?? null,
-        error: report.message,
-        ...(report.hint ? { hint: report.hint } : {}),
-        ...(log === undefined ? {} : { log }),
-        ...(report.tail ? { tail: report.tail } : {})
+        command,
+        error,
+        ...(keys.hint ? { hint: keys.hint } : {}),
+        ...(keys.log === undefined ? {} : { log: keys.log }),
+        ...(keys.tail ? { tail: keys.tail } : {}),
+        ...(keys.checks ? { checks: keys.checks } : {})
     });
-}
+
+/** The failure envelope: the keys of spec 01, then `log` and `tail` when there are any. */
+const toJson = (report: ErrorReport, { commandId, log }: ReportContext): string =>
+    failureEnvelope(commandId ?? null, report.message, {
+        hint: report.hint,
+        log,
+        tail: report.tail
+    });
 
 function toText(report: ErrorReport, { style }: ReportContext): string {
     const lines = [`${style.red('Error:')} ${report.message}`];

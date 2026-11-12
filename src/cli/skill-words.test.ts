@@ -19,6 +19,14 @@ describe('parseSkillWords', () => {
         expect(() => parseSkillWords(words)).toThrow(/needs a path/);
     });
 
+    test.each([
+        ['--write', '--json'],
+        ['--write', '--yes'],
+        ['--write', '-y']
+    ])('a flag is not a path: %j', (...words) => {
+        expect(() => parseSkillWords(words)).toThrow(/needs a path/);
+    });
+
     test('--write=path works too', () => {
         expect(parseSkillWords(['--write=a/SKILL.md']).write).toBe('a/SKILL.md');
     });

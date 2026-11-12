@@ -23,8 +23,20 @@ export const openLogFile: OpenLogFileFn = (file, cwd) => {
     }
 
     let closed = false;
+    let failed: string | undefined;
     let waiting = '';
     let timer: NodeJS.Timeout | undefined;
+
+    // A write that fails (a full disk) must not crash a timer or replace the result of the run: the
+    // first failure is kept, the rest of the log is dropped, and the run says so when it ends
+    const attempt = (work: () => void): void => {
+        try {
+            work();
+        } catch (error) {
+            failed ??= messageOf(error);
+            waiting = '';
+        }
+    };
 
     // One write per batch, not per chunk: a chatty child would otherwise block the event loop with a
     // syscall for every line, and delay the timers and pipe reads that `ctx.exec` depends on.
@@ -33,15 +45,17 @@ export const openLogFile: OpenLogFileFn = (file, cwd) => {
         timer = undefined;
 
         if (waiting) {
-            fs.writeSync(descriptor, waiting);
+            const text = waiting;
+
             waiting = '';
+            attempt(() => fs.writeSync(descriptor, text));
         }
     };
 
     return {
         path: target,
         write: (text) => {
-            if (closed) {
+            if (closed || failed !== undefined) {
                 return;
             }
 
@@ -57,8 +71,9 @@ export const openLogFile: OpenLogFileFn = (file, cwd) => {
             if (!closed) {
                 flush();
                 closed = true;
-                fs.closeSync(descriptor);
+                attempt(() => fs.closeSync(descriptor));
             }
-        }
+        },
+        failure: () => failed
     };
 };

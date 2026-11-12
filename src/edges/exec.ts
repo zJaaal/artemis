@@ -1,4 +1,4 @@
-import { spawn } from 'node:child_process';
+import { type ChildProcess, spawn } from 'node:child_process';
 import fs from 'node:fs';
 
 import {
@@ -10,7 +10,13 @@ import {
     EXEC_STDIO_PIPED,
     EXIT_CODE
 } from '../constants.js';
-import type { ChildStream, SpawnChildFn, SpawnOutcome } from '../models.js';
+import type {
+    ChildHandle,
+    ChildStream,
+    SpawnChildFn,
+    SpawnFinish,
+    SpawnOutcome
+} from '../models.js';
 import { codeOf } from '../utils/error-code.js';
 import { messageOf } from '../utils/error-message.js';
 
@@ -18,14 +24,35 @@ import { messageOf } from '../utils/error-message.js';
 // `args` is interpreted, and it never lets the child it started outlive the call that asked for it (a grandchild the child started is
 // its own business: only the direct child is signalled).
 
+/** The handle of a child that never started: it is already over, and there is nothing to stop. */
+const notStarted = (error: unknown): ChildHandle => ({
+    done: Promise.resolve<SpawnOutcome>({
+        code: EXIT_CODE.FAILED,
+        timedOut: false,
+        notFound: false,
+        cwdMissing: false,
+        stopped: false,
+        startError: messageOf(error),
+        signal: undefined
+    }),
+    stop: () => Promise.resolve()
+});
+
 /** Starts a child. `done` resolves when it has ended; `stop` ends it politely, then for good. */
 export const spawnChild: SpawnChildFn = (request) => {
-    const child = spawn(request.command, [...request.args], {
-        cwd: request.cwd,
-        env: request.env,
-        shell: false,
-        stdio: request.pipe ? EXEC_STDIO_PIPED : EXEC_STDIO_INHERITED
-    });
+    let child: ChildProcess;
+
+    try {
+        child = spawn(request.command, [...request.args], {
+            cwd: request.cwd,
+            env: request.env,
+            shell: false,
+            stdio: request.pipe ? EXEC_STDIO_PIPED : EXEC_STDIO_INHERITED
+        });
+    } catch (error) {
+        // `spawn` throws at once for a few errors (a cwd that is a file, a null byte in an argument)
+        return notStarted(error);
+    }
 
     let ended = false;
     let timedOut = false;
@@ -41,12 +68,7 @@ export const spawnChild: SpawnChildFn = (request) => {
     });
 
     const done = new Promise<SpawnOutcome>((resolve) => {
-        const finish = (
-            outcome: Pick<SpawnOutcome, 'code' | 'notFound' | 'cwdMissing'> & {
-                startError?: string | undefined;
-                signal?: string | undefined;
-            }
-        ) => {
+        const finish = (outcome: SpawnFinish) => {
             ended = true;
             clearTimeout(killTimer);
             clearTimeout(timeoutTimer);

@@ -30,8 +30,12 @@ export const createTail: CreateTailFn = (maxLines, maxChars) => {
     const kept: string[] = [];
     const open: Record<ChildStream, string> = { stdout: '', stderr: '' };
 
+    // A carriage return puts the cursor back at the start of the line: progress bars rewrite it, so
+    // only what follows the last one is what the terminal shows (and what the tail is worth)
+    const lastState = (text: string): string => text.slice(text.lastIndexOf('\r') + 1);
+
     const add = (line: string): void => {
-        const clean = line.replace(CARRIAGE_RETURN, '');
+        const clean = lastState(line.replace(CARRIAGE_RETURN, ''));
 
         if (clean.trim() === '') {
             return;
@@ -48,7 +52,13 @@ export const createTail: CreateTailFn = (maxLines, maxChars) => {
         push: (stream, chunk) => {
             const parts = `${open[stream]}${chunk}`.split(LINE_END);
 
-            open[stream] = parts.pop() ?? '';
+            const partial = parts.pop() ?? '';
+            const trailing = CARRIAGE_RETURN.test(partial) ? '\r' : '';
+
+            // The half-written line is bounded too: a progress bar that never ends a line must not grow
+            open[stream] =
+                `${lastState(partial.slice(0, partial.length - trailing.length)).slice(0, maxChars)}${trailing}`;
+
             parts.forEach(add);
         },
         lines: () => {

@@ -39,10 +39,10 @@ export const parseSkillWords: ParseSkillWordsFn = (words) => {
         if (word === SKILL_FLAGS.write) {
             const value = words[index + 1];
 
-            if (value === undefined) {
+            if (value === undefined || value.startsWith('-')) {
                 throw usageError(
                     `${SKILL_FLAGS.write} needs a path`,
-                    `Try: ${SKILL_WORD} --write SKILL.md`
+                    `Try: ${SKILL_WORD} --write SKILL.md (a path that starts with a dash: ${SKILL_WRITE_PREFIX}<path>)`
                 );
             }
 

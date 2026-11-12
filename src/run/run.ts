@@ -62,27 +62,24 @@ import {
     splitLeadingFlags,
     suggest
 } from '../resolve/resolve.js';
-import { successEnvelope } from './report.js';
+import { printResult } from './report.js';
 import { jsonRequested, quietRequested } from '../utils/terminator.js';
 
 const isFlagToken = (token: string): boolean => token.startsWith(FLAG_PREFIX);
 
-/**
- * Prints text, or under --json the data wrapped in the success envelope. `extras` are the keys that
- * come after `result`, already in their fixed order (dryRun, plan, next, log).
- */
-function print(
+/** What `printResult` takes for this run: text, or under --json the data wrapped in the success envelope. */
+const shown = (
     session: Session,
     text: string,
-    data: unknown,
+    result: unknown,
     extras: Record<string, unknown> = {}
-): void {
-    const output = session.wantsJson
-        ? successEnvelope(session.state.commandId ?? null, data, extras)
-        : text;
-
-    session.io.stdout.write(`${output}\n`);
-}
+) => ({
+    json: session.wantsJson,
+    command: session.state.commandId ?? null,
+    text,
+    result,
+    extras
+});
 
 const unknownHint = (
     bin: string,
@@ -231,7 +228,8 @@ async function execute(
         global: parsed.global,
         log: session.scope.log,
         children,
-        plan: session.scope.plan
+        plan: session.scope.plan,
+        cwd: session.cwd
     });
 
     const ctx = createContext({
@@ -286,7 +284,7 @@ function showBriefFor(session: Session, words: string[]): void {
 
         const brief = briefManifest(everything);
 
-        print(session, briefHelp(brief, style), brief);
+        printResult(session.io, shown(session, briefHelp(brief, style), brief));
 
         return;
     }
@@ -310,7 +308,7 @@ function showBriefFor(session: Session, words: string[]): void {
 
     const brief = briefManifest(everything, target.topic.id);
 
-    print(session, briefHelp(brief, style), brief);
+    printResult(session.io, shown(session, briefHelp(brief, style), brief));
 }
 
 /**
@@ -335,17 +333,20 @@ function showAgents(session: Session, words: string[], brief: boolean): void {
 
     session.state.commandId = HELP_WORD;
 
-    print(session, agents.markdown.trimEnd(), agents);
+    printResult(session.io, shown(session, agents.markdown.trimEnd(), agents));
 }
 
 function showHelpFor(session: Session, words: string[]): void {
     if (!words.length) {
         session.state.commandId = HELP_WORD;
 
-        print(
-            session,
-            rootHelp(session.bin, session.registry, session.style, session.builtins),
-            manifest(session.bin, session.registry, session.builtins)
+        printResult(
+            session.io,
+            shown(
+                session,
+                rootHelp(session.bin, session.registry, session.style, session.builtins),
+                manifest(session.bin, session.registry, session.builtins)
+            )
         );
 
         return;
@@ -356,10 +357,13 @@ function showHelpFor(session: Session, words: string[]): void {
     if (builtin) {
         session.state.commandId = builtin.id;
 
-        print(
-            session,
-            builtinHelp(session.bin, builtin, session.style),
-            describeBuiltins(session.bin, [builtin])[0]
+        printResult(
+            session.io,
+            shown(
+                session,
+                builtinHelp(session.bin, builtin, session.style),
+                describeBuiltins(session.bin, [builtin])[0]
+            )
         );
 
         return;
@@ -375,7 +379,7 @@ function showHelpFor(session: Session, words: string[]): void {
 
     const { text, data } = helpFor(session, target);
 
-    print(session, text, data);
+    printResult(session.io, shown(session, text, data));
 }
 
 /** The help word takes neither `--log` nor `--dry-run`: it runs nothing, so there is nothing to log or plan. */
@@ -477,7 +481,10 @@ async function dispatch(session: Session, argv: string[]): Promise<number> {
     const { result, next } = await execute(session, target.entry, parsed);
 
     if (session.wantsJson) {
-        print(session, '', result ?? null, successExtras(session, parsed.global, next));
+        printResult(
+            session.io,
+            shown(session, '', result ?? null, successExtras(session, parsed.global, next))
+        );
     } else if (parsed.global.dryRun) {
         session.io.stdout.write(`${planText(session.scope.plan)}\n`);
     }
@@ -524,5 +531,12 @@ export const run: RunCliFn = async (argv, options) => {
         });
     } finally {
         scope.log?.close();
+
+        // The result of the run stands; only the missing part of the log is reported
+        if (scope.log?.failure() !== undefined) {
+            world.io.stderr.write(
+                `${world.style.yellow('warning:')} the log file ${scope.log.path} is incomplete: ${scope.log.failure()}\n`
+            );
+        }
     }
 };

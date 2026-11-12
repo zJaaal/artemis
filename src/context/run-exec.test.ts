@@ -192,6 +192,26 @@ describe('ctx.exec: what it keeps in memory', () => {
     });
 });
 
+describe('ctx.exec: a call nobody awaits', () => {
+    test('that fails on its own does not take the run down', async () => {
+        const run = await art(['exec-fails-alone', '--json']);
+
+        expect(envelope(run)).toMatchObject({ ok: true, result: { done: true } });
+    });
+});
+
+describe('ctx.exec: where a child starts', () => {
+    test('is the folder the run was given, not the one of the process', async () => {
+        const cwd = fs.realpathSync(folders.make('artemis-exec-cwd-'));
+
+        const run = await art(['exec', 'console.log(process.cwd())', '--capture', '--json'], {
+            cwd
+        });
+
+        expect(String(result(run.out).output).trim()).toBe(cwd);
+    });
+});
+
 describe('ctx.exec: a child killed by a signal', () => {
     test('names the signal, not an exit code', async () => {
         const run = await art(['exec', "process.kill(process.pid, 'SIGKILL')", '--json']);

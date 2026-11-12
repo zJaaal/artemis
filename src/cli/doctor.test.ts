@@ -169,7 +169,7 @@ describe('runDoctor: commands', () => {
 
 describe('runDoctor: words', () => {
     test('warns for each word a command hides, with the rename as the fix', () => {
-        const facts = { ...healthy(), hiddenWords: ['doctor'] };
+        const facts = { ...healthy(), hiddenWords: [{ word: 'doctor', by: 'file' as const }] };
 
         expect(checkOf(runDoctor(facts), 'words')).toMatchObject({
             status: 'warn',
@@ -183,12 +183,31 @@ describe('runDoctor: words, where the commands live', () => {
     test('names the commands folder of the project in the fix', () => {
         const facts = {
             ...healthy(),
-            hiddenWords: ['doctor'],
+            hiddenWords: [{ word: 'doctor', by: 'file' as const }],
             commands: { dir: '/work/app/tools/commands', exists: true, warnings: [] }
         };
 
         expect(checkOf(runDoctor(facts), 'words')?.fix).toContain(
             '/work/app/tools/commands/doctor.js'
+        );
+    });
+});
+
+describe('runDoctor: words hidden by a folder or an alias', () => {
+    test('a folder is renamed as a folder, not as a .js file', () => {
+        const facts = { ...healthy(), hiddenWords: [{ word: 'state', by: 'folder' as const }] };
+
+        expect(checkOf(runDoctor(facts), 'words')?.fix).toContain('Rename the folder');
+    });
+
+    test('an alias is removed from the command it belongs to', () => {
+        const facts = {
+            ...healthy(),
+            hiddenWords: [{ word: 'doctor', by: 'alias' as const, target: 'check' }]
+        };
+
+        expect(checkOf(runDoctor(facts), 'words')?.fix).toContain(
+            'Remove "doctor" from the aliases of "check"'
         );
     });
 });

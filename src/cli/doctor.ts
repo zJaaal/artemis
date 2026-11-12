@@ -1,7 +1,13 @@
 import path from 'node:path';
 
 import { MANIFEST_FILE } from '../constants.js';
-import type { DoctorCheck, DoctorFacts, DoctorFailureFn, RunDoctorFn } from '../models.js';
+import type {
+    DoctorCheck,
+    DoctorFacts,
+    DoctorFailureFn,
+    HiddenWord,
+    RunDoctorFn
+} from '../models.js';
 import { DOCTOR_SINGULAR_FAILED } from './constants.js';
 import { installedCheck, rangeCheck, rangeOf } from './install-checks.js';
 
@@ -66,6 +72,22 @@ function commandsCheck({ commands }: DoctorFacts): DoctorCheck {
     return { id: 'commands', status: 'ok', message: `Every command in ${commands.dir} loads.` };
 }
 
+const hiddenFix = ({ word, by, target }: HiddenWord, dir: string): string => {
+    const built = `art ${word} runs the built-in.`;
+
+    switch (by) {
+        case 'file':
+            return `Rename ${dir}/${word}.js; ${built}`;
+        case 'folder':
+            return `Rename the folder ${dir}/${word}; ${built}`;
+        default:
+            return `Remove "${word}" from the aliases of "${target}"; ${built}`;
+    }
+};
+
+const hiddenName = ({ word, by, target }: HiddenWord): string =>
+    by === 'alias' ? `"${word}" (an alias of "${target}")` : `"${word}"`;
+
 function wordsCheck({ hiddenWords, commands }: DoctorFacts): DoctorCheck {
     if (!hiddenWords.length) {
         return { id: 'words', status: 'ok', message: 'No command hides a word of this binary.' };
@@ -74,13 +96,8 @@ function wordsCheck({ hiddenWords, commands }: DoctorFacts): DoctorCheck {
     return {
         id: 'words',
         status: 'warn',
-        message: `A command or topic called ${hiddenWords.map((word) => `"${word}"`).join(', ')} is hidden by the word of this binary: it cannot be run through here.`,
-        fix: hiddenWords
-            .map(
-                (word) =>
-                    `Rename ${commands?.dir ?? 'commands'}/${word}.js; art ${word} runs the built-in.`
-            )
-            .join(' ')
+        message: `A command, topic or alias called ${hiddenWords.map(hiddenName).join(', ')} is hidden by the word of this binary: it cannot be run through here.`,
+        fix: hiddenWords.map((hidden) => hiddenFix(hidden, commands?.dir ?? 'commands')).join(' ')
     };
 }
 

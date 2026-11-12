@@ -100,8 +100,8 @@ function pairLine(plan: PortPlan, first: string, second: string): string | undef
 }
 
 function collisionProblems(plan: PortPlan): string[] {
-    const keyOrder = Object.keys(plan.ports);
-    const indexOf = (key: string): number => keyOrder.indexOf(key);
+    const order = new Map(Object.keys(plan.ports).map((key, index) => [key, index]));
+    const indexOf = (key: string): number => order.get(key) ?? 0;
 
     const lines = groupByRemainder(plan.ports, plan.slotStep)
         .flatMap(pairsOf)
