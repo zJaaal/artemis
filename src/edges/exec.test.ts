@@ -70,7 +70,7 @@ describe('spawnChild: how a child ends', () => {
             cwd: path.join(folders.make('artemis-exec-'), 'typo')
         });
 
-        expect(outcome).toMatchObject({ notFound: false });
+        expect(outcome).toMatchObject({ notFound: false, cwdMissing: true });
     });
 
     test('a child that leaves a grandchild holding its output does not hang the call', async () => {

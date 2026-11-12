@@ -24,7 +24,7 @@ export default defineCommand({
     ],
     async run({ args, ctx }) {
         [args.first, args.second].forEach((file) => {
-            ctx.exec(process.execPath, ['-e', worker(file)]).catch(() => undefined);
+            void ctx.exec(process.execPath, ['-e', worker(file)]);
         });
 
         await waitFor(args.first);

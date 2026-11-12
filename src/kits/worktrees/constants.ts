@@ -20,7 +20,7 @@ export const PORT_PROBE_TIMEOUT_MS = 5000;
  */
 export const PORT_PROBE_SCRIPT = `
 const net = require('node:net');
-const hosts = ['0.0.0.0', '::'];
+const hosts = ['0.0.0.0', '::', '127.0.0.1', '::1'];
 const isTaken = (port, host) => new Promise((resolve) => {
     const server = net.createServer();
     server.once('error', (error) => resolve(error.code === 'EADDRINUSE'));

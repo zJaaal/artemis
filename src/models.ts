@@ -720,6 +720,10 @@ export type SpawnOutcome = {
     timedOut: boolean;
     /** The executable could not be started (ENOENT). */
     notFound: boolean;
+    /** The folder to run in does not exist: Node reports it with the same ENOENT as a missing program. */
+    cwdMissing: boolean;
+    /** The caller ended it (`stop`, when the run ended), as opposed to the timeout: not a failure. */
+    stopped: boolean;
 };
 
 export type ChildHandle = {

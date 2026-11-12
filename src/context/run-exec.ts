@@ -46,6 +46,17 @@ function failure(
     options: ExecOptions,
     tail: readonly string[]
 ): CommandError | undefined {
+    if (outcome.cwdMissing) {
+        return new CommandError(`The folder ${options.cwd ?? ''} does not exist`, {
+            hint: `Create it, or check the cwd passed to ${command}.`
+        });
+    }
+
+    // A child Artemis stopped itself (the run ended without awaiting it) is not a failure
+    if (outcome.stopped) {
+        return undefined;
+    }
+
     if (outcome.notFound) {
         return new CommandError(`${command} was not found`, { hint: EXEC_NOT_FOUND_HINT });
     }

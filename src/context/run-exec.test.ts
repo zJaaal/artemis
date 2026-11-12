@@ -184,6 +184,25 @@ describe('ctx.exec: a child that fails', () => {
     });
 });
 
+describe('ctx.exec: a folder that does not exist', () => {
+    test('is its own error naming the folder, not "exited with code 1"', async () => {
+        const cwd = path.join(folders.make('artemis-exec-cwd-'), 'typo');
+        const run = await art(['exec', 'process.exit(0)', '--cwd', cwd, '--json']);
+
+        expect(envelope(run)).toMatchObject({
+            ok: false,
+            error: `The folder ${cwd} does not exist`
+        });
+    });
+
+    test('fails even with reject: false, where a plain exit code is returned', async () => {
+        const cwd = path.join(folders.make('artemis-exec-cwd-'), 'typo');
+        const run = await art(['exec', 'process.exit(0)', '--cwd', cwd, '--no-reject', '--json']);
+
+        expect(envelope(run).ok).toBe(false);
+    });
+});
+
 describe('ctx.exec under --dry-run', () => {
     test('starts no process: it is skipped and says so', async () => {
         const run = await art(['exec', HELLO_SCRIPT, '--dry-run', '--json']);

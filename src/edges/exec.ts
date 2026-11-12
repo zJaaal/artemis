@@ -23,17 +23,18 @@ export const spawnChild: SpawnChildFn = (request) => {
 
     let ended = false;
     let timedOut = false;
+    let stopped = false;
     let killTimer: NodeJS.Timeout | undefined;
     let timeoutTimer: NodeJS.Timeout | undefined;
     let drainTimer: NodeJS.Timeout | undefined;
 
     const done = new Promise<SpawnOutcome>((resolve) => {
-        const finish = (outcome: Pick<SpawnOutcome, 'code' | 'notFound'>) => {
+        const finish = (outcome: Pick<SpawnOutcome, 'code' | 'notFound' | 'cwdMissing'>) => {
             ended = true;
             clearTimeout(killTimer);
             clearTimeout(timeoutTimer);
             clearTimeout(drainTimer);
-            resolve({ ...outcome, timedOut });
+            resolve({ ...outcome, timedOut, stopped });
         };
 
         // 'error' fires when the executable cannot start; 'close' never does then. Node gives the
@@ -42,11 +43,13 @@ export const spawnChild: SpawnChildFn = (request) => {
             const cwdMissing = request.cwd !== undefined && !fs.existsSync(request.cwd);
             const notFound = codeOf(error) === ERROR_CODE.MISSING && !cwdMissing;
 
-            finish({ code: EXIT_CODE.FAILED, notFound });
+            finish({ code: EXIT_CODE.FAILED, notFound, cwdMissing });
         });
 
         // A child ended by a signal has no code: that is a failure
-        child.on('close', (code) => finish({ code: code ?? EXIT_CODE.FAILED, notFound: false }));
+        child.on('close', (code) =>
+            finish({ code: code ?? EXIT_CODE.FAILED, notFound: false, cwdMissing: false })
+        );
 
         // 'close' waits for every process that shares the child's output pipes, so a grandchild
         // (`npm run dev`) that outlives the child would hang the call. 'exit' is the child itself:
@@ -55,7 +58,7 @@ export const spawnChild: SpawnChildFn = (request) => {
             drainTimer = setTimeout(() => {
                 child.stdout?.destroy();
                 child.stderr?.destroy();
-                finish({ code: code ?? EXIT_CODE.FAILED, notFound: false });
+                finish({ code: code ?? EXIT_CODE.FAILED, notFound: false, cwdMissing: false });
             }, EXEC_DRAIN_MS);
         });
     });
@@ -75,6 +78,7 @@ export const spawnChild: SpawnChildFn = (request) => {
             return;
         }
 
+        stopped ||= !timedOut;
         child.kill('SIGTERM');
 
         killTimer ??= setTimeout(

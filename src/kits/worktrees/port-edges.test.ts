@@ -46,6 +46,12 @@ describe('createPortProbe: with real children', () => {
         expect(createPortProbe()([port])).toEqual(new Set([port]));
     });
 
+    test('a port held by a server on 127.0.0.1 only is reported in use too', async () => {
+        const port = await holdPort('127.0.0.1');
+
+        expect(createPortProbe()([port])).toEqual(new Set([port]));
+    });
+
     test('a free port is not', async () => {
         expect(createPortProbe()([await freePort()])).toEqual(new Set());
     });
