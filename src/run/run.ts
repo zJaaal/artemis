@@ -1,4 +1,5 @@
 import { createContext } from '../context/context.js';
+import { createExec } from '../context/run-exec.js';
 import {
     BRIEF_FLAG,
     DRY_RUN_FLAG,
@@ -28,6 +29,7 @@ import {
 } from '../help/help.js';
 import type {
     Builtin,
+    ChildHandle,
     CommandEntry,
     Executed,
     GlobalFlags,
@@ -201,6 +203,15 @@ async function execute(
     });
 
     const next: string[] = [];
+    const children = new Set<ChildHandle>();
+
+    const exec = createExec({
+        io: session.io,
+        global: parsed.global,
+        log: session.scope.log,
+        children,
+        plan: session.scope.plan
+    });
 
     const ctx = createContext({
         io: session.io,
@@ -211,12 +222,18 @@ async function execute(
         invoke: createInvoke(session, parsed.global),
         plan: session.scope.plan,
         bin: session.bin,
-        next
+        next,
+        exec
     });
 
-    const result = await entry.definition.run({ args: parsed.args, flags: parsed.flags, ctx });
+    try {
+        const result = await entry.definition.run({ args: parsed.args, flags: parsed.flags, ctx });
 
-    return { result, next };
+        return { result, next };
+    } finally {
+        // A child a command left running does not outlive it, and is gone before the envelope prints
+        await Promise.all([...children].map((child) => child.stop()));
+    }
 }
 
 /** The text and the --json data for something that was resolved. */

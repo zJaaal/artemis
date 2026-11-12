@@ -152,7 +152,8 @@ export const createContext: CreateContextFn = ({
     invoke,
     plan,
     bin,
-    next
+    next,
+    exec
 }) => ({
     json: global.json,
     interactive,
@@ -163,7 +164,9 @@ export const createContext: CreateContextFn = ({
         }
     },
     warn: (...parts) => {
-        io.stderr.write(`${format(...parts)}\n`);
+        if (!global.quiet) {
+            io.stderr.write(`${format(...parts)}\n`);
+        }
     },
     prompt: createPrompter({ interactive, flagsSkipQuestions: global.yes || global.json }),
     commands: [...registry.commands.values()],
@@ -174,5 +177,7 @@ export const createContext: CreateContextFn = ({
             plan.push(step);
         }
     },
-    next: (...lines) => collectNext(bin, next, lines)
+    next: (...lines) => collectNext(bin, next, lines),
+    quiet: global.quiet,
+    exec
 });

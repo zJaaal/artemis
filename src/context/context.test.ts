@@ -52,6 +52,7 @@ const setUp = (overrides: Partial<ContextParts> = {}) => {
         plan: [],
         bin: 'art',
         next: [],
+        exec: () => Promise.reject(new Error('not used here')),
         ...overrides
     });
 

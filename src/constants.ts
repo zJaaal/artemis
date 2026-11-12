@@ -14,6 +14,7 @@ export const TOPIC_TAG = Symbol.for('artemis.topic');
 // local copy under a global `art`) is still recognised: `instanceof` only knows one copy.
 export const COMMAND_ERROR_TAG = Symbol.for('artemis.command-error');
 export const USAGE_ERROR_TAG = Symbol.for('artemis.usage-error');
+export const EXEC_ERROR_TAG = Symbol.for('artemis.exec-error');
 
 export const FLAG_TYPES = ['boolean', 'string'] as const;
 
@@ -119,6 +120,10 @@ export const EXEC_TAIL_LINES = 40;
 export const EXEC_TAIL_LINE_CHARS = 500;
 export const EXEC_KILL_GRACE_MS = 5000;
 export const MS_PER_SECOND = 1000;
+export const EXEC_NOT_FOUND_HINT = 'Install it, or check PATH.';
+export const EXEC_LOG_HINT_PREFIX = 'Full log:';
+export const EXEC_NO_LOG_HINT = 'Run again with --log <file> to keep its full output.';
+export const LINE_BREAK = '\n';
 export const DRY_RUN_HEADER = 'Dry run, nothing was changed. It would:';
 export const DRY_RUN_EMPTY = 'Nothing to do.';
 export const DRY_RUN_FIRST_HINT = 'Pass --dry-run first to see what it would do.';

@@ -182,6 +182,10 @@ export type CommandContext = {
     plan: PlanFn;
     /** Suggests what to run after this succeeds: what follows the bin, which Artemis adds. */
     next: NextFn;
+    /** `--quiet` was passed. */
+    quiet: boolean;
+    /** Runs a child process whose output follows `--quiet`, `--log` and `--json`. Never through a shell. */
+    exec: ExecFn;
 };
 
 export type PlanFn = (step: string) => void;
@@ -202,6 +206,7 @@ export type ContextParts = {
     bin: string;
     /** Where `ctx.next` collects its lines; the caller reads them after the command succeeds. */
     next: string[];
+    exec: ExecFn;
 };
 
 export type CreateContextFn = (parts: ContextParts) => CommandContext;
@@ -288,6 +293,15 @@ export type CommandErrorOptions = {
     exitCode?: ExitCode;
     cause?: unknown;
 };
+/** What a failed `ctx.exec` adds to a CommandError: the last lines of the child, and whether a person must be shown them. */
+export type ExecErrorOptions = CommandErrorOptions & {
+    tail: readonly string[];
+    /** True when the child's output was hidden (`--quiet`, `capture`) and the run is not `--json`. */
+    showTail: boolean;
+};
+export type ExecErrorShape = CommandErrorShape & { tail: readonly string[]; showTail: boolean };
+export type IsExecErrorFn = (value: unknown) => value is ExecErrorShape;
+
 export type UsageErrorOptions = { hint?: string | undefined; usage?: string | undefined };
 
 // ---------------------------------------------------------------------------------------------
@@ -531,6 +545,25 @@ export type ExecResult = {
     skipped: boolean;
 };
 
+/** What `createExec` needs to know about the run it belongs to. */
+export type ExecRun = {
+    io: IO;
+    global: GlobalFlags;
+    log: LogSink | undefined;
+    /** The children this command started that have not ended yet: killed when its `run` ends. */
+    children: Set<ChildHandle>;
+    /** Where a skipped call adds itself under `--dry-run`. */
+    plan: string[];
+};
+
+/** The `--log` file: an open file everything is copied into. */
+export type LogSink = {
+    /** The absolute path, as the envelope reports it. */
+    path: string;
+    write: (text: string) => void;
+    close: () => void;
+};
+
 export type ExecFn = (
     command: string,
     args?: readonly string[],
@@ -680,7 +713,11 @@ export type ResolveWorldFn = (options: HostOptions) => Environment;
 export type RunState = { commandId: string | undefined };
 
 /** What one run collects across the commands it invokes: the dry-run plan. */
-export type RunScope = { plan: string[] };
+export type RunScope = {
+    plan: string[];
+    /** The `--log` file, once opened: every line a command and its children print is copied here. */
+    log?: LogSink | undefined;
+};
 
 /** What running a command gives back: its result, and the lines it suggested to run next. */
 export type Executed = { result: unknown; next: string[] };
@@ -704,6 +741,9 @@ export type ErrorReport = {
     usage: string | undefined;
     /** Only for a plain error, which means a bug. */
     stack: string | undefined;
+    /** The last lines of a failed child, when `ctx.exec` made this error. */
+    tail: readonly string[] | undefined;
+    showTail: boolean;
     exitCode: ExitCode;
 };
 
@@ -712,6 +752,8 @@ export type ReportContext = {
     style: Style;
     json: boolean;
     commandId: string | undefined;
+    /** The absolute path of the `--log` file, when one was opened. */
+    log?: string | undefined;
 };
 
 export type ReportErrorFn = (error: unknown, context: ReportContext) => number;
