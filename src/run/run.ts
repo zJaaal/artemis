@@ -1,5 +1,7 @@
 import { createContext } from '../context/context.js';
 import { createExec } from '../context/run-exec.js';
+import { openLogFile } from '../edges/log-file.js';
+import { workingDirectory } from '../edges/system.js';
 import {
     BRIEF_FLAG,
     DRY_RUN_FLAG,
@@ -183,6 +185,13 @@ const createInvoke =
         return (await execute(session, target, { ...nested, global })).result;
     };
 
+/** Opens the `--log` file the first time a command of the run asks for it. An invoked command writes into the same one. */
+function openLogOnce(session: Session, global: GlobalFlags): void {
+    if (global.log !== undefined && session.scope.log === undefined) {
+        session.scope.log = openLogFile(global.log, workingDirectory());
+    }
+}
+
 /** --json promises exactly one object on stdout, so nothing may prompt there either. */
 const canAsk = (session: Session, global: GlobalFlags): boolean =>
     session.canPrompt && !global.yes && !global.json;
@@ -201,6 +210,9 @@ async function execute(
         yes: parsed.global.yes,
         interactive: canAsk(session, parsed.global)
     });
+
+    // Step 5 of the order: after the confirmation, so a declined run leaves a kept log as it was
+    openLogOnce(session, parsed.global);
 
     const next: string[] = [];
     const children = new Set<ChildHandle>();
@@ -223,7 +235,8 @@ async function execute(
         plan: session.scope.plan,
         bin: session.bin,
         next,
-        exec
+        exec,
+        logFile: session.scope.log
     });
 
     try {
@@ -353,7 +366,8 @@ const successExtras = (
     next: readonly string[]
 ): Record<string, unknown> => ({
     ...(global.dryRun ? { dryRun: true, plan: session.scope.plan } : {}),
-    ...(next.length ? { next } : {})
+    ...(next.length ? { next } : {}),
+    ...(session.scope.log ? { log: session.scope.log.path } : {})
 });
 
 /** The plan of a dry run as text: what would happen, or that nothing would. */
@@ -465,7 +479,10 @@ export const run: RunCliFn = async (argv, options) => {
             io: world.io,
             style: world.style,
             json: wantsJson,
-            commandId: state.commandId
+            commandId: state.commandId,
+            log: scope.log?.path
         });
+    } finally {
+        scope.log?.close();
     }
 };

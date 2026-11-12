@@ -124,6 +124,9 @@ export const EXEC_NOT_FOUND_HINT = 'Install it, or check PATH.';
 export const EXEC_LOG_HINT_PREFIX = 'Full log:';
 export const EXEC_NO_LOG_HINT = 'Run again with --log <file> to keep its full output.';
 export const LINE_BREAK = '\n';
+/** `w` creates the file or empties the one that is there. */
+export const LOG_FILE_OPEN_MODE = 'w';
+export const LOG_FILE_HINT = 'Check the folder exists and can be written.';
 export const DRY_RUN_HEADER = 'Dry run, nothing was changed. It would:';
 export const DRY_RUN_EMPTY = 'Nothing to do.';
 export const DRY_RUN_FIRST_HINT = 'Pass --dry-run first to see what it would do.';

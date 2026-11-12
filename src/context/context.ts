@@ -153,19 +153,28 @@ export const createContext: CreateContextFn = ({
     plan,
     bin,
     next,
-    exec
+    exec,
+    logFile
 }) => ({
     json: global.json,
     interactive,
     style,
     log: (...parts) => {
+        const line = `${format(...parts)}\n`;
+
+        logFile?.write(line);
+
         if (!global.json) {
-            io.stdout.write(`${format(...parts)}\n`);
+            io.stdout.write(line);
         }
     },
     warn: (...parts) => {
+        const line = `${format(...parts)}\n`;
+
+        logFile?.write(line);
+
         if (!global.quiet) {
-            io.stderr.write(`${format(...parts)}\n`);
+            io.stderr.write(line);
         }
     },
     prompt: createPrompter({ interactive, flagsSkipQuestions: global.yes || global.json }),

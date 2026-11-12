@@ -207,6 +207,8 @@ export type ContextParts = {
     /** Where `ctx.next` collects its lines; the caller reads them after the command succeeds. */
     next: string[];
     exec: ExecFn;
+    /** The `--log` file: `ctx.log` and `ctx.warn` lines are copied into it, whatever hides them. */
+    logFile: LogSink | undefined;
 };
 
 export type CreateContextFn = (parts: ContextParts) => CommandContext;
@@ -544,6 +546,9 @@ export type ExecResult = {
     /** True under `--dry-run` for a call without `readOnly`: nothing ran. */
     skipped: boolean;
 };
+
+/** Opens the `--log` file, truncated. `cwd` is what a relative path is relative to. */
+export type OpenLogFileFn = (file: string, cwd: string) => LogSink;
 
 /** What `createExec` needs to know about the run it belongs to. */
 export type ExecRun = {
