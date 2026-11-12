@@ -78,6 +78,20 @@ export const STATE_RESET_HINT = 'Pass --yes to reset without a question.';
 export const STATE_RECOVERY_HINT = 'Reset it with --reset to start again from the defaults.';
 export const NO_STATE_YET = 'No state yet in';
 
+/** `doctor` checks the install and the project, and says how to fix each problem. */
+export const DOCTOR_WORD = 'doctor';
+export const DOCTOR_USAGE_LINE = `${DOCTOR_WORD} [--quiet] [--json]`;
+export const DOCTOR_HELP = `Usage: ${DOCTOR_USAGE_LINE}
+
+Checks the install and the project: which Artemis runs and which one the project wants, that the commands load, that no command hides a word of this binary, and that the state documents can be read. Every problem comes with a fix. It exits 1 when a check fails (warnings do not).`;
+
+export const DOCTOR_FLAGS = {
+    json: '--json',
+    help: '--help',
+    helpShort: '-h',
+    quiet: '--quiet'
+} as const;
+
 /** The words of the shipped binary that help lists under "Built-in" and `help --json` under "builtins". */
 export const BUILTINS: readonly Builtin[] = [
     {
@@ -98,5 +112,15 @@ export const BUILTINS: readonly Builtin[] = [
             }
         },
         examples: [STATE_WORD, `${STATE_WORD} steps`, `${STATE_WORD} steps --reset --yes`]
+    },
+    {
+        id: DOCTOR_WORD,
+        description: 'Check the install and the project, and say how to fix each problem',
+        args: [],
+        flags: {},
+        examples: [DOCTOR_WORD]
     }
 ];
+
+/** Every word the shipped binary handles itself: a project command or topic with one of these names is hidden. */
+export const WORD_NAMES: readonly string[] = BUILTINS.map((builtin) => builtin.id);

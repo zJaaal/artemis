@@ -246,7 +246,8 @@ describe('help: the binary’s own words', () => {
 
         expect((result.result as Manifest).builtins?.map((builtin) => builtin.id)).toEqual([
             'init',
-            'state'
+            'state',
+            'doctor'
         ]);
     });
 

@@ -600,6 +600,41 @@ export type InstallFacts = {
 
 export type InstallCheckFn = (facts: InstallFacts) => DoctorCheck;
 
+/** What the doctor found out about the project, read by edges: the checks decide from it. */
+export type DoctorFacts = {
+    running: RunningPackage;
+    local: LocalCopy | undefined;
+    /** Undefined when no project was found from the current folder. */
+    project: Project | undefined;
+    /** The commands folder: whether it is there, what discovery warned about, or why the settings could not be read. */
+    commands:
+        { dir: string; exists: boolean; warnings: readonly string[]; problem?: string } | undefined;
+    /** The built-in words a project command or topic hides. */
+    hiddenWords: readonly string[];
+    /** The state folder: whether it is there, the documents that cannot be read, or why it cannot be listed. */
+    state:
+        | {
+              dir: string;
+              exists: boolean;
+              unreadable: readonly { name: string; error: string }[];
+              problem?: string;
+          }
+        | undefined;
+};
+
+export type RunDoctorFn = (facts: DoctorFacts) => DoctorCheck[];
+
+/** What `art doctor --json` says when something failed: the error, the first fix as the hint, and every check. */
+export type DoctorFailure = { error: string; hint: string | undefined; checks: DoctorCheck[] };
+export type DoctorFailureFn = (checks: readonly DoctorCheck[]) => DoctorFailure | undefined;
+
+/** `art doctor [--quiet] [--json]`. Returns the exit code. */
+export type DoctorCommandFn = (
+    words: string[],
+    options: CliOptions,
+    cwd: string
+) => Promise<number>;
+
 export type ReadRunningPackageFn = () => RunningPackage;
 export type FindLocalCopyFn = (projectRoot: string) => LocalCopy | undefined;
 

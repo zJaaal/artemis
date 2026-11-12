@@ -20,7 +20,8 @@ import { resolveWorld } from '../run/world.js';
 import { messageOf } from '../utils/error-message.js';
 import { splitLeadingFlags } from '../resolve/resolve.js';
 import { jsonRequested, quietRequested } from '../utils/terminator.js';
-import { BUILTINS, INIT_WORD, STATE_WORD } from './constants.js';
+import { BUILTINS, DOCTOR_WORD, INIT_WORD, STATE_WORD } from './constants.js';
+import { doctorCommand } from './doctor-command.js';
 import { initCommand } from './init-command.js';
 import { assertLeadingFlags } from './state.js';
 import { stateCommand } from './state-command.js';
@@ -162,6 +163,21 @@ export const launch: CliFn = async (options = {}) => {
             );
         } catch (error) {
             return reportSetupFailure(argv, error, host, STATE_WORD);
+        }
+    }
+
+    // `doctor` as well: it has to work with no project, where its `project` check is the answer.
+    if (route === 'shipped' && rest[0] === DOCTOR_WORD) {
+        try {
+            assertLeadingFlags(leading);
+
+            return await doctorCommand(
+                [...leading, ...rest.slice(1)],
+                host,
+                path.resolve(cwd ?? workingDirectory())
+            );
+        } catch (error) {
+            return reportSetupFailure(argv, error, host, DOCTOR_WORD);
         }
     }
 
