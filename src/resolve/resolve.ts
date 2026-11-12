@@ -1,6 +1,8 @@
 import {
     ALIAS_SEPARATOR,
+    FLAG_ALONE_WORDS,
     FLAG_PREFIX,
+    FLAG_WITH_VALUE_WORDS,
     HELP_WORD,
     ID_SEPARATOR,
     GLOBAL_FLAG_TOKENS,
@@ -167,7 +169,7 @@ function leadingEnd(argv: readonly string[]): number {
             return index;
         }
 
-        index += takesNextWord(token) ? 2 : 1;
+        index += takesNextWord(token) ? FLAG_WITH_VALUE_WORDS : FLAG_ALONE_WORDS;
     }
 
     return argv.length;

@@ -1,7 +1,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 
-import { LOG_FILE_HINT, LOG_FILE_OPEN_MODE } from '../constants.js';
+import { LOG_FILE_HINT, LOG_FILE_OPEN_MODE, LOG_FLUSH_BYTES, LOG_FLUSH_MS } from '../constants.js';
 import { CommandError } from '../errors/errors.js';
 import type { OpenLogFileFn } from '../models.js';
 import { messageOf } from '../utils/error-message.js';
@@ -23,16 +23,39 @@ export const openLogFile: OpenLogFileFn = (file, cwd) => {
     }
 
     let closed = false;
+    let waiting = '';
+    let timer: NodeJS.Timeout | undefined;
+
+    // One write per batch, not per chunk: a chatty child would otherwise block the event loop with a
+    // syscall for every line, and delay the timers and pipe reads that `ctx.exec` depends on.
+    const flush = () => {
+        clearTimeout(timer);
+        timer = undefined;
+
+        if (waiting) {
+            fs.writeSync(descriptor, waiting);
+            waiting = '';
+        }
+    };
 
     return {
         path: target,
         write: (text) => {
-            if (!closed) {
-                fs.writeSync(descriptor, text);
+            if (closed) {
+                return;
+            }
+
+            waiting += text;
+
+            if (waiting.length >= LOG_FLUSH_BYTES) {
+                flush();
+            } else {
+                timer ??= setTimeout(flush, LOG_FLUSH_MS).unref();
             }
         },
         close: () => {
             if (!closed) {
+                flush();
                 closed = true;
                 fs.closeSync(descriptor);
             }

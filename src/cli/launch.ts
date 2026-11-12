@@ -1,11 +1,17 @@
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-import { CONFIG_KEY, MANIFEST_FILE, URL_LIKE } from '../constants.js';
+import {
+    CONFIG_KEY,
+    LOG_FLAG,
+    LOG_WITHOUT_COMMAND_HINT,
+    MANIFEST_FILE,
+    URL_LIKE
+} from '../constants.js';
 import { isFolder, readManifest } from '../edges/files.js';
 import { currentProcess } from '../edges/process.js';
 import { workingDirectory } from '../edges/system.js';
-import { CommandError } from '../errors/errors.js';
+import { CommandError, UsageError } from '../errors/errors.js';
 import type {
     CliFn,
     CliRoute,
@@ -19,7 +25,7 @@ import { reportError } from '../run/report.js';
 import { run } from '../run/run.js';
 import { resolveWorld } from '../run/world.js';
 import { messageOf } from '../utils/error-message.js';
-import { splitLeadingFlags } from '../resolve/resolve.js';
+import { hasLogFlag, splitLeadingFlags } from '../resolve/resolve.js';
 import { jsonRequested, quietRequested } from '../utils/terminator.js';
 import { BUILTINS, DOCTOR_WORD, INIT_WORD, SKILL_WORD, STATE_WORD } from './constants.js';
 import { skillCommand } from './skill-command.js';
@@ -146,6 +152,17 @@ export const launch: CliFn = async (options = {}) => {
     const { argv = currentProcess().args, cwd, root, ...host } = options;
     const route: CliRoute = root === undefined ? 'shipped' : 'own';
     const { leading, rest } = splitLeadingFlags(argv);
+
+    // `--log` takes the next word as its file, so `art --log init` is a log file called init and no command
+    if (!rest.length && hasLogFlag(leading)) {
+        return reportSetupFailure(
+            argv,
+            new UsageError(`There is no command for ${LOG_FLAG}`, {
+                hint: LOG_WITHOUT_COMMAND_HINT
+            }),
+            host
+        );
+    }
 
     // The shipped binary's own words, like `help`. `init` and `doctor` have to work where there is no project
     // (`init` makes one, `doctor` reports its absence); `state` and `skill` need none of the commands to load.

@@ -130,7 +130,11 @@ export const EXEC_LOG_HINT_PREFIX = 'Full log:';
 export const EXEC_NO_LOG_HINT = 'Run again with --log <file> to keep its full output.';
 export const LINE_BREAK = '\n';
 /** `w` creates the file or empties the one that is there. */
+export const LOG_WITHOUT_COMMAND_HINT = '--log goes with a command: <command> --log <file>';
 export const LOG_FILE_OPEN_MODE = 'w';
+/** The log is written in batches: when this much is waiting, or this long after the first line waits. */
+export const LOG_FLUSH_BYTES = 64 * 1024;
+export const LOG_FLUSH_MS = 100;
 export const LOG_FILE_HINT = 'Check the folder exists and can be written.';
 /** Version ranges: the forms the checker understands. Anything else is "not checked", never a warning. */
 export const RANGE_OR = '||';
@@ -216,3 +220,14 @@ export const CARRIAGE_RETURN = /\r$/;
 
 /** The mode of a piped child whose output nobody is shown but `tail` keeps. */
 export const EXEC_PIPED_HIDDEN: ExecMode = { pipe: true, echo: 'none', keep: true };
+
+/** How many words of the command line a leading flag takes: itself, or itself and its value (`--log file`). */
+export const FLAG_ALONE_WORDS = 1;
+export const FLAG_WITH_VALUE_WORDS = 2;
+
+/** A version range body has one to three numbers: `1`, `1.2` or `1.2.3`. */
+export const VERSION_MAJOR_ONLY = 1;
+export const VERSION_MAJOR_MINOR = 2;
+export const VERSION_MAJOR_INDEX = 0;
+export const VERSION_MINOR_INDEX = 1;
+export const VERSION_PATCH_INDEX = 2;

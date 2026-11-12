@@ -3,7 +3,12 @@ import {
     RANGE_OR,
     RANGE_PRERELEASE_MARKS,
     RANGE_WILDCARDS,
+    VERSION_MAJOR_INDEX,
+    VERSION_MAJOR_MINOR,
+    VERSION_MAJOR_ONLY,
+    VERSION_MINOR_INDEX,
     VERSION_PARTS_MAX,
+    VERSION_PATCH_INDEX,
     VERSION_PART,
     VERSION_PREFIXES,
     VERSION_SEPARATOR,
@@ -76,9 +81,9 @@ function readRangeBody(text: string): RangeBody | undefined {
 }
 
 const pad = (numbers: readonly number[]): Version => [
-    numbers[0] ?? 0,
-    numbers[1] ?? 0,
-    numbers[2] ?? 0
+    numbers[VERSION_MAJOR_INDEX] ?? 0,
+    numbers[VERSION_MINOR_INDEX] ?? 0,
+    numbers[VERSION_PATCH_INDEX] ?? 0
 ];
 
 /** `1.2` and `1.2.x` are 1.2.0 up to, not including, 1.3.0; `1` is up to 2.0.0; a full version is itself. */
@@ -92,7 +97,9 @@ function xRange({ numbers }: RangeBody): Bound[] {
     }
 
     const [major = 0, minor = 0] = numbers;
-    const upper: Version = numbers.length === 1 ? [major + 1, 0, 0] : [major, minor + 1, 0];
+
+    const upper: Version =
+        numbers.length === VERSION_MAJOR_ONLY ? [major + 1, 0, 0] : [major, minor + 1, 0];
 
     return [
         { op: '>=', version: pad(numbers) },
@@ -103,8 +110,8 @@ function xRange({ numbers }: RangeBody): Bound[] {
 /** `^` keeps what is left of the first non-zero part: ^1.2.3 is <2.0.0, ^0.1.2 is <0.2.0, ^0.0.3 is <0.0.4. */
 function caret({ numbers }: RangeBody): Bound[] {
     const [major = 0, minor = 0, patch = 0] = numbers;
-    const keepsMajor = major !== 0 || numbers.length === 1;
-    const keepsMinor = minor !== 0 || numbers.length === 2;
+    const keepsMajor = major !== 0 || numbers.length === VERSION_MAJOR_ONLY;
+    const keepsMinor = minor !== 0 || numbers.length === VERSION_MAJOR_MINOR;
     const stops: Version = keepsMajor ? [major + 1, 0, 0] : [0, minor + 1, 0];
     const upper: Version = keepsMajor || keepsMinor ? stops : [0, 0, patch + 1];
 
@@ -117,7 +124,9 @@ function caret({ numbers }: RangeBody): Bound[] {
 /** `~1.2.3` is <1.3.0 and `~1` is <2.0.0. */
 function tilde({ numbers }: RangeBody): Bound[] {
     const [major = 0, minor = 0] = numbers;
-    const upper: Version = numbers.length === 1 ? [major + 1, 0, 0] : [major, minor + 1, 0];
+
+    const upper: Version =
+        numbers.length === VERSION_MAJOR_ONLY ? [major + 1, 0, 0] : [major, minor + 1, 0];
 
     return [
         { op: '>=', version: pad(numbers) },

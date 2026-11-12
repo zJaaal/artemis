@@ -446,6 +446,8 @@ async function dispatch(session: Session, argv: string[]): Promise<number> {
     }
 
     if (target.kind === 'topic') {
+        // A topic runs nothing, so a log or a plan asked of it would silently never exist
+        assertHelpFlags(session, leading, rest);
         showHelpFor(session, target.topic.id.split(ID_SEPARATOR));
 
         return EXIT_CODE.OK;

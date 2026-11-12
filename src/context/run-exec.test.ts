@@ -192,6 +192,17 @@ describe('ctx.exec: what it keeps in memory', () => {
     });
 });
 
+describe('ctx.exec: a child killed by a signal', () => {
+    test('names the signal, not an exit code', async () => {
+        const run = await art(['exec', "process.kill(process.pid, 'SIGKILL')", '--json']);
+
+        expect(envelope(run)).toMatchObject({
+            ok: false,
+            error: expect.stringContaining('was killed by SIGKILL')
+        });
+    });
+});
+
 describe('ctx.exec: a program that cannot be started', () => {
     test('is its own error with the cause, and fails even with reject: false', async () => {
         const script = path.join(folders.make('artemis-exec-'), 'run.sh');

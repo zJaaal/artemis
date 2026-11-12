@@ -4,6 +4,7 @@ import type {
     ErrorReport,
     FailureCodeOfFn,
     ReportContext,
+    PrintResultFn,
     ReportErrorFn,
     SuccessEnvelopeFn
 } from '../models.js';
@@ -31,6 +32,11 @@ function describeError(error: unknown): ErrorReport {
 /** The success envelope, the one place it is built: the built-in words and `run()` all print it. */
 export const successEnvelope: SuccessEnvelopeFn = (command, result, extras = {}) =>
     JSON.stringify({ ok: true, command, result, ...extras });
+
+/** The one way a built-in word prints a success: the envelope under `--json`, the text otherwise. */
+export const printResult: PrintResultFn = (io, { json, command, text, result }) => {
+    io.stdout.write(`${json ? successEnvelope(command, result) : text}\n`);
+};
 
 /** The failure envelope: the keys of spec 01, then `log` and `tail` when there are any. */
 function toJson(report: ErrorReport, { commandId, log }: ReportContext): string {

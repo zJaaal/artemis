@@ -944,6 +944,17 @@ describe('cli: a flag typed before a built-in word', () => {
     });
 });
 
+describe('cli: --log with no command', () => {
+    test.each(['init', 'state', 'doctor'])(
+        'art --log %s is a usage error, wherever it is run',
+        async (word) => {
+            const root = folders.make('artemis-cli-');
+
+            expect((await art(['--log', word], root)).code).toBe(EXIT_CODE.USAGE);
+        }
+    );
+});
+
 describe('cli: a leading --log before a built-in word', () => {
     test('is not misread as a stray flag: its value is not "x.log cannot come before doctor"', async () => {
         const root = folders.make('artemis-cli-');

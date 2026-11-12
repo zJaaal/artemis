@@ -6,8 +6,8 @@ import { discover } from '../discover/discover.js';
 import { isFolder, makeDirectory, pathExists, readManifest, writeText } from '../edges/files.js';
 import { CommandError } from '../errors/errors.js';
 import { manifest } from '../help/help.js';
-import type { IO, SkillCommandFn, SkillWords } from '../models.js';
-import { successEnvelope } from '../run/report.js';
+import type { SkillCommandFn, SkillWords } from '../models.js';
+import { printResult } from '../run/report.js';
 import { isNonEmptyText } from '../utils/is-text.js';
 import { resolveWorld } from '../run/world.js';
 import {
@@ -21,11 +21,6 @@ import { shadowsWord } from './shadow.js';
 import { buildSkill } from './skill.js';
 import { parseSkillWords } from './skill-words.js';
 import { wordHelp } from './word-help.js';
-
-/** Text for a person, or under --json the one object the contract promises. */
-function print(io: IO, json: boolean, text: string, result: unknown): void {
-    io.stdout.write(`${json ? successEnvelope(SKILL_WORD, result) : text}\n`);
-}
 
 /** Whether the file may be written: it is not there, or `--yes`, or the person says yes. Nobody to ask is an error. */
 async function mayWrite(target: string, words: SkillWords, interactive: boolean): Promise<boolean> {
@@ -81,7 +76,12 @@ export const skillCommand: SkillCommandFn = async (words, options, cwd) => {
     });
 
     if (parsed.write === undefined) {
-        print(io, parsed.json, markdown.trimEnd(), { markdown });
+        printResult(io, {
+            json: parsed.json,
+            command: SKILL_WORD,
+            text: markdown.trimEnd(),
+            result: { markdown }
+        });
 
         return EXIT_CODE.OK;
     }
@@ -97,7 +97,13 @@ export const skillCommand: SkillCommandFn = async (words, options, cwd) => {
 
     makeDirectory(path.dirname(target));
     writeText(target, markdown);
-    print(io, parsed.json, `Wrote ${target}`, { file: target });
+
+    printResult(io, {
+        json: parsed.json,
+        command: SKILL_WORD,
+        text: `Wrote ${target}`,
+        result: { file: target }
+    });
 
     return EXIT_CODE.OK;
 };

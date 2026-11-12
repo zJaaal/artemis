@@ -3,7 +3,7 @@ import path from 'node:path';
 
 import { afterEach, describe, expect, test } from 'vitest';
 
-import { LOG_FILE_HINT } from '../constants.js';
+import { LOG_FILE_HINT, LOG_FLUSH_BYTES, LOG_FLUSH_MS } from '../constants.js';
 import { createTempFolders } from '../test/temp.js';
 import { openLogFile } from './log-file.js';
 
@@ -66,5 +66,31 @@ describe('openLogFile', () => {
         log.close();
 
         expect(() => log.close()).not.toThrow();
+    });
+});
+
+describe('openLogFile: batched writes', () => {
+    test('a line waiting is written after the flush delay, without a close', async () => {
+        const cwd = folders.make('artemis-log-');
+        const log = openLogFile('a.log', cwd);
+
+        log.write('waiting\n');
+        await new Promise((resolve) => setTimeout(resolve, LOG_FLUSH_MS * 3));
+
+        expect(fs.readFileSync(path.join(cwd, 'a.log'), 'utf8')).toBe('waiting\n');
+
+        log.close();
+    });
+
+    test('a big write goes out at once, and every line arrives in order', () => {
+        const cwd = folders.make('artemis-log-');
+        const log = openLogFile('a.log', cwd);
+        const line = `${'x'.repeat(99)}\n`;
+        const count = Math.ceil(LOG_FLUSH_BYTES / line.length) + 10;
+
+        Array.from({ length: count }, () => line).forEach((chunk) => log.write(chunk));
+        log.close();
+
+        expect(fs.readFileSync(path.join(cwd, 'a.log'), 'utf8')).toBe(line.repeat(count));
     });
 });

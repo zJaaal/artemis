@@ -78,7 +78,12 @@ function failure(
     }
 
     if (outcome.code !== 0 && options.reject !== false) {
-        return new ExecError(`${command} exited with code ${outcome.code}`, base);
+        const how =
+            outcome.signal === undefined
+                ? `exited with code ${outcome.code}`
+                : `was killed by ${outcome.signal}`;
+
+        return new ExecError(`${command} ${how}`, base);
     }
 
     return undefined;

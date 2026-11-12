@@ -730,6 +730,8 @@ export type SpawnOutcome = {
     stopped: boolean;
     /** Why it could not start, when the cause is neither a missing program nor a missing folder (permissions, say). */
     startError: string | undefined;
+    /** The signal that ended it (an OOM kill, a crash), when it had no exit code. */
+    signal: string | undefined;
 };
 
 export type ChildHandle = {
@@ -1081,6 +1083,12 @@ export type PlanStateFn = (input: StateInput) => StatePlan;
 export type StateEdges = { lock: LockOptions };
 
 /** Refuses a flag typed before `state` that is not a global one (a UsageError). */
+/** What a built-in word prints when it succeeds: the envelope under `--json`, the text otherwise. */
+export type PrintResultFn = (
+    io: IO,
+    print: { json: boolean; command: string; text: string; result: unknown }
+) => void;
+
 /** The success envelope as one line of JSON: `ok`, `command`, `result`, then `extras` in the order given. */
 export type SuccessEnvelopeFn = (
     command: string | null,

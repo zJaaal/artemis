@@ -26,7 +26,7 @@ import {
     STATE_SHADOW_WARNING,
     STATE_WORD
 } from './constants.js';
-import { successEnvelope } from '../run/report.js';
+import { printResult } from '../run/report.js';
 import { findProject, noProjectError, resolveSettings, resolveStateDir } from './settings.js';
 import { shadowsWord } from './shadow.js';
 import { parseStateWords, planState } from './state.js';
@@ -49,13 +49,6 @@ const fileOf = (dir: string, name: string): string => path.join(dir, `${name}${J
 
 /** A path as a person reads it: relative to where they are. */
 const shown = (run: StateRun, target: string): string => path.relative(run.cwd, target) || target;
-
-/** Text for a person, or under --json the one object the contract promises. */
-function print(run: StateRun, text: string, result: unknown): void {
-    const output = run.json ? successEnvelope(STATE_WORD, result) : text;
-
-    run.io.stdout.write(`${output}\n`);
-}
 
 /** The state folder may not exist yet, but what is there must be a folder: a file is a setup mistake. */
 function assertStateFolder(dir: string): void {
@@ -88,7 +81,12 @@ function listDocuments(run: StateRun): number {
 
     const text = documents.length ? lines.join('\n') : `${NO_STATE_YET} ${shown(run, run.dir)}.`;
 
-    print(run, text, { dir: run.dir, documents });
+    printResult(run.io, {
+        json: run.json,
+        command: STATE_WORD,
+        text,
+        result: { dir: run.dir, documents }
+    });
 
     return EXIT_CODE.OK;
 }
@@ -103,7 +101,12 @@ function showDocument(run: StateRun, name: string): number {
 
     const text = JSON.stringify(wrapVersion(found.data, found.version), null, STORE_INDENT_SPACES);
 
-    print(run, text, { name, version: found.version, file, data: found.data });
+    printResult(run.io, {
+        json: run.json,
+        command: STATE_WORD,
+        text,
+        result: { name, version: found.version, file, data: found.data }
+    });
 
     return EXIT_CODE.OK;
 }
@@ -126,7 +129,13 @@ async function resetDocument(run: StateRun, name: string, ask: boolean): Promise
     const file = fileOf(run.dir, name);
 
     removeDocument(file, resolveLockEdges(run.lock));
-    print(run, `Reset ${name}: deleted ${shown(run, file)}.`, { name, file, reset: true });
+
+    printResult(run.io, {
+        json: run.json,
+        command: STATE_WORD,
+        text: `Reset ${name}: deleted ${shown(run, file)}.`,
+        result: { name, file, reset: true }
+    });
 
     return EXIT_CODE.OK;
 }
