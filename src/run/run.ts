@@ -6,7 +6,10 @@ import {
     FLAG_PREFIX,
     HELP_WORD,
     ID_SEPARATOR,
-    LOG_FLAG
+    LOG_FLAG,
+    DRY_RUN_EMPTY,
+    DRY_RUN_HEADER,
+    TABLE_INDENT
 } from '../constants.js';
 import { discover } from '../discover/discover.js';
 import { CommandError, UsageError, isUsageError } from '../errors/errors.js';
@@ -32,6 +35,7 @@ import type {
     Registry,
     Resolution,
     RunCliFn,
+    RunScope,
     RunState,
     Session,
     World
@@ -52,10 +56,23 @@ import { jsonRequested } from '../utils/terminator.js';
 
 const isFlagToken = (token: string): boolean => token.startsWith(FLAG_PREFIX);
 
-/** Prints text, or under --json the data wrapped in the success envelope. */
-function print(session: Session, text: string, data: unknown): void {
+/**
+ * Prints text, or under --json the data wrapped in the success envelope. `extras` are the keys that
+ * come after `result`, already in their fixed order (dryRun, plan, next, log).
+ */
+function print(
+    session: Session,
+    text: string,
+    data: unknown,
+    extras: Record<string, unknown> = {}
+): void {
     const output = session.wantsJson
-        ? JSON.stringify({ ok: true, command: session.state.commandId ?? null, result: data })
+        ? JSON.stringify({
+              ok: true,
+              command: session.state.commandId ?? null,
+              result: data,
+              ...extras
+          })
         : text;
 
     session.io.stdout.write(`${output}\n`);
@@ -125,6 +142,12 @@ function parseNested(
     }
 }
 
+/** `--dry-run` asked of a command that does not say it honors it: nothing may run by surprise. */
+const lacksDryRun = (entry: CommandEntry, global: GlobalFlags): boolean =>
+    global.dryRun && !entry.definition.dryRun;
+
+const noDryRunMessage = (entry: CommandEntry): string => `${entry.id} does not support --dry-run`;
+
 /** `ctx.invoke`: runs another command, which inherits --json and --yes from the caller. */
 const createInvoke =
     (session: Session, caller: GlobalFlags): InvokeFn =>
@@ -140,8 +163,17 @@ const createInvoke =
         const global = {
             ...nested.global,
             json: nested.global.json || caller.json,
-            yes: nested.global.yes || caller.yes
+            yes: nested.global.yes || caller.yes,
+            dryRun: nested.global.dryRun || caller.dryRun,
+            quiet: nested.global.quiet || caller.quiet,
+            log: nested.global.log ?? caller.log
         };
+
+        if (lacksDryRun(target, global)) {
+            throw new CommandError(`ctx.invoke("${id}"): ${noDryRunMessage(target)}`, {
+                hint: 'Check ctx.dryRun before invoking it, or read what it needs with ctx.exec(..., { readOnly: true }).'
+            });
+        }
 
         return execute(session, target, { ...nested, global });
     };
@@ -171,7 +203,8 @@ async function execute(
         interactive: canAsk(session, parsed.global),
         style: session.style,
         registry: session.registry,
-        invoke: createInvoke(session, parsed.global)
+        invoke: createInvoke(session, parsed.global),
+        plan: session.scope.plan
     });
 
     return entry.definition.run({ args: parsed.args, flags: parsed.flags, ctx });
@@ -287,6 +320,16 @@ function assertHelpFlags(session: Session, leading: string[], rest: string[]): v
     }
 }
 
+/** The envelope keys after `result`, in their fixed order: dryRun, plan. */
+const successExtras = (session: Session, global: GlobalFlags): Record<string, unknown> =>
+    global.dryRun ? { dryRun: true, plan: session.scope.plan } : {};
+
+/** The plan of a dry run as text: what would happen, or that nothing would. */
+const planText = (plan: readonly string[]): string =>
+    plan.length
+        ? [DRY_RUN_HEADER, ...plan.map((step) => `${TABLE_INDENT}- ${step}`)].join('\n')
+        : DRY_RUN_EMPTY;
+
 /** Works out what the command line asks for and does it. */
 async function dispatch(session: Session, argv: string[]): Promise<number> {
     const { leading, rest } = splitLeadingFlags(argv);
@@ -340,10 +383,19 @@ async function dispatch(session: Session, argv: string[]): Promise<number> {
         return EXIT_CODE.OK;
     }
 
+    if (lacksDryRun(target.entry, parsed.global)) {
+        throw new UsageError(noDryRunMessage(target.entry), {
+            usage: usage(session.bin, target.entry),
+            hint: `Drop --dry-run, or read "${session.bin} help ${target.entry.id}" for what it supports.`
+        });
+    }
+
     const result = await execute(session, target.entry, parsed);
 
     if (session.wantsJson) {
-        print(session, '', result ?? null);
+        print(session, '', result ?? null, successExtras(session, parsed.global));
+    } else if (parsed.global.dryRun) {
+        session.io.stdout.write(`${planText(session.scope.plan)}\n`);
     }
 
     return EXIT_CODE.OK;
@@ -359,6 +411,7 @@ export const run: RunCliFn = async (argv, options) => {
     const world: World = { ...resolveWorld(options), bin: options.bin };
     const wantsJson = jsonRequested(argv);
     const state: RunState = { commandId: undefined };
+    const scope: RunScope = { plan: [] };
 
     try {
         const registry = await discover(options.commandsDir);
@@ -368,7 +421,7 @@ export const run: RunCliFn = async (argv, options) => {
         );
 
         return await dispatch(
-            { ...world, registry, wantsJson, state, builtins: options.builtins },
+            { ...world, registry, wantsJson, state, builtins: options.builtins, scope },
             argv
         );
     } catch (error) {

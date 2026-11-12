@@ -111,6 +111,8 @@ export const ASKS_REGARDLESS_HINT =
     'This command asks even with --yes or --json: answer it with the flags it documents (see --help).';
 export const CANCELLED_MESSAGE = 'Cancelled.';
 export const DESTRUCTIVE_CONFIRM_HINT = 'Pass --yes to confirm.';
+export const DRY_RUN_HEADER = 'Dry run, nothing was changed. It would:';
+export const DRY_RUN_EMPTY = 'Nothing to do.';
 export const DRY_RUN_FIRST_HINT = 'Pass --dry-run first to see what it would do.';
 
 export const TABLE_INDENT = '  ';

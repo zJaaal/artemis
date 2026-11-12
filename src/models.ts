@@ -174,9 +174,15 @@ export type CommandContext = {
     prompt: Prompter;
     /** Every discovered command. */
     commands: CommandEntry[];
-    /** Runs another command by id or alias and returns its result. Inherits --json and --yes. */
+    /** Runs another command by id or alias and returns its result. Inherits --json, --yes and --dry-run. */
     invoke: InvokeFn;
+    /** `--dry-run` was passed (only ever true for a command with `dryRun: true`). */
+    dryRun: boolean;
+    /** Under `--dry-run`: describes one thing the command would do. A no-op otherwise. */
+    plan: PlanFn;
 };
+
+export type PlanFn = (step: string) => void;
 
 /** Where output goes, and what the command was told about how it runs. */
 export type ContextParts = {
@@ -186,6 +192,8 @@ export type ContextParts = {
     style: Style;
     registry: Registry;
     invoke: InvokeFn;
+    /** Where `ctx.plan` collects its steps: shared with the commands this one invokes. */
+    plan: string[];
 };
 
 export type CreateContextFn = (parts: ContextParts) => CommandContext;
@@ -575,12 +583,16 @@ export type ResolveWorldFn = (options: HostOptions) => Environment;
 /** The id of the command a run is about, filled in as the command line is understood. */
 export type RunState = { commandId: string | undefined };
 
+/** What one run collects across the commands it invokes: the dry-run plan. */
+export type RunScope = { plan: string[] };
+
 /** Everything the steps of one run share. */
 export type Session = World & {
     registry: Registry;
     wantsJson: boolean;
     state: RunState;
     builtins: readonly Builtin[] | undefined;
+    scope: RunScope;
 };
 
 /** What help prints as text, and what it prints under --json. */

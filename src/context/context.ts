@@ -111,7 +111,8 @@ export const createContext: CreateContextFn = ({
     interactive,
     style,
     registry,
-    invoke
+    invoke,
+    plan
 }) => ({
     json: global.json,
     interactive,
@@ -126,5 +127,11 @@ export const createContext: CreateContextFn = ({
     },
     prompt: createPrompter({ interactive, flagsSkipQuestions: global.yes || global.json }),
     commands: [...registry.commands.values()],
-    invoke
+    invoke,
+    dryRun: global.dryRun,
+    plan: (step) => {
+        if (global.dryRun) {
+            plan.push(step);
+        }
+    }
 });

@@ -31,6 +31,12 @@ export type Envelope = {
     result?: unknown;
     error?: string;
     hint?: string;
+    dryRun?: boolean;
+    plan?: string[];
+    next?: string[];
+    log?: string;
+    tail?: string[];
+    checks?: unknown[];
 };
 
 /** `defineCommand` seen from a JavaScript caller: it can be handed anything. */

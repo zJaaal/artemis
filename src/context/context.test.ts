@@ -49,6 +49,7 @@ const setUp = (overrides: Partial<ContextParts> = {}) => {
         style,
         registry,
         invoke: () => Promise.resolve(undefined),
+        plan: [],
         ...overrides
     });
 
