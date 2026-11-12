@@ -10,7 +10,10 @@ import type { Envelope } from '../test/models.js';
 import { makeProject } from '../test/project.js';
 import { createSink } from '../test/sink.js';
 import { createTempFolders } from '../test/temp.js';
+import { readRunningPackage } from '../edges/package-info.js';
 import { cli } from './index.js';
+
+const readRunning = readRunningPackage;
 
 const folders = createTempFolders();
 
@@ -960,5 +963,111 @@ describe('cli: the global flags on the built-in words', () => {
         makeProject(root, { greeting: 'project' });
 
         expect((await art(['--dry-run', 'state'], root)).code).toBe(EXIT_CODE.USAGE);
+    });
+});
+
+describe('cli: the every-run version warning', () => {
+    const putCopy = (dir: string, version: string): void => {
+        const copy = path.join(dir, 'node_modules', '@zjaaal', 'artemis');
+
+        fs.mkdirSync(copy, { recursive: true });
+        fs.writeFileSync(path.join(copy, 'package.json'), JSON.stringify({ version }));
+    };
+
+    const projectWanting = (range: string | undefined): string => {
+        const root = folders.make('artemis-warn-');
+
+        makeProject(root, {
+            greeting: 'project',
+            manifest: range === undefined ? {} : { devDependencies: { '@zjaaal/artemis': range } }
+        });
+
+        return root;
+    };
+
+    const warnings = (err: string): string[] =>
+        err.split('\n').filter((line) => line.includes('Run art doctor.'));
+
+    test('a range the running version does not satisfy gets one line naming art doctor', async () => {
+        const root = projectWanting('^99.0.0');
+
+        expect(warnings((await art(['hello'], root)).err)).toHaveLength(1);
+    });
+
+    test('a different local copy gets one line', async () => {
+        const root = projectWanting(undefined);
+
+        putCopy(root, '0.0.1');
+
+        expect(warnings((await art(['hello'], root)).err)).toHaveLength(1);
+    });
+
+    test('a copy hoisted to a parent node_modules is found too', async () => {
+        const parent = folders.make('artemis-warn-');
+        const root = path.join(parent, 'packages', 'app');
+
+        putCopy(parent, '0.0.1');
+        makeProject(root, { greeting: 'project' });
+
+        expect(warnings((await art(['hello'], root)).err)).toHaveLength(1);
+    });
+
+    test('both facts at once are still one line', async () => {
+        const root = projectWanting('^99.0.0');
+
+        putCopy(root, '0.0.1');
+
+        expect(warnings((await art(['hello'], root)).err)).toHaveLength(1);
+    });
+
+    test('a local copy equal to the running one says nothing', async () => {
+        const root = projectWanting(undefined);
+
+        putCopy(root, readRunning().version);
+
+        expect(warnings((await art(['hello'], root)).err)).toHaveLength(0);
+    });
+
+    test('a project with no copy and no dependency says nothing', async () => {
+        const root = projectWanting(undefined);
+
+        expect(warnings((await art(['hello'], root)).err)).toHaveLength(0);
+    });
+
+    test('a form it does not understand (workspace:*) says nothing', async () => {
+        const root = projectWanting('workspace:*');
+
+        expect(warnings((await art(['hello'], root)).err)).toHaveLength(0);
+    });
+
+    test('--quiet hides it', async () => {
+        const root = projectWanting('^99.0.0');
+
+        expect(warnings((await art(['hello', '--quiet'], root)).err)).toHaveLength(0);
+    });
+
+    test('--quiet before the command hides it too', async () => {
+        const root = projectWanting('^99.0.0');
+
+        expect(warnings((await art(['--quiet', 'hello'], root)).err)).toHaveLength(0);
+    });
+
+    test('under --json stdout is still exactly one object', async () => {
+        const root = projectWanting('^99.0.0');
+        const result = await art(['hello', '--json'], root);
+
+        expect(() => JSON.parse(result.out)).not.toThrow();
+    });
+
+    test('and the envelope never contains the warning', async () => {
+        const root = projectWanting('^99.0.0');
+
+        expect((await art(['hello', '--json'], root)).out).not.toMatch(/doctor/);
+    });
+
+    test('it goes to stderr, and the warning still lets the command run', async () => {
+        const root = projectWanting('^99.0.0');
+
+        expect(await greeting(root)).toEqual({ greeting: 'project' });
     });
 });

@@ -566,6 +566,46 @@ export type Bound = { op: '>=' | '>' | '<=' | '<' | '='; version: Version };
 export type ParseVersionFn = (text: string) => Version | undefined;
 export type CheckRangeFn = (version: string, range: string) => RangeVerdict;
 
+// ---------------------------------------------------------------------------------------------
+// `art doctor` and the every-run version warning
+// ---------------------------------------------------------------------------------------------
+
+export type DoctorCheckId =
+    'version' | 'range' | 'installed' | 'project' | 'module' | 'commands' | 'words' | 'state';
+
+export type DoctorStatus = 'ok' | 'warn' | 'fail';
+
+export type DoctorCheck = {
+    id: DoctorCheckId;
+    status: DoctorStatus;
+    message: string;
+    /** What to run or change; present on `warn` and `fail`. */
+    fix?: string;
+};
+
+/** The copy of Artemis that is running: its version, and the folder of its package. */
+export type RunningPackage = { version: string; root: string };
+
+/** A copy of Artemis inside a project's node_modules. */
+export type LocalCopy = { version: string; root: string };
+
+/** What the install checks need, read by edges: pure code decides from it. */
+export type InstallFacts = {
+    running: RunningPackage;
+    /** The project's range for Artemis in `dependencies` or `devDependencies`; undefined when it has none. */
+    range: string | undefined;
+    /** The project's own copy, found the way Node resolves a package; undefined when there is none. */
+    local: LocalCopy | undefined;
+};
+
+export type InstallCheckFn = (facts: InstallFacts) => DoctorCheck;
+
+export type ReadRunningPackageFn = () => RunningPackage;
+export type FindLocalCopyFn = (projectRoot: string) => LocalCopy | undefined;
+
+/** What the wanted range of a manifest is, if it names Artemis. */
+export type RangeOfFn = (manifest: Record<string, unknown>) => string | undefined;
+
 /** What `createExec` needs to know about the run it belongs to. */
 export type ExecRun = {
     io: IO;
@@ -864,7 +904,9 @@ export type CliOptions = HostOptions & {
 export type CliFn = (options?: CliOptions) => Promise<number>;
 
 /** Finds the settings for a folder, or throws a CommandError that says what to create or set. */
-export type SettingsForFn = (start: string, route: CliRoute) => CliSettings;
+/** What a folder's project says: the settings to run with, and the project they came from. */
+export type FoundSettings = { settings: CliSettings; project: Project };
+export type SettingsForFn = (start: string, route: CliRoute) => FoundSettings;
 
 /** The folder a `root` points at: itself when it is a folder, else the folder of the file. */
 export type FolderOfRootFn = (root: string | URL) => string;

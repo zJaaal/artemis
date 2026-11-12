@@ -137,6 +137,11 @@ export const VERSION_SEPARATOR = '.';
 export const VERSION_PARTS_MAX = 3;
 export const WHITESPACE = /\s/;
 export const RANGE_PRERELEASE_MARKS: readonly string[] = ['-', '+'];
+/** The package the doctor and the version warning look for, and where npm puts a copy of it. */
+export const ARTEMIS_PACKAGE = '@zjaaal/artemis';
+export const DEPENDENCY_FIELDS = ['dependencies', 'devDependencies'] as const;
+export const DOCTOR_COMMAND_HINT = 'Run art doctor.';
+export const VERSION_WARNING_LABEL = 'warning:';
 export const DRY_RUN_HEADER = 'Dry run, nothing was changed. It would:';
 export const DRY_RUN_EMPTY = 'Nothing to do.';
 export const DRY_RUN_FIRST_HINT = 'Pass --dry-run first to see what it would do.';

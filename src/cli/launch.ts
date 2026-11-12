@@ -6,18 +6,26 @@ import { isFolder, readManifest } from '../edges/files.js';
 import { currentProcess } from '../edges/process.js';
 import { workingDirectory } from '../edges/system.js';
 import { CommandError } from '../errors/errors.js';
-import type { CliFn, CliRoute, FolderOfRootFn, HostOptions, SettingsForFn } from '../models.js';
+import type {
+    CliFn,
+    CliRoute,
+    FolderOfRootFn,
+    HostOptions,
+    Project,
+    SettingsForFn
+} from '../models.js';
 import { reportError } from '../run/report.js';
 import { run } from '../run/run.js';
 import { resolveWorld } from '../run/world.js';
 import { messageOf } from '../utils/error-message.js';
 import { splitLeadingFlags } from '../resolve/resolve.js';
-import { jsonRequested } from '../utils/terminator.js';
+import { jsonRequested, quietRequested } from '../utils/terminator.js';
 import { BUILTINS, INIT_WORD, STATE_WORD } from './constants.js';
 import { initCommand } from './init-command.js';
 import { assertLeadingFlags } from './state.js';
 import { stateCommand } from './state-command.js';
 import { findProject, noProjectError, resolveSettings } from './settings.js';
+import { versionWarning } from './version-warning.js';
 
 /** What `root` stands for as a path, or a CommandError that says what to pass instead. */
 function pathOfRoot(root: string | URL): string {
@@ -91,8 +99,18 @@ const settingsFor: SettingsForFn = (start, route) => {
         throw missingCommandsError(settings.commandsDir, project.root, route);
     }
 
-    return settings;
+    return { settings, project };
 };
+
+/** Prints the one-line version warning to stderr, when the running Artemis is not the project's. */
+function warnAboutVersion(project: Project, host: HostOptions): void {
+    const { io, style } = resolveWorld(host);
+    const warning = versionWarning(project, style);
+
+    if (warning !== undefined) {
+        io.stderr.write(`${warning}\n`);
+    }
+}
 
 /** A setup failure goes out the way any failure does: one object under --json, text otherwise. */
 function reportSetupFailure(
@@ -147,21 +165,25 @@ export const launch: CliFn = async (options = {}) => {
         }
     }
 
-    let settings;
+    let found;
 
     try {
         const start = path.resolve(
             root === undefined ? (cwd ?? workingDirectory()) : folderOfRoot(root)
         );
 
-        settings = settingsFor(start, route);
+        found = settingsFor(start, route);
     } catch (error) {
         return reportSetupFailure(argv, error, host);
     }
 
+    if (route === 'shipped' && !quietRequested(argv)) {
+        warnAboutVersion(found.project, host);
+    }
+
     return run(argv, {
         ...host,
-        ...settings,
+        ...found.settings,
         ...(route === 'shipped' ? { builtins: BUILTINS } : {})
     });
 };
