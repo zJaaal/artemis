@@ -9,7 +9,14 @@ import {
     VERSION_SEPARATOR,
     WHITESPACE
 } from '../constants.js';
-import type { Bound, CheckRangeFn, ParseVersionFn, RangeVerdict, Version } from '../models.js';
+import type {
+    Bound,
+    CheckRangeFn,
+    ParseVersionFn,
+    RangeBody,
+    RangeVerdict,
+    Version
+} from '../models.js';
 
 // Pure: our own small range checker, so Artemis needs no `semver` package. It follows npm's meaning
 // for the forms it understands, and says "not checked" for the rest.
@@ -53,11 +60,8 @@ const meets = (version: Version, { op, version: limit }: Bound): boolean => {
     }
 };
 
-/** What a range body (`1`, `1.2`, `1.2.3`, `1.x`) says: the numbers given, in order, and how many. */
-type Body = { numbers: number[] };
-
 /** The numbers of a body: `1.x` and `1` both give [1]; a `*` first part gives []. Undefined when it is no version at all. */
-function readBody(text: string): Body | undefined {
+function readRangeBody(text: string): RangeBody | undefined {
     const parts = text.split(VERSION_SEPARATOR);
     const wildcardAt = parts.findIndex(isWildcard);
     const given = wildcardAt === -1 ? parts : parts.slice(0, wildcardAt);
@@ -77,7 +81,7 @@ const pad = (numbers: readonly number[]): Version => [
 ];
 
 /** `1.2` and `1.2.x` are 1.2.0 up to, not including, 1.3.0; `1` is up to 2.0.0; a full version is itself. */
-function xRange({ numbers }: Body): Bound[] {
+function xRange({ numbers }: RangeBody): Bound[] {
     if (numbers.length === 0) {
         return [];
     }
@@ -96,7 +100,7 @@ function xRange({ numbers }: Body): Bound[] {
 }
 
 /** `^` keeps what is left of the first non-zero part: ^1.2.3 is <2.0.0, ^0.1.2 is <0.2.0, ^0.0.3 is <0.0.4. */
-function caret({ numbers }: Body): Bound[] {
+function caret({ numbers }: RangeBody): Bound[] {
     const [major = 0, minor = 0, patch = 0] = numbers;
     const keepsMajor = major !== 0 || numbers.length === 1;
     const keepsMinor = minor !== 0 || numbers.length === 2;
@@ -110,7 +114,7 @@ function caret({ numbers }: Body): Bound[] {
 }
 
 /** `~1.2.3` is <1.3.0 and `~1` is <2.0.0. */
-function tilde({ numbers }: Body): Bound[] {
+function tilde({ numbers }: RangeBody): Bound[] {
     const [major = 0, minor = 0] = numbers;
     const upper: Version = numbers.length === 1 ? [major + 1, 0, 0] : [major, minor + 1, 0];
 
@@ -133,7 +137,7 @@ const withoutPrefix = (text: string): string =>
 /** The bounds of one comparator (`^1.2.3`, `>=1.0.0`, `1.x`), or undefined when it is a form we do not understand. */
 function boundsOf(comparator: string): Bound[] | undefined {
     const { op, rest } = splitOperator(comparator);
-    const body = readBody(withoutPrefix(rest));
+    const body = readRangeBody(withoutPrefix(rest));
 
     if (body === undefined) {
         return undefined;

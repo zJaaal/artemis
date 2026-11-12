@@ -563,6 +563,12 @@ export type RangeVerdict = 'satisfied' | 'unsatisfied' | 'not-checked';
 /** One bound a version has to meet: `>= 1.2.3`, `< 2.0.0`, `= 1.2.3`. */
 export type Bound = { op: '>=' | '>' | '<=' | '<' | '='; version: Version };
 
+/** What a range body (`1`, `1.2`, `1.2.3`, `1.x`) says: the numbers given, in order. A `*` first part gives none. */
+export type RangeBody = { numbers: number[] };
+
+/** What the words after `doctor` ask for. */
+export type DoctorWordsRead = { json: boolean; help: boolean; quiet: boolean };
+
 export type ParseVersionFn = (text: string) => Version | undefined;
 export type CheckRangeFn = (version: string, range: string) => RangeVerdict;
 

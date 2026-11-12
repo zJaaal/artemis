@@ -7,7 +7,14 @@ import { findLocalCopy, readRunningPackage } from '../edges/package-info.js';
 import { CommandError, UsageError } from '../errors/errors.js';
 import { isValidDocName } from '../kits/store/names.js';
 import { inspectDocument } from '../kits/store/raw.js';
-import type { DoctorCheck, DoctorCommandFn, DoctorFacts, Project, Style } from '../models.js';
+import type {
+    DoctorCheck,
+    DoctorCommandFn,
+    DoctorFacts,
+    DoctorWordsRead,
+    Project,
+    Style
+} from '../models.js';
 import { reportError } from '../run/report.js';
 import { resolveWorld } from '../run/world.js';
 import { messageOf } from '../utils/error-message.js';
@@ -25,9 +32,7 @@ import { wordHelp } from './word-help.js';
 
 const KNOWN_WORDS: readonly string[] = Object.values(DOCTOR_FLAGS);
 
-type DoctorWords = { json: boolean; help: boolean; quiet: boolean };
-
-function readWords(words: readonly string[]): DoctorWords {
+function readWords(words: readonly string[]): DoctorWordsRead {
     const unexpected = words.find((word) => !KNOWN_WORDS.includes(word));
 
     if (unexpected !== undefined) {
