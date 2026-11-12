@@ -635,6 +635,30 @@ export type DoctorCommandFn = (
     cwd: string
 ) => Promise<number>;
 
+/** What the skill says about the project besides its commands: the package's name and description. */
+export type SkillPackage = { name: string | undefined; description: string | undefined };
+
+/** The `SKILL.md` a manifest and a package give: short, fixed and never stale. */
+export type BuildSkillFn = (manifest: Manifest, pkg: SkillPackage) => string;
+
+/** What the words after `skill` ask for. */
+export type SkillWords = {
+    /** `--write <path>`: where to put the file; none prints it. */
+    write: string | undefined;
+    yes: boolean;
+    json: boolean;
+    help: boolean;
+    quiet: boolean;
+};
+
+export type ParseSkillWordsFn = (words: readonly string[]) => SkillWords;
+
+/** `art skill [--write <path>] [--yes] [--quiet] [--json]`. Returns the exit code. */
+export type SkillCommandFn = (words: string[], options: CliOptions, cwd: string) => Promise<number>;
+
+/** Reads the AGENTS.md that ships beside the running copy; undefined when it is not there. */
+export type ReadAgentsFn = () => { file: string; markdown: string } | undefined;
+
 export type ReadRunningPackageFn = () => RunningPackage;
 export type FindLocalCopyFn = (projectRoot: string) => LocalCopy | undefined;
 

@@ -1,8 +1,11 @@
 import { createContext } from '../context/context.js';
 import { createExec } from '../context/run-exec.js';
+import { readAgents } from '../edges/agents-file.js';
 import { openLogFile } from '../edges/log-file.js';
 import { workingDirectory } from '../edges/system.js';
 import {
+    AGENTS_FILE,
+    AGENTS_FLAG,
     BRIEF_FLAG,
     DRY_RUN_FLAG,
     EXIT_CODE,
@@ -10,6 +13,7 @@ import {
     HELP_WORD,
     ID_SEPARATOR,
     LOG_FLAG,
+    PACKAGE_NAME,
     NEXT_PREFIX,
     DRY_RUN_EMPTY,
     DRY_RUN_HEADER,
@@ -304,6 +308,31 @@ function showBriefFor(session: Session, words: string[]): void {
     print(session, briefHelp(brief, style), brief);
 }
 
+/**
+ * `help --agents`: the AGENTS.md of the running copy, as it is. It reads the running copy and never
+ * the project's, so it works with a global `art` and no local install. It documents Artemis, not the
+ * tool, so a published tool's CLI has it too. It takes no topic or command.
+ */
+function showAgents(session: Session, words: string[], brief: boolean): void {
+    if (words.length || brief) {
+        throw new UsageError(`${AGENTS_FLAG} takes no ${brief ? BRIEF_FLAG : 'topic or command'}`, {
+            hint: `Run "${session.bin} help ${AGENTS_FLAG}" on its own.`
+        });
+    }
+
+    const agents = readAgents();
+
+    if (agents === undefined) {
+        throw new CommandError(`${AGENTS_FILE} is missing from this install of ${PACKAGE_NAME}`, {
+            hint: `Reinstall ${PACKAGE_NAME}.`
+        });
+    }
+
+    session.state.commandId = HELP_WORD;
+
+    print(session, agents.markdown.trimEnd(), agents);
+}
+
 function showHelpFor(session: Session, words: string[]): void {
     if (!words.length) {
         session.state.commandId = HELP_WORD;
@@ -394,7 +423,9 @@ async function dispatch(session: Session, argv: string[]): Promise<number> {
 
         const helpWords = rest.slice(1).filter((token) => !isFlagToken(token));
 
-        if (rest.includes(BRIEF_FLAG)) {
+        if (rest.includes(AGENTS_FLAG)) {
+            showAgents(session, helpWords, rest.includes(BRIEF_FLAG));
+        } else if (rest.includes(BRIEF_FLAG)) {
             showBriefFor(session, helpWords);
         } else {
             showHelpFor(session, helpWords);

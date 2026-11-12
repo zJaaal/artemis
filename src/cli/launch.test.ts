@@ -234,6 +234,7 @@ describe('cli: the built-in words in help', () => {
         expect((await manifestOf(root)).builtins?.map((builtin) => builtin.id)).toEqual([
             'init',
             'state',
+            'skill',
             'doctor'
         ]);
     });
@@ -254,6 +255,7 @@ describe('cli: the built-in words in help', () => {
         expect((await manifestOf(root)).builtins?.map((builtin) => builtin.usage)).toEqual([
             'mytool init',
             'mytool state [doc] [flags]',
+            'mytool skill [flags]',
             'mytool doctor'
         ]);
     });

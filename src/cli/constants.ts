@@ -92,6 +92,27 @@ export const DOCTOR_FLAGS = {
     quiet: '--quiet'
 } as const;
 
+/** `skill` writes a short SKILL.md from the manifest, so an agent finds the commands without reading a page. */
+export const SKILL_WORD = 'skill';
+export const SKILL_USAGE_LINE = `${SKILL_WORD} [--write <path>] [--yes] [--quiet] [--json]`;
+export const SKILL_HELP = `Usage: ${SKILL_USAGE_LINE}
+
+Prints a short SKILL.md built from the commands of this project: how to find a command, how to call it, which ones are destructive and a few examples. With --write <path> it writes the file instead (creating the folders), and asks before it overwrites one (--yes skips the question).`;
+
+export const SKILL_FLAGS = {
+    json: '--json',
+    help: '--help',
+    helpShort: '-h',
+    yes: '--yes',
+    yesShort: '-y',
+    quiet: '--quiet',
+    write: '--write'
+} as const;
+
+export const SKILL_SHADOW_WARNING =
+    'This project has a command or topic called "skill", and the skill word of this binary hides it: it cannot be run through here. Rename it.';
+export const SKILL_OVERWRITE_HINT_PREFIX = 'Pass --yes to overwrite';
+
 /** The words of the shipped binary that help lists under "Built-in" and `help --json` under "builtins". */
 export const BUILTINS: readonly Builtin[] = [
     {
@@ -112,6 +133,18 @@ export const BUILTINS: readonly Builtin[] = [
             }
         },
         examples: [STATE_WORD, `${STATE_WORD} steps`, `${STATE_WORD} steps --reset --yes`]
+    },
+    {
+        id: SKILL_WORD,
+        description: 'Write a short SKILL.md for agents, from the commands of this project',
+        args: [],
+        flags: {
+            write: {
+                type: 'string',
+                description: 'Write the file here instead of printing it'
+            }
+        },
+        examples: [SKILL_WORD, `${SKILL_WORD} --write .claude/skills/art/SKILL.md`]
     },
     {
         id: DOCTOR_WORD,

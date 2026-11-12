@@ -20,7 +20,8 @@ import { resolveWorld } from '../run/world.js';
 import { messageOf } from '../utils/error-message.js';
 import { splitLeadingFlags } from '../resolve/resolve.js';
 import { jsonRequested, quietRequested } from '../utils/terminator.js';
-import { BUILTINS, DOCTOR_WORD, INIT_WORD, STATE_WORD } from './constants.js';
+import { BUILTINS, DOCTOR_WORD, INIT_WORD, SKILL_WORD, STATE_WORD } from './constants.js';
+import { skillCommand } from './skill-command.js';
 import { doctorCommand } from './doctor-command.js';
 import { initCommand } from './init-command.js';
 import { assertLeadingFlags } from './state.js';
@@ -163,6 +164,21 @@ export const launch: CliFn = async (options = {}) => {
             );
         } catch (error) {
             return reportSetupFailure(argv, error, host, STATE_WORD);
+        }
+    }
+
+    // `skill` writes the SKILL.md from the commands of the project, so it needs one but no setup of its own.
+    if (route === 'shipped' && rest[0] === SKILL_WORD) {
+        try {
+            assertLeadingFlags(leading);
+
+            return await skillCommand(
+                [...leading, ...rest.slice(1)],
+                host,
+                path.resolve(cwd ?? workingDirectory())
+            );
+        } catch (error) {
+            return reportSetupFailure(argv, error, host, SKILL_WORD);
         }
     }
 

@@ -142,6 +142,10 @@ export const ARTEMIS_PACKAGE = '@zjaaal/artemis';
 export const DEPENDENCY_FIELDS = ['dependencies', 'devDependencies'] as const;
 export const DOCTOR_COMMAND_HINT = 'Run art doctor.';
 export const VERSION_WARNING_LABEL = 'warning:';
+/** `art skill`: how many examples the generated skill lists at most, and the file `help --agents` prints. */
+export const SKILL_MAX_EXAMPLES = 10;
+export const AGENTS_FILE = 'AGENTS.md';
+export const LINE_BREAKS = /\s*[\r\n]+\s*/g;
 export const DRY_RUN_HEADER = 'Dry run, nothing was changed. It would:';
 export const DRY_RUN_EMPTY = 'Nothing to do.';
 export const DRY_RUN_FIRST_HINT = 'Pass --dry-run first to see what it would do.';
