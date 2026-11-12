@@ -10,6 +10,8 @@
   <img alt="License MIT" src="https://img.shields.io/badge/license-MIT-lightgrey">
 </p>
 
+> **Agents:** run `art help --agents` (or read [AGENTS.md](AGENTS.md)); it is the short version of this file.
+
 Artemis turns repetitive work into commands an AI agent can call, instead of steps it has to read and redo.
 
 An agent that does the same job twice usually pays for it twice: it reads the instructions (a skill, a doc, a prompt), works out the steps, and runs them. With Artemis the agent writes the job down once, as one file in a folder. From then on it just calls it:
@@ -248,6 +250,8 @@ export default defineCommand({
 | `flags`       |          | Flags, by name.                                                                           |
 | `aliases`     |          | Other names the command answers to.                                                       |
 | `examples`    |          | Example invocations, without the binary name. Shown by `--help` and `help --json`.        |
+| `destructive` |          | `true` for a command that changes or deletes data nobody can get back. Enforced (below).  |
+| `dryRun`      |          | `true` when the command honors `--dry-run` (below).                                       |
 | anything else |          | Passes through untouched, so a project can build its own conventions on top.              |
 
 **Args** (`{ name, description?, required?, default?, choices? }`): a required arg cannot have a default, and a required arg cannot come after an optional one. `choices` limits the allowed values.
@@ -258,9 +262,13 @@ export default defineCommand({
 - `short` is a single character (`-s`).
 - `multiple: true` lets a string flag repeat (`--tag a --tag b` gives `['a', 'b']`), and its `default` is then an array of strings.
 - `default` must match the type: a boolean for a boolean flag, a string for a string flag.
-- `help`, `json` and `yes` (and `-h`, `-y`) are reserved: every command already has them.
+- `help`, `json`, `yes`, `dry-run`, `quiet` and `log` (and `-h`, `-y`) are reserved: every command already has them.
 
 `defineCommand` throws a `TypeError` right away, with a message that names the problem, if a definition breaks one of these rules.
+
+**`destructive: true`** is enforced before `run`: in a terminal Artemis asks ("art wipe changes or deletes data that cannot be recovered. Continue?", default no; declining is `Cancelled.`, exit `1`), with `--yes` it runs, and with nobody to answer (a pipe, an agent, `--json`) it fails before `run` with the hint "Pass --yes to confirm." and, when the command supports a dry run, "Pass --dry-run first to see what it would do.". Drop your own confirm. `ctx.invoke` of a destructive command passes the caller's `--yes` and `--dry-run` along; without them it asks again or fails the caller, because a confirmation covers the command the user named, not the ones it calls.
+
+**`dryRun: true`** says the command honors `ctx.dryRun`. `--dry-run` on any other command is a usage error (exit `2`), so nothing ever runs by surprise. Under `--dry-run` nothing is asked, `ctx.plan(step)` collects steps, `ctx.exec` starts no child (it adds itself to the plan), and the envelope gets `dryRun: true` and `plan` (`[]` when nothing was planned). In text mode the plan prints as a list after the command's own output (or "Nothing to do."), and `--quiet` never hides it. A call that must run to tell you what it would do (`git rev-parse`) passes `readOnly: true` to `ctx.exec`: it runs for real, captured, and adds nothing to the plan. A command that needs the output of any other call checks `ctx.dryRun`. `ctx.invoke` of a command with `dryRun: true` passes `--dry-run` along and appends its plan to the caller's; invoking one without it under `--dry-run` fails the caller with exit `1`.
 
 ### Results and errors
 
@@ -271,16 +279,45 @@ export default defineCommand({
 
 ### The `ctx` your command receives
 
-| Field                  | What it does                                                                                                                                                                                   |
-| ---------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `ctx.log(...)`         | Human output on stdout. **Silent under `--json`**, so stdout stays one JSON object.                                                                                                            |
-| `ctx.warn(...)`        | Progress and warnings on stderr. Never mixes with `--json` output.                                                                                                                             |
-| `ctx.prompt`           | Asks the user: `confirm`, `text`, `select` and `multiselect`, each returning the answer itself. When nobody can answer it throws a `CommandError` with `hint`. See "Prompts" below.            |
-| `ctx.interactive`      | `true` only when a prompt may be shown. See "Prompts" below.                                                                                                                                   |
-| `ctx.json`             | Whether the run was asked for `--json`.                                                                                                                                                        |
-| `ctx.style`            | Color helpers (`bold`, `dim`, `red`, `green`, `yellow`, `cyan`); plain text when color is off.                                                                                                 |
-| `ctx.commands`         | Every discovered command, for building lists of commands to run in order.                                                                                                                      |
-| `ctx.invoke(id, argv)` | Runs another command by id or alias and returns its result. It inherits `--json` and `--yes`. A bad call (unknown command, wrong arguments, `--help`) fails the calling command with exit `1`. |
+| Field                          | What it does                                                                                                                                                                                                                             |
+| ------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `ctx.log(...)`                 | Human output on stdout. **Silent under `--json`**, so stdout stays one JSON object.                                                                                                                                                      |
+| `ctx.warn(...)`                | Progress and warnings on stderr. Never mixes with `--json` output.                                                                                                                                                                       |
+| `ctx.prompt`                   | Asks the user: `confirm`, `text`, `select` and `multiselect`, each returning the answer itself. When nobody can answer it throws a `CommandError` with `hint`. See "Prompts" below.                                                      |
+| `ctx.interactive`              | `true` only when a prompt may be shown. See "Prompts" below.                                                                                                                                                                             |
+| `ctx.json`                     | Whether the run was asked for `--json`.                                                                                                                                                                                                  |
+| `ctx.quiet`                    | Whether the run was asked for `--quiet`.                                                                                                                                                                                                 |
+| `ctx.dryRun`                   | Whether `--dry-run` was passed (only ever `true` for a command with `dryRun: true`).                                                                                                                                                     |
+| `ctx.plan(step)`               | Under `--dry-run`, describes one thing the command would do. A no-op otherwise.                                                                                                                                                          |
+| `ctx.next(...lines)`           | Suggests what to run after this succeeds: what follows the bin (`'dotcms wait --instance x --json'`), which Artemis adds. Goes out as `next` in the envelope; printed as `Next:` lines on stderr in text mode.                           |
+| `ctx.exec(cmd, args, options)` | Runs a child process, never through a shell. Its output follows `--quiet`, `--log` and `--json`. See "Running children" below.                                                                                                           |
+| `ctx.style`                    | Color helpers (`bold`, `dim`, `red`, `green`, `yellow`, `cyan`); plain text when color is off.                                                                                                                                           |
+| `ctx.commands`                 | Every discovered command, for building lists of commands to run in order.                                                                                                                                                                |
+| `ctx.invoke(id, argv)`         | Runs another command by id or alias and returns its result. It inherits `--json`, `--yes`, `--dry-run`, `--quiet` and the `--log` file. A bad call (unknown command, wrong arguments, `--help`) fails the calling command with exit `1`. |
+
+### Running children: `ctx.exec`
+
+```js
+const { code, output } = await ctx.exec('docker', ['compose', 'up', '-d'], { cwd: '/srv/app' });
+```
+
+`args` is an array and nothing in it is interpreted (no shell), so a value with spaces or `$(...)` reaches the child as one unchanged string. Options: `cwd`, `env` (default: the process environment), `capture` (return the output instead of showing it), `readOnly` (the call changes nothing, so it runs even under `--dry-run`, captured), `reject` (default `true`: a non-zero exit throws; `false` returns `{ code }`) and `timeoutMs` (SIGTERM, then SIGKILL after 5 s; always throws). It resolves to `{ code, output, skipped }`: `output` is stdout and stderr interleaved, and empty when the output went to the terminal or the call was skipped.
+
+How the child's output travels is the first row that applies:
+
+| Mode                    | Child stdout                                         | Child stderr           | Kept for `tail` |
+| ----------------------- | ---------------------------------------------------- | ---------------------- | --------------- |
+| `capture` or `readOnly` | into `output`, not shown                             | same                   | yes             |
+| `--quiet`               | piped, not shown                                     | piped, not shown       | yes             |
+| `--json`                | piped, shown on **stderr** (stdout stays one object) | piped, shown on stderr | yes             |
+| text with `--log`       | piped, shown on stdout                               | piped, shown on stderr | yes             |
+| text, none of the above | inherited: colors and progress bars keep working     | inherited              | no              |
+
+`--log` is a copy of every piped row, not a mode of its own. Piping loses the child's colors and progress bars, so text mode keeps the child on your terminal unless something needs the bytes (`--json`, `--quiet`, `--log` or `capture`): a person who runs with `--log` gives them up for that run.
+
+A child that exits non-zero fails the command (exit `1`) with "<command> exited with code N", and the failure envelope carries `tail`, the last 40 lines of the child (each cut at 500 characters). In text mode, when the output was hidden (`--quiet` or `capture`), the tail is printed under the error so a person sees why. A missing executable is "<command> was not found". Every child a command started is killed when its `run` ends, concurrent ones included. A SIGTERM sent to Artemis alone is not forwarded to its children: signal the process group.
+
+`tail`, `--log` and the lines of a plan hold what was passed or printed, as it is. A secret passed as an argument shows up there; pass secrets through `env`, which is never shown.
 
 ### Typed arguments and flags
 
@@ -321,26 +358,32 @@ art <topic> <command> [args] [flags]
 
 ### Flags every command has
 
-| Flag         | What it does                                                  |
-| ------------ | ------------------------------------------------------------- |
-| `-h, --help` | Show help for the command.                                    |
-| `--json`     | Print the result (or the error) as one JSON object on stdout. |
-| `-y, --yes`  | Never prompt; use flags, saved values or defaults.            |
+| Flag           | What it does                                                                                                                                                                                                                         |
+| -------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `-h, --help`   | Show help for the command.                                                                                                                                                                                                           |
+| `--json`       | Print the result (or the error) as one JSON object on stdout.                                                                                                                                                                        |
+| `-y, --yes`    | Never prompt; use flags, saved values or defaults.                                                                                                                                                                                   |
+| `--dry-run`    | Say what the command would do, and do none of it. Only for commands with `dryRun: true`; a usage error on any other.                                                                                                                 |
+| `--quiet`      | Hide warnings, `Next:` lines, the version warning and child output. The result, the dry-run plan and errors still print.                                                                                                             |
+| `--log <file>` | Write everything the command and its child processes print to this file (truncated at the start), even what `--quiet` hides. Its absolute path is `log` in the envelope. A file that cannot be opened fails before the command runs. |
 
 Global flags may be typed before or after the command name: `art --json math add 1 2` and `art math add 1 2 --json` are the same. Any other flag has to come after the command. After `--`, everything is a plain argument (`art echo -- --json` echoes the text `--json`).
 
 ### Getting help
 
-| Ask                                 | You get                                                                 |
-| ----------------------------------- | ----------------------------------------------------------------------- |
-| `art` or `art help`                 | the topics and top-level commands                                       |
-| `art <topic>` or `art <topic> help` | every command inside the topic                                          |
-| `art <command> --help`              | the command's arguments, flags, defaults, choices, aliases and examples |
-| `art help --json`                   | the manifest of every command, as data                                  |
-| `art help <topic> --json`           | the manifest narrowed to one topic: same shape, only its commands       |
-| `art help <command> --json`         | the manifest entry of one command                                       |
+| Ask                                 | You get                                                                                                |
+| ----------------------------------- | ------------------------------------------------------------------------------------------------------ |
+| `art` or `art help`                 | the topics and top-level commands                                                                      |
+| `art <topic>` or `art <topic> help` | every command inside the topic                                                                         |
+| `art <command> --help`              | the command's arguments, flags, defaults, choices, aliases and examples                                |
+| `art help --json`                   | the manifest of every command, as data                                                                 |
+| `art help <topic> --json`           | the manifest narrowed to one topic: same shape, only its commands                                      |
+| `art help <command> --json`         | the manifest entry of one command                                                                      |
+| `art help --json --brief`           | only ids and one-line descriptions (and `destructive`, `dryRun` when true), and how to get one in full |
+| `art help <topic> --json --brief`   | the same, narrowed to one topic                                                                        |
+| `art help --agents`                 | the [AGENTS.md](AGENTS.md) of the running copy of Artemis                                              |
 
-On the shipped `art`, `help` also lists the words the binary handles itself (`init` and `state`) under **Built-in**, and `help --json` adds them as a top-level `builtins` array in the same shape as `commands`. `art help state` and `art help init` (with or without `--json`) describe them like a command, and a typo close to one suggests it. A tool published with its own bin file has no `builtins`.
+On the shipped `art`, `help` also lists the words the binary handles itself (`init`, `state`, `skill` and `doctor`) under **Built-in**, and `help --json` adds them as a top-level `builtins` array in the same shape as `commands`. `art help state` and `art help init` (with or without `--json`) describe them like a command, and a typo close to one suggests it. A tool published with its own bin file has no `builtins`.
 
 ### The JSON contract
 
@@ -355,6 +398,24 @@ With `--json`, every call prints **exactly one object** on stdout and nothing el
 ```
 
 `hint` is left out when there is none, and `command` is `null` when no command was resolved (for example an unknown command). Warnings go to stderr, so stdout stays parseable.
+
+More keys come after those, always in this order (`dryRun`, `plan`, `next`, `log`, `tail`, `checks`) and only when they apply:
+
+```jsonc
+// success: ctx.next collected a line, and --log was given
+{ "ok": true, "command": "dotcms start", "result": { "instance": "bench-art" },
+  "next": ["art dotcms wait --instance bench-art --json"], "log": "/abs/start.log" }
+
+// success under --dry-run
+{ "ok": true, "command": "dotcms prune", "result": { "pruned": false }, "dryRun": true,
+  "plan": ["docker volume rm dotcms-bench-art_dbdata"] }
+
+// failure of a child run through ctx.exec
+{ "ok": false, "command": "dotcms build", "error": "mvn exited with code 1",
+  "hint": "Full log: /abs/build.log", "log": "/abs/build.log", "tail": ["[ERROR] Failed to execute goal ..."] }
+```
+
+`dryRun` and `plan` are on every success under `--dry-run` (`plan` is `[]` when nothing was planned), `next` when `ctx.next` collected a line (under `--dry-run` too, never on failure), `log` whenever the `--log` file was opened, and `tail` only on a failure that came from `ctx.exec` with output. A failing `art doctor` adds `checks`.
 
 The manifest from `help --json` has this shape:
 
@@ -391,9 +452,31 @@ The manifest from `help --json` has this shape:
             "examples": ["math add 1 2"]
         }
     ],
-    "globalFlags": [/* help, json, yes */]
+    "globalFlags": [/* help, json, yes, dry-run, quiet, log */]
 }
 ```
+
+Every command entry also has two booleans after `examples`, always present: `"destructive"` and `"dryRun"`. The brief manifest of `help --json --brief` leaves out everything but what an agent needs before it calls:
+
+```jsonc
+{
+    "bin": "art",
+    "topics": [{ "id": "dotcms", "description": "Run dotCMS instances" }],
+    "commands": [
+        { "id": "dotcms start", "description": "Start the instance of this worktree" },
+        {
+            "id": "dotcms prune",
+            "description": "Delete an instance's data",
+            "destructive": true,
+            "dryRun": true
+        }
+    ],
+    "builtins": [{ "id": "state", "description": "..." }], // the shipped art only
+    "more": "art help <command> --json"
+}
+```
+
+`topics` lists every topic that has a command in the listing, at any depth, by full id. `help <command> --json --brief` is a usage error: one command is already the small level.
 
 ### Exit codes
 
@@ -458,7 +541,13 @@ async run({ ctx }) {
 
 ## For agents
 
-Everything an agent needs to add a command and call one is in [AGENTS.md](AGENTS.md), and `npx art help --json` from the project folder is where it starts. The short version: read `art help --json` to learn what exists, call with `--json` to get one object back, branch on the exit code, and pass `--yes` when nobody can answer.
+Everything an agent needs to add a command and call one is in [AGENTS.md](AGENTS.md): `art help --agents` prints it, with a global or a local install. Start from `art help --json --brief` (ids and one-line descriptions, `destructive` and `dryRun` marked), then `art help <command> --json` for the one you need. The short version:
+
+- **Find, then call.** `help --json --brief`, then one command in full. Call with `--json` to get one object back, branch on the exit code, and read `hint` when `ok` is `false`.
+- **Safety is data.** A `destructive` command needs `--yes` when nobody can answer, and fails before it runs otherwise. Where `dryRun` is marked, `--dry-run` shows the `plan` first.
+- **The next step is in the result.** When a result has `next`, those are the commands to run next.
+- **Quiet runs.** `--quiet` hides warnings and child output; `--log <file>` keeps everything in a file and names it in the envelope, and a failed child comes back with its `tail`.
+- **`art skill`** writes a short `SKILL.md` from your commands, and **`art doctor`** says why a stale install runs.
 
 ## Fully in control: `run(argv, options)`
 
@@ -565,7 +654,7 @@ const steps = store.doc('steps', {
 
 A file older than the code is upgraded in memory, one step at a time (a missing step is a `TypeError` when the document is defined). A file **newer** than the code is a `CommandError` with a hint, never a silent downgrade. A version-0 document whose value happens to be an object with a `"$version"` key is read as versioned: that key is Artemis's.
 
-**Named locks, for long work.** `store.lock(name, work, { onWait, pollMs, timeoutMs })` runs `work` (sync or async) while holding `<dir>/<name>.lock`, waiting without blocking the process. `onWait({ pid })` is called once, when the lock is first found taken. A lock left by a process that died is taken over. Concurrent calls queue, in one process as across processes: `Promise.all([store.lock('build', a), store.lock('build', b)])` runs `a` then `b`. It is not reentrant: a call made from inside the work that holds the lock (even after an `await`) is a `CommandError` at once, not an endless wait.
+**Named locks, for long work.** `store.lock(name, work, { onWait, pollMs, timeoutMs, label })` runs `work` (sync or async) while holding `<dir>/<name>.lock`, waiting without blocking the process. `onWait({ pid, label })` is called once, when the lock is first found taken. `label` says what the holder is doing (`'build of core-feat-x'`: one line, at most 120 characters, anything else is a `TypeError`), so whoever waits, and the "is locked" error ("... is locked by process 80676 (build of core-feat-x)."), can name the job and not only the process. Document locks have no label. A lock left by a process that died is taken over. Concurrent calls queue, in one process as across processes: `Promise.all([store.lock('build', a), store.lock('build', b)])` runs `a` then `b`. It is not reentrant: a call made from inside the work that holds the lock (even after an `await`) is a `CommandError` at once, not an endless wait.
 
 ```js
 await store.lock(
@@ -573,7 +662,10 @@ await store.lock(
     async () => {
         await runTheBuild();
     },
-    { onWait: ({ pid }) => console.log(`waiting for process ${pid}...`) }
+    {
+        label: 'build of core-feat-x',
+        onWait: ({ pid, label }) => console.log(`waiting for ${label ?? `process ${pid}`}...`)
+    }
 );
 ```
 
@@ -609,16 +701,18 @@ const instance = worktrees.ensure(); // registers the checkout you are in, on fi
 instance.ports; // { http: 8180, frontend: 4300 } for slot 1
 ```
 
-| Option         | What it is                                                                                                    |
-| -------------- | ------------------------------------------------------------------------------------------------------------- |
-| `registry`     | The store document the registry is kept in: `store.doc('instances', { fallback: {} })` (required).            |
-| `mainCheckout` | Path of the main checkout, slot 0 (required).                                                                 |
-| `ports`        | Base ports, shifted by `slot * slotStep` (required).                                                          |
-| `isCheckout`   | `(root) => boolean`: whether a git root is a checkout of this app. Other repos count as outside any checkout. |
-| `envVar`       | A variable that pins the instance by name, overriding the folder.                                             |
-| `slotStep`     | Port shift per slot. Default `100`.                                                                           |
-| `colors`       | One per slot, cycling.                                                                                        |
-| `mainName`     | Name of the main instance. Default `"main"`.                                                                  |
+| Option         | What it is                                                                                                                                       |
+| -------------- | ------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `registry`     | The store document the registry is kept in: `store.doc('instances', { fallback: {} })` (required).                                               |
+| `mainCheckout` | Path of the main checkout, slot 0 (required).                                                                                                    |
+| `ports`        | Base ports, shifted by `slot * slotStep` (required).                                                                                             |
+| `isCheckout`   | `(root) => boolean`: whether a git root is a checkout of this app. Other repos count as outside any checkout.                                    |
+| `envVar`       | A variable that pins the instance by name, overriding the folder.                                                                                |
+| `slotStep`     | Port shift per slot. Default `100`.                                                                                                              |
+| `maxSlots`     | How many slots there can be, slot 0 included. Default `20`. `ensure` never gives out one past it.                                                |
+| `portsInUse`   | `(ports) => Set<number>`: which of these ports are in use on the machine. Default: a short child process. `() => new Set()` turns the check off. |
+| `colors`       | One per slot, cycling.                                                                                                                           |
+| `mainName`     | Name of the main instance. Default `"main"`.                                                                                                     |
 
 | Method                           | What it does                                                                                                                                  |
 | -------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -628,6 +722,12 @@ instance.ports; // { http: 8180, frontend: 4300 } for slot 1
 | `ensure({ cwd, root, name })`    | The instance for a checkout, registering it on first use, named after its folder (with a suffix if taken).                                    |
 | `ensureDetached({ name, meta })` | A named instance that belongs to no checkout (for example one per container image).                                                           |
 | `remove(name)`                   | Forgets a registered instance and frees its slot. Never touches the worktree itself.                                                          |
+
+`ports` are shifted by `slot * slotStep`, so two bases that are a multiple of `slotStep` apart share a port in two slots: with `elasticsearch: 9200` and `elasticsearchPerf: 9600` at step `100`, slot 4's `elasticsearch` is slot 0's `elasticsearchPerf`. `defineWorktrees` refuses such bases when it is called (with a `TypeError` that lists every pair and names the keys), unless they are `maxSlots` or more slots apart, because then the two slots cannot both exist. It also refuses a port outside `1024` to `49151` in any slot, and a `slotStep` or `maxSlots` that is not a whole number above `0`.
+
+When `ensure` or `ensureDetached` gives out a **new** slot, it skips a slot any of whose ports is already in use on the machine (a local Postgres on 5432, another app): one slot at a time, lowest first, so the numbers can have gaps. It never checks an instance that is already registered. The default check runs one short child process that tries to listen on every interface, as Vite does, and it **fails open**: if it cannot run or times out, nothing counts as in use and the slot is given out (Docker still names the port if there is a clash). All the checks of one `ensure` share a 5 s deadline, because they run while the registry lock is held. Listening on all interfaces can make the macOS application firewall ask "Allow incoming connections?" once, if it is on and the Node binary is not signed; pass `portsInUse: () => new Set()` to turn the check off. Nothing connects to any host: this is the local free-port check every dev server does.
+
+When every slot is registered it fails with "All 19 slots are taken", and when the ones that are not registered each have a port in use it fails with "No free slot below 20: K of them have ports in use" and a hint naming the lowest one and its keys.
 
 Every write to the registry holds the document's lock file (`<dir>/instances.json.lock` for the example above), so several processes registering at once each get their own slot. A lock left by a process that died is taken over safely. How the lock waits (its clock, liveness check and timeout) is set on `defineStore`.
 
@@ -654,6 +754,30 @@ openTabs(warp(), [
 - Instead of `panes`, a tab can take a `layout`: a tree of splits, `{ split: 'horizontal' | 'vertical', children: [pane | split, ...] }` (`horizontal` is side by side, `vertical` is stacked).
 - A pane is `{ dir, run?: string[], focus? }`.
 - `warp({ configDir, open })` writes each tab as a Warp Tab Config and opens it through its `warp://` link. Both options are injectable, which is how you test it.
+
+### `art skill` and `art doctor`
+
+`skill` and `doctor` are words of the shipped `art`, like `init` and `state`. They are not reserved for a tool published with `cli({ root })`.
+
+```console
+$ art skill                                   # print a short SKILL.md built from your commands
+$ art skill --write .claude/skills/art/SKILL.md   # write it (creating folders); asks before overwriting
+$ art doctor                                  # check the install and the project, with a fix for each problem
+```
+
+`art skill` fills a fixed template from the manifest: frontmatter with the bin and the package description (always a quoted YAML string), how to find and call a command, the destructive commands (with `--dry-run` where marked) and up to ten examples. It has no usage line, argument or flag, and points at `help <command> --json` for those, so it never goes stale. It never overwrites a file without asking: in a terminal it asks, and otherwise it needs `--yes`.
+
+`art doctor` reports `version`, `range` (the range the project asks for against the version that runs), `installed` (the copy the project installs, found as Node resolves a package), `project`, `module`, `commands`, `words` (no command hides a word of the binary) and `state`, each `ok`, `warn` or `fail`, with a `fix` for every one that is not ok. It exits `1` only when a check fails, and with no project it reports `version`, `installed` and `project` (which fails). On every other run of the shipped `art`, one line on stderr says when the running version is not the one the project wants or installs (`--quiet` hides it, and it never enters the JSON envelope). Ranges understood: exact, `^` (with its 0.x meaning), `~`, `>=`, `>`, `<=`, `<`, `*`, `x`-ranges, partials and `||`; anything else (`workspace:`, `file:`, `link:`, a git URL, a tag, a space-joined range, a prerelease) is "not checked", never a warning.
+
+## Upgrading to 2.0
+
+`2.0.0` reserves names and adds a limit, so a project that used them has to change:
+
+- The flags `--dry-run`, `--quiet` and `--log` are global now. `defineCommand` throws a `TypeError` for a command that declares any of them: rename it.
+- The words `skill` and `doctor` are handled by the shipped `art`. A command or topic with one of those names is hidden there, with a warning (and reported by `art doctor`): rename it.
+- The worktrees kit refuses port bases that share a port in two slots below `maxSlots` (default `20`, slot 0 included), a port outside `1024` to `49151`, and a `slotStep` or `maxSlots` that is not a whole number above `0`, when `defineWorktrees` is called. An app that runs more than 19 extra instances at once has to raise `maxSlots`.
+
+**New:** `help --brief`, `destructive` and `dryRun`, `--dry-run`, `ctx.next`, `ctx.exec`, `--quiet` and `--log`, `art skill`, `art doctor`, `help --agents`, a `label` for named locks, and a check for ports already in use when a new slot is given out.
 
 ## Upgrading from 0.1
 

@@ -12,7 +12,8 @@
     "artemis": "dist/cli/main.js"
   },
   "files": [
-    "dist"
+    "dist",
+    "AGENTS.md"
   ],
   "publishConfig": {
     "access": "public"
