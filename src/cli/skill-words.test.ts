@@ -15,6 +15,10 @@ describe('parseSkillWords', () => {
         expect(parseSkillWords(['--write', 'a/SKILL.md']).write).toBe('a/SKILL.md');
     });
 
+    test.each([['--write', ''], ['--write=']])('an empty path is a usage error: %j', (...words) => {
+        expect(() => parseSkillWords(words)).toThrow(/needs a path/);
+    });
+
     test('--write=path works too', () => {
         expect(parseSkillWords(['--write=a/SKILL.md']).write).toBe('a/SKILL.md');
     });

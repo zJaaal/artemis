@@ -105,6 +105,12 @@ describe('findPortProblems: the range of a slot port', () => {
         expect(problemsOf({ http: base })[0]).toMatch(/in slot 6,/);
     });
 
+    test('a base above the range is refused at slot 0, with its own port', () => {
+        expect(problemsOf({ http: MAX_SLOT_PORT + 1000 })[0]).toMatch(
+            new RegExp(`ports\\.http is ${MAX_SLOT_PORT + 1000} in slot 0,`)
+        );
+    });
+
     test('1024 is allowed', () => {
         expect(problemsOf({ http: MIN_SLOT_PORT })).toEqual([]);
     });

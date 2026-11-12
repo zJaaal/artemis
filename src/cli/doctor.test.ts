@@ -174,8 +174,22 @@ describe('runDoctor: words', () => {
         expect(checkOf(runDoctor(facts), 'words')).toMatchObject({
             status: 'warn',
             message: expect.stringContaining('"doctor"'),
-            fix: expect.stringContaining('Rename commands/doctor.js')
+            fix: expect.stringContaining('Rename /work/app/commands/doctor.js')
         });
+    });
+});
+
+describe('runDoctor: words, where the commands live', () => {
+    test('names the commands folder of the project in the fix', () => {
+        const facts = {
+            ...healthy(),
+            hiddenWords: ['doctor'],
+            commands: { dir: '/work/app/tools/commands', exists: true, warnings: [] }
+        };
+
+        expect(checkOf(runDoctor(facts), 'words')?.fix).toContain(
+            '/work/app/tools/commands/doctor.js'
+        );
     });
 });
 

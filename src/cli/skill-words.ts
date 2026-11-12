@@ -65,5 +65,12 @@ export const parseSkillWords: ParseSkillWordsFn = (words) => {
         read = next;
     }
 
+    if (read.write === '') {
+        throw usageError(
+            `${SKILL_FLAGS.write} needs a path`,
+            `Try: ${SKILL_WORD} --write SKILL.md`
+        );
+    }
+
     return read;
 };

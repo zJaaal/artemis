@@ -33,7 +33,7 @@ function outOfRange(
     base: number,
     { slotStep, maxSlots }: PortPlan
 ): { slot: number; port: number } | undefined {
-    if (base < MIN_SLOT_PORT) {
+    if (base < MIN_SLOT_PORT || base > MAX_SLOT_PORT) {
         return { slot: 0, port: base };
     }
 

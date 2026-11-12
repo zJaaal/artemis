@@ -170,13 +170,22 @@ const createInvoke =
 
         const nested = parseNested(session, target, id, argv);
 
+        if (nested.global.log !== undefined) {
+            throw new CommandError(
+                `ctx.invoke("${id}"): --log is not something a command can invoke`,
+                {
+                    hint: 'An invoked command writes into the log of the run that called it. Pass --log to the command line instead.'
+                }
+            );
+        }
+
         const global = {
             ...nested.global,
             json: nested.global.json || caller.json,
             yes: nested.global.yes || caller.yes,
             dryRun: nested.global.dryRun || caller.dryRun,
             quiet: nested.global.quiet || caller.quiet,
-            log: nested.global.log ?? caller.log
+            log: caller.log
         };
 
         if (lacksDryRun(target, global)) {

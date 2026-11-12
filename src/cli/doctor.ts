@@ -67,7 +67,7 @@ function commandsCheck({ commands }: DoctorFacts): DoctorCheck {
     return { id: 'commands', status: 'ok', message: `Every command in ${commands.dir} loads.` };
 }
 
-function wordsCheck({ hiddenWords }: DoctorFacts): DoctorCheck {
+function wordsCheck({ hiddenWords, commands }: DoctorFacts): DoctorCheck {
     if (!hiddenWords.length) {
         return { id: 'words', status: 'ok', message: 'No command hides a word of this binary.' };
     }
@@ -77,7 +77,10 @@ function wordsCheck({ hiddenWords }: DoctorFacts): DoctorCheck {
         status: 'warn',
         message: `A command or topic called ${hiddenWords.map((word) => `"${word}"`).join(', ')} is hidden by the word of this binary: it cannot be run through here.`,
         fix: hiddenWords
-            .map((word) => `Rename commands/${word}.js; art ${word} runs the built-in.`)
+            .map(
+                (word) =>
+                    `Rename ${commands?.dir ?? 'commands'}/${word}.js; art ${word} runs the built-in.`
+            )
             .join(' ')
     };
 }

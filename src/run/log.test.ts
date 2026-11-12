@@ -68,6 +68,17 @@ describe('--log: what the file holds', () => {
     });
 });
 
+describe('--log: through ctx.invoke', () => {
+    test("a log of its own handed to an invoked command is the caller's bug", async () => {
+        const result = await art(['invokes-with-log', '--json']);
+
+        expect(envelope(result)).toMatchObject({
+            ok: false,
+            error: expect.stringContaining('--log is not something a command can invoke')
+        });
+    });
+});
+
 describe('--log: the envelope', () => {
     test('a success names the absolute path as log, after result', async () => {
         const file = newLog();
