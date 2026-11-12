@@ -2,6 +2,7 @@ import path from 'node:path';
 
 import { pathExists } from '../edges/files.js';
 import { defineStore } from '../kits/store/store.js';
+import { DEFAULT_MAX_SLOTS } from '../kits/worktrees/constants.js';
 import type { KitConfig } from '../kits/worktrees/models.js';
 import {
     KIT_BASE_PORTS,
@@ -34,6 +35,7 @@ export const createKitConfig = (
         isCheckout: (root) => pathExists(path.join(root, TEMP_REPO_MARKER)),
         envVar: undefined,
         slotStep: KIT_SLOT_STEP,
+        maxSlots: DEFAULT_MAX_SLOTS,
         colors: KIT_COLORS,
         mainName: 'main',
         env: {},

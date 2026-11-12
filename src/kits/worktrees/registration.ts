@@ -3,7 +3,7 @@ import path from 'node:path';
 import { pathExists, realPathOrResolve } from '../../edges/files.js';
 import { workingDirectory } from '../../edges/system.js';
 import { CommandError, UsageError } from '../../errors/errors.js';
-import { FALLBACK_WORKTREE_NAME } from './constants.js';
+import { FALLBACK_WORKTREE_NAME, FIRST_WORKTREE_SLOT } from './constants.js';
 import type {
     EnsureDetachedOptions,
     EnsureOptions,
@@ -89,11 +89,24 @@ function registerCheckout(
 
     const base = toWorktreeName(path.basename(target)) || FALLBACK_WORKTREE_NAME;
     const finalName = uniqueName(name ?? base, base, isTakenBy(config, records));
-    const record = { slot: nextFreeSlot(records), root: target };
+    const record = { slot: chooseSlot(config, records), root: target };
 
     config.registry.write({ ...records, [finalName]: record });
 
     return describeInstance(config, finalName, record);
+}
+
+/** The slot a new instance gets, or a CommandError when every slot below `maxSlots` is registered. */
+function chooseSlot(config: KitConfig, records: WorktreeRecords): number {
+    const slot = nextFreeSlot(records, config.maxSlots);
+
+    if (slot === undefined) {
+        throw new CommandError(`All ${config.maxSlots - FIRST_WORKTREE_SLOT} slots are taken`, {
+            hint: 'Remove an instance you no longer need, or raise maxSlots in defineWorktrees.'
+        });
+    }
+
+    return slot;
 }
 
 /**
@@ -151,7 +164,7 @@ export function ensureDetachedInstance(
         });
     }
 
-    const record = { slot: existing?.slot ?? nextFreeSlot(records), root: null, meta };
+    const record = { slot: existing?.slot ?? chooseSlot(config, records), root: null, meta };
 
     config.registry.write({ ...records, [name]: record });
 

@@ -22,7 +22,7 @@ export const recordOf: RecordOfFn = (records, name) =>
     Object.hasOwn(records, name) ? records[name] : undefined;
 
 /** The lowest slot no registered worktree uses. Slot 0 is the main checkout. */
-export const nextFreeSlot: NextFreeSlotFn = (records) => {
+export const nextFreeSlot: NextFreeSlotFn = (records, maxSlots) => {
     const used = new Set(Object.values(records).map((record) => record.slot));
     let slot = FIRST_WORKTREE_SLOT;
 
@@ -30,7 +30,7 @@ export const nextFreeSlot: NextFreeSlotFn = (records) => {
         slot++;
     }
 
-    return slot;
+    return slot < maxSlots ? slot : undefined;
 };
 
 /** `wanted`, or `base-2`, `base-3`... when it is taken. */

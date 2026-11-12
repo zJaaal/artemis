@@ -492,3 +492,109 @@ describe('names that look like members of an object', () => {
         );
     });
 });
+
+describe('defineWorktrees: the port plan', () => {
+    test('bases that meet in two slots below the limit are a TypeError that names both keys', () => {
+        expect(
+            thrownBy(() => kit({ ports: { elasticsearch: 9200, elasticsearchPerf: 9600 } }))
+        ).toMatchObject({
+            name: 'TypeError',
+            message: expect.stringMatching(/elasticsearch \(9200\) and elasticsearchPerf \(9600\)/)
+        });
+    });
+
+    test('the same bases pass once they are not a multiple of the step apart', () => {
+        expect(() =>
+            kit({ ports: { elasticsearch: 9200, elasticsearchPerf: 9650 } })
+        ).not.toThrow();
+    });
+
+    test('a pair far apart passes with the default limit and is refused with a bigger one', () => {
+        expect(thrownBy(() => kit({ ports: { a: 9200, b: 4200 }, maxSlots: 51 }))).toBeInstanceOf(
+            TypeError
+        );
+    });
+
+    test('a port below 1024 is a TypeError naming the key, the slot and the port', () => {
+        expect(thrownBy(() => kit({ ports: { http: 80 } }))).toMatchObject({
+            message: expect.stringMatching(/ports\.http is 80 in slot 0/)
+        });
+    });
+
+    test('a slotStep of 0 is a TypeError', () => {
+        expect(thrownBy(() => kit({ slotStep: 0 }))).toBeInstanceOf(TypeError);
+    });
+
+    test('a fractional maxSlots is a TypeError', () => {
+        expect(thrownBy(() => kit({ maxSlots: 2.5 }))).toBeInstanceOf(TypeError);
+    });
+
+    test('the message names the function', () => {
+        expect(thrownBy(() => kit({ slotStep: 0 }))).toMatchObject({
+            message: expect.stringMatching(/^defineWorktrees: /)
+        });
+    });
+});
+
+describe('maxSlots', () => {
+    const detached = (worktrees: ReturnType<typeof kit>, count: number) =>
+        Array.from({ length: count }, (_, index) =>
+            worktrees.ensureDetached({ name: `image-${index + 1}` })
+        );
+
+    test('with every slot from 1 to maxSlots - 1 registered, the next one is "All 19 slots are taken"', () => {
+        const worktrees = kit();
+
+        detached(worktrees, 19);
+
+        expect(thrownBy(() => worktrees.ensureDetached({ name: 'one-more' }))).toMatchObject({
+            message: 'All 19 slots are taken',
+            hint: expect.stringContaining('maxSlots')
+        });
+    });
+
+    test('it is a CommandError, so a person sees a hint and not a stack', () => {
+        const worktrees = kit({ maxSlots: 2 });
+
+        detached(worktrees, 1);
+
+        expect(thrownBy(() => worktrees.ensureDetached({ name: 'one-more' }))).toBeInstanceOf(
+            CommandError
+        );
+    });
+
+    test('never gives out slot 0, the main checkout', () => {
+        expect(kit({ maxSlots: 2 }).ensureDetached({ name: 'image-1' }).slot).toBe(
+            FIRST_WORKTREE_SLOT
+        );
+    });
+
+    test('a worktree is refused the same way', () => {
+        const worktrees = kit({ maxSlots: 2 });
+
+        worktrees.ensureDetached({ name: 'image-1' });
+
+        expect(thrownBy(() => worktrees.ensure({ root: worktree('feat-a') }))).toMatchObject({
+            message: 'All 1 slots are taken'
+        });
+    });
+
+    test('a registry that already holds a slot past the limit still lists it', () => {
+        const shared = registry();
+
+        shared.write({ far: { slot: 40, root: null } });
+
+        expect(
+            kit({ registry: shared, maxSlots: 20 })
+                .list()
+                .map((instance) => instance.name)
+        ).toEqual(['main', 'far']);
+    });
+
+    test('an instance already registered keeps its slot and is not refused, even when the registry is full', () => {
+        const worktrees = kit({ maxSlots: 2 });
+        const first = worktrees.ensureDetached({ name: 'image-1' });
+
+        expect(worktrees.ensureDetached({ name: 'image-1' }).slot).toBe(first.slot);
+    });
+});

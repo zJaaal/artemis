@@ -37,6 +37,8 @@ export type WorktreesOptions = {
     envVar?: string;
     /** Port shift per slot. Default 100. */
     slotStep?: number;
+    /** How many slots there can be, slot 0 (the main checkout) included. Default 20. */
+    maxSlots?: number;
     /** One per slot, cycling. */
     colors?: readonly string[];
     /** Name of the main checkout's instance. Default "main". */
@@ -69,6 +71,7 @@ export type KitConfig = {
     isCheckout: IsCheckoutFn;
     envVar: string | undefined;
     slotStep: number;
+    maxSlots: number;
     colors: readonly string[];
     mainName: string;
     env: NodeJS.ProcessEnv;
@@ -83,7 +86,14 @@ export type DescribeInstanceFn = (
     record: WorktreeRecord
 ) => WorktreeInstance;
 
-export type NextFreeSlotFn = (records: WorktreeRecords) => number;
+/** The lowest slot from 1 up that no worktree uses and is below `maxSlots`; undefined when every one is taken. */
+export type NextFreeSlotFn = (records: WorktreeRecords, maxSlots: number) => number | undefined;
+
+/** What the port checks need: the base ports of the app, the shift per slot and the number of slots. */
+export type PortPlan = { ports: Record<string, number>; slotStep: number; maxSlots: number };
+
+/** Every problem with a port plan, as the lines of one TypeError message; empty when it is sound. */
+export type FindPortProblemsFn = (plan: PortPlan) => string[];
 export type RecordOfFn = (records: WorktreeRecords, name: string) => WorktreeRecord | undefined;
 
 /** A name that is not taken by a registered worktree or by the main checkout. */

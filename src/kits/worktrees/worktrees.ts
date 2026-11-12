@@ -1,5 +1,11 @@
 import { currentProcess } from '../../edges/process.js';
-import { DEFAULT_COLORS, DEFAULT_MAIN_NAME, DEFAULT_SLOT_STEP } from './constants.js';
+import {
+    DEFAULT_COLORS,
+    DEFAULT_MAIN_NAME,
+    DEFAULT_MAX_SLOTS,
+    DEFAULT_SLOT_STEP
+} from './constants.js';
+import { findPortProblems } from './ports.js';
 import { realPathOrResolve } from '../../edges/files.js';
 import type {
     DefineWorktreesFn,
@@ -13,6 +19,15 @@ import { currentInstance, getInstance, listInstances } from './queries.js';
 
 const everyFolderIsACheckout: IsCheckoutFn = () => true;
 
+/** Refuses a port plan that cannot work, with one TypeError that names the options and keys. */
+function assertPortPlan(config: KitConfig): void {
+    const problems = findPortProblems(config);
+
+    if (problems.length) {
+        throw new TypeError(`defineWorktrees: ${problems.join('\n')}`);
+    }
+}
+
 /** The options with their defaults applied. */
 function configure(options: WorktreesOptions): KitConfig {
     return {
@@ -22,6 +37,7 @@ function configure(options: WorktreesOptions): KitConfig {
         isCheckout: options.isCheckout ?? everyFolderIsACheckout,
         envVar: options.envVar,
         slotStep: options.slotStep ?? DEFAULT_SLOT_STEP,
+        maxSlots: options.maxSlots ?? DEFAULT_MAX_SLOTS,
         colors: options.colors ?? DEFAULT_COLORS,
         mainName: options.mainName ?? DEFAULT_MAIN_NAME,
         env: options.env ?? currentProcess().env
@@ -46,6 +62,8 @@ function locked<TArgs extends unknown[], TResult>(
  */
 export const defineWorktrees: DefineWorktreesFn = (options) => {
     const config = configure(options);
+
+    assertPortPlan(config);
 
     return {
         list: () => listInstances(config),

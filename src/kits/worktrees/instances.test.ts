@@ -1,7 +1,7 @@
 import { describe, expect, test } from 'vitest';
 
 import { KIT_BASE_PORTS, KIT_COLORS, KIT_SLOT_STEP } from '../../test/constants.js';
-import { FIRST_WORKTREE_SLOT, MAIN_SLOT } from './constants.js';
+import { DEFAULT_MAX_SLOTS, FIRST_WORKTREE_SLOT, MAIN_SLOT } from './constants.js';
 import { describeInstance, nextFreeSlot, uniqueName } from './instances.js';
 
 const config = { ports: KIT_BASE_PORTS, slotStep: KIT_SLOT_STEP, colors: KIT_COLORS };
@@ -47,7 +47,7 @@ describe('describeInstance', () => {
 
 describe('nextFreeSlot', () => {
     test('is the first worktree slot when nothing is registered', () => {
-        expect(nextFreeSlot({})).toBe(FIRST_WORKTREE_SLOT);
+        expect(nextFreeSlot({}, DEFAULT_MAX_SLOTS)).toBe(FIRST_WORKTREE_SLOT);
     });
 
     test('fills the lowest gap', () => {
@@ -56,13 +56,32 @@ describe('nextFreeSlot', () => {
             c: { slot: FIRST_WORKTREE_SLOT + 2, root: null }
         };
 
-        expect(nextFreeSlot(records)).toBe(FIRST_WORKTREE_SLOT + 1);
+        expect(nextFreeSlot(records, DEFAULT_MAX_SLOTS)).toBe(FIRST_WORKTREE_SLOT + 1);
     });
 
     test('goes past the last slot when there is no gap', () => {
         const records = { a: { slot: FIRST_WORKTREE_SLOT, root: null } };
 
-        expect(nextFreeSlot(records)).toBe(FIRST_WORKTREE_SLOT + 1);
+        expect(nextFreeSlot(records, DEFAULT_MAX_SLOTS)).toBe(FIRST_WORKTREE_SLOT + 1);
+    });
+
+    test('is undefined when every slot below the limit is taken', () => {
+        const records = {
+            a: { slot: FIRST_WORKTREE_SLOT, root: null },
+            b: { slot: FIRST_WORKTREE_SLOT + 1, root: null }
+        };
+
+        expect(nextFreeSlot(records, FIRST_WORKTREE_SLOT + 2)).toBeUndefined();
+    });
+
+    test('is never slot 0, the main checkout', () => {
+        expect(nextFreeSlot({}, DEFAULT_MAX_SLOTS)).not.toBe(MAIN_SLOT);
+    });
+
+    test('a slot registered past the limit does not matter to the ones below it', () => {
+        const records = { far: { slot: DEFAULT_MAX_SLOTS + 5, root: null } };
+
+        expect(nextFreeSlot(records, DEFAULT_MAX_SLOTS)).toBe(FIRST_WORKTREE_SLOT);
     });
 });
 
