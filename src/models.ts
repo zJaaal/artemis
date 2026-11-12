@@ -180,9 +180,13 @@ export type CommandContext = {
     dryRun: boolean;
     /** Under `--dry-run`: describes one thing the command would do. A no-op otherwise. */
     plan: PlanFn;
+    /** Suggests what to run after this succeeds: what follows the bin, which Artemis adds. */
+    next: NextFn;
 };
 
 export type PlanFn = (step: string) => void;
+/** What an agent would type after the bin (`'dotcms wait --instance x --json'`). */
+export type NextFn = (...lines: string[]) => void;
 
 /** Where output goes, and what the command was told about how it runs. */
 export type ContextParts = {
@@ -194,6 +198,10 @@ export type ContextParts = {
     invoke: InvokeFn;
     /** Where `ctx.plan` collects its steps: shared with the commands this one invokes. */
     plan: string[];
+    /** The name help shows (`art`): put in front of every line `ctx.next` is given. */
+    bin: string;
+    /** Where `ctx.next` collects its lines; the caller reads them after the command succeeds. */
+    next: string[];
 };
 
 export type CreateContextFn = (parts: ContextParts) => CommandContext;
@@ -585,6 +593,9 @@ export type RunState = { commandId: string | undefined };
 
 /** What one run collects across the commands it invokes: the dry-run plan. */
 export type RunScope = { plan: string[] };
+
+/** What running a command gives back: its result, and the lines it suggested to run next. */
+export type Executed = { result: unknown; next: string[] };
 
 /** Everything the steps of one run share. */
 export type Session = World & {

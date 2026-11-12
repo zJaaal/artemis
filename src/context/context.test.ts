@@ -50,6 +50,8 @@ const setUp = (overrides: Partial<ContextParts> = {}) => {
         registry,
         invoke: () => Promise.resolve(undefined),
         plan: [],
+        bin: 'art',
+        next: [],
         ...overrides
     });
 
@@ -218,5 +220,18 @@ describe('ctx.prompt when nobody can answer', () => {
         const error = await ask(ctx, {}).catch((caught: unknown) => caught);
 
         expect(error).toMatchObject({ exitCode: EXIT_CODE.FAILED });
+    });
+});
+
+describe('ctx.next: what it refuses', () => {
+    test.each([
+        { name: 'an empty string', line: '' },
+        { name: 'a number', line: 42 },
+        { name: 'a line that starts with the bin', line: 'art hello' },
+        { name: 'an environment assignment', line: 'ART_INSTANCE=x hello' }
+    ])('$name is a TypeError', ({ line }) => {
+        const { ctx } = setUp();
+
+        expect(() => ctx.next(line as string)).toThrow(TypeError);
     });
 });

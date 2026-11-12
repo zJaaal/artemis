@@ -7,6 +7,7 @@ import {
     HELP_WORD,
     ID_SEPARATOR,
     LOG_FLAG,
+    NEXT_PREFIX,
     DRY_RUN_EMPTY,
     DRY_RUN_HEADER,
     TABLE_INDENT
@@ -28,6 +29,7 @@ import {
 import type {
     Builtin,
     CommandEntry,
+    Executed,
     GlobalFlags,
     HelpOutput,
     InvokeFn,
@@ -175,7 +177,8 @@ const createInvoke =
             });
         }
 
-        return execute(session, target, { ...nested, global });
+        // What the invoked command suggests is discarded: the caller decides what comes next
+        return (await execute(session, target, { ...nested, global })).result;
     };
 
 /** --json promises exactly one object on stdout, so nothing may prompt there either. */
@@ -186,7 +189,7 @@ async function execute(
     session: Session,
     entry: CommandEntry,
     parsed: ParsedCommandLine
-): Promise<unknown> {
+): Promise<Executed> {
     await confirmDestructive({
         bin: session.bin,
         id: entry.id,
@@ -197,6 +200,8 @@ async function execute(
         interactive: canAsk(session, parsed.global)
     });
 
+    const next: string[] = [];
+
     const ctx = createContext({
         io: session.io,
         global: parsed.global,
@@ -204,10 +209,14 @@ async function execute(
         style: session.style,
         registry: session.registry,
         invoke: createInvoke(session, parsed.global),
-        plan: session.scope.plan
+        plan: session.scope.plan,
+        bin: session.bin,
+        next
     });
 
-    return entry.definition.run({ args: parsed.args, flags: parsed.flags, ctx });
+    const result = await entry.definition.run({ args: parsed.args, flags: parsed.flags, ctx });
+
+    return { result, next };
 }
 
 /** The text and the --json data for something that was resolved. */
@@ -320,9 +329,15 @@ function assertHelpFlags(session: Session, leading: string[], rest: string[]): v
     }
 }
 
-/** The envelope keys after `result`, in their fixed order: dryRun, plan. */
-const successExtras = (session: Session, global: GlobalFlags): Record<string, unknown> =>
-    global.dryRun ? { dryRun: true, plan: session.scope.plan } : {};
+/** The envelope keys after `result`, in their fixed order: dryRun, plan, next. */
+const successExtras = (
+    session: Session,
+    global: GlobalFlags,
+    next: readonly string[]
+): Record<string, unknown> => ({
+    ...(global.dryRun ? { dryRun: true, plan: session.scope.plan } : {}),
+    ...(next.length ? { next } : {})
+});
 
 /** The plan of a dry run as text: what would happen, or that nothing would. */
 const planText = (plan: readonly string[]): string =>
@@ -390,12 +405,16 @@ async function dispatch(session: Session, argv: string[]): Promise<number> {
         });
     }
 
-    const result = await execute(session, target.entry, parsed);
+    const { result, next } = await execute(session, target.entry, parsed);
 
     if (session.wantsJson) {
-        print(session, '', result ?? null, successExtras(session, parsed.global));
+        print(session, '', result ?? null, successExtras(session, parsed.global, next));
     } else if (parsed.global.dryRun) {
         session.io.stdout.write(`${planText(session.scope.plan)}\n`);
+    }
+
+    if (!session.wantsJson && !parsed.global.quiet) {
+        next.forEach((line) => session.io.stderr.write(`${NEXT_PREFIX} ${line}\n`));
     }
 
     return EXIT_CODE.OK;
