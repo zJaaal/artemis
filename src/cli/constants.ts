@@ -112,6 +112,7 @@ export const SKILL_FLAGS = {
 export const SKILL_SHADOW_WARNING =
     'This project has a command or topic called "skill", and the skill word of this binary hides it: it cannot be run through here. Rename it.';
 export const SKILL_OVERWRITE_HINT_PREFIX = 'Pass --yes to overwrite';
+export const SKILL_WRITE_HINT = 'Give --write the path of a file, in a folder that can be created.';
 
 /** The words of the shipped binary that help lists under "Built-in" and `help --json` under "builtins". */
 export const BUILTINS: readonly Builtin[] = [

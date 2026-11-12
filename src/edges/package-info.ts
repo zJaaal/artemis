@@ -19,7 +19,7 @@ const versionOf = (dir: string): string | undefined => {
 
 /** The version and folder of the Artemis that is running. */
 export const readRunningPackage: ReadRunningPackageFn = () => ({
-    version: versionOf(RUNNING_ROOT) ?? '0.0.0',
+    version: versionOf(RUNNING_ROOT),
     root: RUNNING_ROOT
 });
 

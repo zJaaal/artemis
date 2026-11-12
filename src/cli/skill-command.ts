@@ -5,6 +5,7 @@ import { createPrompter } from '../context/context.js';
 import { discover } from '../discover/discover.js';
 import { isFolder, makeDirectory, pathExists, readManifest, writeText } from '../edges/files.js';
 import { CommandError } from '../errors/errors.js';
+import { messageOf } from '../utils/error-message.js';
 import { manifest } from '../help/help.js';
 import type { SkillCommandFn, SkillWords } from '../models.js';
 import { printResult } from '../run/report.js';
@@ -14,6 +15,7 @@ import {
     SKILL_HELP,
     SKILL_OVERWRITE_HINT_PREFIX,
     SKILL_SHADOW_WARNING,
+    SKILL_WRITE_HINT,
     SKILL_WORD
 } from './constants.js';
 import { findProject, noProjectError, resolveSettings } from './settings.js';
@@ -89,14 +91,24 @@ export const skillCommand: SkillCommandFn = async (words, options, cwd) => {
     const target = path.resolve(cwd, parsed.write);
     const interactive = canPrompt && !parsed.yes && !parsed.json;
 
+    if (isFolder(target)) {
+        throw new CommandError(`${target} is a folder, not a file`, { hint: SKILL_WRITE_HINT });
+    }
+
     if (!(await mayWrite(target, parsed, interactive))) {
         io.stdout.write(`Not written: ${target} is unchanged.\n`);
 
         return EXIT_CODE.OK;
     }
 
-    makeDirectory(path.dirname(target));
-    writeText(target, markdown);
+    try {
+        makeDirectory(path.dirname(target));
+        writeText(target, markdown);
+    } catch (error) {
+        throw new CommandError(`Could not write ${target}: ${messageOf(error)}`, {
+            hint: SKILL_WRITE_HINT
+        });
+    }
 
     printResult(io, {
         json: parsed.json,

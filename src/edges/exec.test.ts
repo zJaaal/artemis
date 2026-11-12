@@ -17,6 +17,7 @@ const NOT_AN_EXECUTABLE = 'artemis-no-such-program';
 const SHORT_TIMEOUT_MS = 100;
 const SILENT_JOB = 'setInterval(() => {}, 1000)';
 const GAP_MS = 40;
+const LATE_WRITE_MS = 600;
 const GRANDCHILD_LIFETIME_MS = 4000;
 const GRANDCHILD_JOB = `require('node:child_process').spawn(process.execPath, ['-e', 'setTimeout(() => {}, ${GRANDCHILD_LIFETIME_MS})'], { stdio: 'inherit' }); process.exit(0)`;
 
@@ -95,6 +96,28 @@ describe('spawnChild: how a child ends', () => {
         await runNode(GRANDCHILD_JOB);
 
         expect(Date.now() - started).toBeLessThan(GRANDCHILD_LIFETIME_MS / 2);
+    });
+
+    test('a child that exits before its timeout is not a timeout while its output drains', async () => {
+        const slowExit = GRANDCHILD_JOB.replace(
+            'process.exit(0)',
+            'setTimeout(() => process.exit(0), 30)'
+        );
+
+        const { outcome } = await runNode(slowExit, { timeoutMs: SHORT_TIMEOUT_MS });
+
+        expect(outcome.timedOut).toBe(false);
+    });
+
+    test('a grandchild keeps its pipe after the drain: its late write does not kill it', async () => {
+        const marker = path.join(folders.make('artemis-exec-'), 'marker');
+        const grandchild = `process.stdout.on('error', () => {}); setTimeout(() => process.stdout.write('late', (error) => require('node:fs').writeFileSync(process.argv[1], error ? 'dead' : 'ok')), ${LATE_WRITE_MS})`;
+        const parent = `require('node:child_process').spawn(process.execPath, ['-e', ${JSON.stringify(grandchild)}, process.argv[1]], { stdio: 'inherit' }); process.exit(0)`;
+
+        await runNode(parent, {}, [marker]);
+        await new Promise((resolve) => setTimeout(resolve, LATE_WRITE_MS * 2));
+
+        expect(fs.readFileSync(marker, 'utf8')).toBe('ok');
     });
 
     test('a script that is not executable is a start error, not an exit code', async () => {

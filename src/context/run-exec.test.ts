@@ -11,6 +11,8 @@ import {
     EXIT_CODE
 } from '../constants.js';
 import { art, envelope } from '../test/art.js';
+import { createSink } from '../test/sink.js';
+import { failure } from './run-exec.js';
 import { createTempFolders } from '../test/temp.js';
 
 const folders = createTempFolders();
@@ -249,6 +251,16 @@ describe('ctx.exec: a folder that does not exist', () => {
         });
     });
 
+    test('names the resolved folder, not the relative one typed', async () => {
+        const root = folders.make('artemis-exec-cwd-');
+
+        const run = await art(['exec', 'process.exit(0)', '--cwd', 'typo', '--json'], {
+            cwd: root
+        });
+
+        expect(envelope(run).error).toBe(`The folder ${path.join(root, 'typo')} does not exist`);
+    });
+
     test('fails even with reject: false, where a plain exit code is returned', async () => {
         const cwd = path.join(folders.make('artemis-exec-cwd-'), 'typo');
         const run = await art(['exec', 'process.exit(0)', '--cwd', cwd, '--no-reject', '--json']);
@@ -309,5 +321,44 @@ describe('ctx.exec: a child a command leaves running', () => {
 
         expect(envelope(run).ok).toBe(false);
         expect(await Promise.all(pids.map(gone))).toEqual([true, true]);
+    });
+});
+
+describe('ctx.exec: a program that was not found and was stopped by the run', () => {
+    const run = {
+        io: { stdout: createSink(), stderr: createSink() },
+        global: {
+            help: false,
+            json: false,
+            yes: false,
+            dryRun: false,
+            quiet: false,
+            log: undefined
+        },
+        log: undefined,
+        children: new Set<never>(),
+        plan: []
+    };
+
+    const outcome = {
+        code: 1,
+        timedOut: false,
+        notFound: true,
+        cwdMissing: false,
+        stopped: true,
+        startError: undefined,
+        signal: undefined
+    };
+
+    test('is still "was not found": the stop does not turn it into a success', () => {
+        expect(failure(run, 'no-such-binary', outcome, {}, [], undefined)?.message).toBe(
+            'no-such-binary was not found'
+        );
+    });
+
+    test('a child that really started and was stopped is not a failure', () => {
+        expect(
+            failure(run, 'sleep', { ...outcome, notFound: false }, {}, [], undefined)
+        ).toBeUndefined();
     });
 });

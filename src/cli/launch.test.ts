@@ -1100,7 +1100,11 @@ describe('cli: the every-run version warning', () => {
     test('a local copy equal to the running one says nothing', async () => {
         const root = projectWanting(undefined);
 
-        putCopy(root, readRunning().version);
+        const { version } = readRunning();
+
+        // Without a readable version there is nothing to compare, and this test would prove nothing
+        expect(version).toBeDefined();
+        putCopy(root, version ?? '');
 
         expect(warnings((await art(['hello'], root)).err)).toHaveLength(0);
     });

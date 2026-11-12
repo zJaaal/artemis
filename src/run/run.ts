@@ -63,7 +63,7 @@ import {
     suggest
 } from '../resolve/resolve.js';
 import { printResult } from './report.js';
-import { jsonRequested, quietRequested } from '../utils/terminator.js';
+import { beforeTerminator, jsonRequested, quietRequested } from '../utils/terminator.js';
 
 const isFlagToken = (token: string): boolean => token.startsWith(FLAG_PREFIX);
 
@@ -384,7 +384,8 @@ function showHelpFor(session: Session, words: string[]): void {
 
 /** The help word takes neither `--log` nor `--dry-run`: it runs nothing, so there is nothing to log or plan. */
 function assertHelpFlags(session: Session, leading: string[], rest: string[]): void {
-    const tokens = [...leading, ...rest];
+    // After `--` everything is a plain argument, here as everywhere else
+    const tokens = beforeTerminator([...leading, ...rest]);
     const refused = hasLogFlag(tokens) ? LOG_FLAG : tokens.find((token) => token === DRY_RUN_FLAG);
 
     if (refused !== undefined) {

@@ -281,6 +281,10 @@ describe('run: the global flags --dry-run, --quiet and --log', () => {
         expect((await art(['math', '--dry-run'])).code).toBe(EXIT_CODE.USAGE);
     });
 
+    test('after -- a topic takes --dry-run as a plain argument, like everywhere else', async () => {
+        expect((await art(['math', '--', '--dry-run'])).code).toBe(EXIT_CODE.OK);
+    });
+
     test('--log --json is a usage error that comes out as the object asked for', async () => {
         expect(envelope(await art(['hello', '--log', '--json'])).ok).toBe(false);
     });

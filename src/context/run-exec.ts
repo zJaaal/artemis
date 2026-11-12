@@ -42,15 +42,16 @@ const failureHint = (run: ExecRun): string =>
     run.log ? `${EXEC_LOG_HINT_PREFIX} ${run.log.path}` : EXEC_NO_LOG_HINT;
 
 /** The error for a child that did not end well, with the last lines it printed. */
-function failure(
+export function failure(
     run: ExecRun,
     command: string,
     outcome: SpawnOutcome,
     options: ExecOptions,
-    tail: readonly string[]
+    tail: readonly string[],
+    cwd: string | undefined
 ): CommandError | undefined {
     if (outcome.cwdMissing) {
-        return new CommandError(`The folder ${options.cwd ?? ''} does not exist`, {
+        return new CommandError(`The folder ${cwd ?? ''} does not exist`, {
             hint: `Create it, or check the cwd passed to ${command}.`
         });
     }
@@ -61,13 +62,14 @@ function failure(
         });
     }
 
+    // A program that never started is a failure even when the run stopped it first
+    if (outcome.notFound) {
+        return new CommandError(`${command} was not found`, { hint: EXEC_NOT_FOUND_HINT });
+    }
+
     // A child Artemis stopped itself (the run ended without awaiting it) is not a failure
     if (outcome.stopped) {
         return undefined;
-    }
-
-    if (outcome.notFound) {
-        return new CommandError(`${command} was not found`, { hint: EXEC_NOT_FOUND_HINT });
     }
 
     const hidden = run.global.quiet || options.capture === true || options.readOnly === true;
@@ -117,6 +119,8 @@ const execute =
             log: run.log !== undefined
         });
 
+        // The folder the child runs in, as spawn sees it: what a missing-folder error has to name
+        const cwd = run.cwd === undefined ? options.cwd : path.resolve(run.cwd, options.cwd ?? '');
         const tail = createTail(EXEC_TAIL_LINES, EXEC_TAIL_LINE_CHARS);
         // Only a caller that asked for the output gets it: a dev server under --log would grow this for hours
         const collect = options.capture === true || readOnly;
@@ -125,7 +129,7 @@ const execute =
         const child = spawnChild({
             command,
             args,
-            cwd: run.cwd === undefined ? options.cwd : path.resolve(run.cwd, options.cwd ?? ''),
+            cwd,
             env: options.env,
             pipe: mode.pipe,
             timeoutMs: options.timeoutMs,
@@ -147,7 +151,7 @@ const execute =
 
         try {
             const outcome = await child.done;
-            const error = failure(run, command, outcome, options, tail.lines());
+            const error = failure(run, command, outcome, options, tail.lines(), cwd);
 
             if (error) {
                 throw error;

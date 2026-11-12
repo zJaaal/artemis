@@ -1,5 +1,6 @@
 import { type ChildProcess, spawn } from 'node:child_process';
 import fs from 'node:fs';
+import { Socket } from 'node:net';
 
 import {
     ERROR_CODE,
@@ -110,10 +111,20 @@ export const spawnChild: SpawnChildFn = (request) => {
         // its pipes get a short moment to drain, then they are cut.
         child.on('exit', (code, signal) => {
             exited = true;
+            // The child ended in time: a timeout that fires while its output drains is not a timeout
+            clearTimeout(timeoutTimer);
 
             drainTimer = setTimeout(() => {
-                child.stdout?.destroy();
-                child.stderr?.destroy();
+                // Not destroyed: a closed pipe would kill a grandchild (a dev server) on its next write.
+                // The pipes stay open and are read and thrown away, and do not keep Artemis alive.
+                for (const source of [child.stdout, child.stderr]) {
+                    source?.removeAllListeners('data');
+                    source?.resume();
+
+                    if (source instanceof Socket) {
+                        source.unref();
+                    }
+                }
 
                 finish({
                     code: code ?? EXIT_CODE.FAILED,

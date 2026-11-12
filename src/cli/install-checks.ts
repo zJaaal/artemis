@@ -26,6 +26,14 @@ export const rangeCheck: InstallCheckFn = ({ running, range }): DoctorCheck => {
         };
     }
 
+    if (running.version === undefined) {
+        return {
+            id: 'range',
+            status: 'ok',
+            message: 'not checked: the running version is unknown'
+        };
+    }
+
     if (parseVersion(running.version) === undefined) {
         return { id: 'range', status: 'ok', message: 'not checked: running a prerelease' };
     }
@@ -54,7 +62,15 @@ export const installedCheck: InstallCheckFn = ({ running, local }): DoctorCheck 
         return {
             id: 'installed',
             status: 'ok',
-            message: `not installed in this project; running ${running.version} from ${running.root}`
+            message: `not installed in this project; running ${running.version ?? 'an unknown version'} from ${running.root}`
+        };
+    }
+
+    if (running.version === undefined) {
+        return {
+            id: 'installed',
+            status: 'ok',
+            message: 'not checked: the running version is unknown'
         };
     }
 

@@ -593,8 +593,8 @@ export type DoctorCheck = {
     fix?: string;
 };
 
-/** The copy of Artemis that is running: its version, and the folder of its package. */
-export type RunningPackage = { version: string; root: string };
+/** The copy of Artemis that is running: its version, and the folder of its package. `version` is undefined when its package.json could not be read. */
+export type RunningPackage = { version: string | undefined; root: string };
 
 /** A copy of Artemis inside a project's node_modules. */
 export type LocalCopy = { version: string; root: string };

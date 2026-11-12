@@ -36,6 +36,14 @@ describe('runDoctor: a healthy project', () => {
         ]);
     });
 
+    test('an unreadable running version is named, not printed as undefined', () => {
+        const facts = { ...healthy(), running: { ...running, version: undefined } };
+
+        expect(checkOf(runDoctor(facts), 'version')?.message).toBe(
+            `art an unknown version (${running.root})`
+        );
+    });
+
     test('every check is ok', () => {
         expect(new Set(runDoctor(healthy()).map((check) => check.status))).toEqual(new Set(['ok']));
     });

@@ -220,3 +220,25 @@ describe('art skill: the word', () => {
         ).toContain('skill');
     });
 });
+
+describe('art skill --write: a path that cannot be a file', () => {
+    test('a folder is a failure with a hint, not a stack trace', async () => {
+        const root = newProject();
+
+        fs.mkdirSync(path.join(root, 'out'));
+
+        const run = await art(['skill', '--write', 'out', '--yes', '--json'], root);
+
+        expect(JSON.parse(run.out)).toMatchObject({ ok: false, hint: expect.any(String) });
+    });
+
+    test('a parent that is a file is a failure too', async () => {
+        const root = newProject();
+
+        fs.writeFileSync(path.join(root, 'blocker'), '');
+
+        const run = await art(['skill', '--write', 'blocker/SKILL.md', '--yes', '--json'], root);
+
+        expect(run.code).toBe(EXIT_CODE.FAILED);
+    });
+});

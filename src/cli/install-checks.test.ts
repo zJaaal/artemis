@@ -64,6 +64,20 @@ describe('rangeCheck', () => {
     });
 });
 
+describe('an unknown running version (package.json unreadable)', () => {
+    const unknown = { ...running, version: undefined };
+
+    test('is not checked against a range', () => {
+        expect(rangeCheck(facts({ running: unknown, range: '^1.0.0' })).status).toBe('ok');
+    });
+
+    test('is not checked against the installed copy', () => {
+        const local = { version: '1.1.0', root: '/p/node_modules/@zjaaal/artemis' };
+
+        expect(installedCheck(facts({ running: unknown, local })).status).toBe('ok');
+    });
+});
+
 describe('installedCheck', () => {
     test('is ok, saying where it runs from, when the project has no copy', () => {
         expect(installedCheck(facts()).message).toMatch(running.root);

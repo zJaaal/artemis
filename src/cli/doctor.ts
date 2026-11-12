@@ -16,7 +16,7 @@ import { installedCheck, rangeCheck, rangeOf } from './install-checks.js';
 const versionCheck = ({ running }: DoctorFacts): DoctorCheck => ({
     id: 'version',
     status: 'ok',
-    message: `art ${running.version} (${running.root})`
+    message: `art ${running.version ?? 'an unknown version'} (${running.root})`
 });
 
 const projectCheck = ({ project }: DoctorFacts): DoctorCheck =>

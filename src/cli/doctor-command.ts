@@ -176,7 +176,7 @@ export const doctorCommand: DoctorCommandFn = async (words, options, cwd) => {
                   hint: failure.hint,
                   checks: failure.checks
               })
-            : successEnvelope(DOCTOR_WORD, { version: facts.running.version, checks });
+            : successEnvelope(DOCTOR_WORD, { version: facts.running.version ?? null, checks });
 
         io.stdout.write(`${envelope}\n`);
 
