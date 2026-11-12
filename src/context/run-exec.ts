@@ -2,6 +2,7 @@ import {
     EXEC_LOG_HINT_PREFIX,
     EXEC_NO_LOG_HINT,
     EXEC_NOT_FOUND_HINT,
+    EXEC_START_HINT,
     EXEC_TAIL_LINE_CHARS,
     EXEC_TAIL_LINES,
     ID_SEPARATOR
@@ -49,6 +50,12 @@ function failure(
     if (outcome.cwdMissing) {
         return new CommandError(`The folder ${options.cwd ?? ''} does not exist`, {
             hint: `Create it, or check the cwd passed to ${command}.`
+        });
+    }
+
+    if (outcome.startError !== undefined) {
+        return new CommandError(`${command} could not be started: ${outcome.startError}`, {
+            hint: EXEC_START_HINT
         });
     }
 
@@ -104,6 +111,8 @@ export const createExec =
         });
 
         const tail = createTail(EXEC_TAIL_LINES, EXEC_TAIL_LINE_CHARS);
+        // Only a caller that asked for the output gets it: a dev server under --log would grow this for hours
+        const collect = options.capture === true || readOnly;
         let output = '';
 
         const child = spawnChild({
@@ -114,7 +123,10 @@ export const createExec =
             pipe: mode.pipe,
             timeoutMs: options.timeoutMs,
             onData: (chunk, stream) => {
-                output += chunk;
+                if (collect) {
+                    output += chunk;
+                }
+
                 echo(run, mode, chunk, stream);
                 run.log?.write(chunk);
 

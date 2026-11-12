@@ -50,3 +50,6 @@ export const INVALID_NAME_RUN = /[^a-z0-9-]+/g;
 export const EDGE_DASHES = /^-+|-+$/g;
 export const FIRST_SUFFIX = 2;
 export const FALLBACK_WORKTREE_NAME = 'worktree';
+
+/** The probe prints the ports in use, one per line. */
+export const PROBE_OUTPUT_SEPARATOR = '\n';

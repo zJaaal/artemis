@@ -944,15 +944,44 @@ describe('cli: a flag typed before a built-in word', () => {
     });
 });
 
+describe('cli: a leading --log before a built-in word', () => {
+    test('is not misread as a stray flag: its value is not "x.log cannot come before doctor"', async () => {
+        const root = folders.make('artemis-cli-');
+
+        makeProject(root, { greeting: 'project' });
+
+        const result = await art(['--log', 'x.log', 'doctor', '--json'], root);
+
+        expect(envelope(result.out).error).not.toMatch(/cannot come before/);
+    });
+
+    test('the word refuses --log itself, with a usage error', async () => {
+        const root = folders.make('artemis-cli-');
+
+        makeProject(root, { greeting: 'project' });
+
+        expect((await art(['--log', 'x.log', 'doctor'], root)).code).toBe(EXIT_CODE.USAGE);
+    });
+});
+
 describe('cli: --log, --json and --quiet together', () => {
-    test('--json after --log is the log file, so stdout is text and not an envelope', async () => {
+    test('--log --json is a usage error, and it comes out as the one object that was asked for', async () => {
         const root = folders.make('artemis-cli-');
 
         makeProject(root, { greeting: 'project' });
 
         const result = await art(['hello', '--log', '--json'], root);
 
-        expect(result.out).not.toMatch(/^\{/);
+        expect(envelope(result.out)).toMatchObject({ ok: false });
+    });
+
+    test('--log=--json logs to a file of that name', async () => {
+        const root = folders.make('artemis-cli-');
+
+        makeProject(root, { greeting: 'project' });
+        await art(['hello', '--log=--json'], root);
+
+        expect(fs.existsSync(path.join(root, '--json'))).toBe(true);
     });
 
     test('a relative --log path is resolved against the cwd the embedder passed', async () => {

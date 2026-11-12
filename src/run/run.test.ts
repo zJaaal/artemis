@@ -273,6 +273,10 @@ describe('run: the global flags --dry-run, --quiet and --log', () => {
         expect((await art([`--log=${newLog()}`, 'hello'])).code).toBe(EXIT_CODE.OK);
     });
 
+    test('--log --json is a usage error that comes out as the object asked for', async () => {
+        expect(envelope(await art(['hello', '--log', '--json'])).ok).toBe(false);
+    });
+
     test('--log with no value is a usage error', async () => {
         expect((await art(['hello', '--log'])).code).toBe(EXIT_CODE.USAGE);
     });

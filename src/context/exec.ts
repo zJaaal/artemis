@@ -1,10 +1,5 @@
-import { MS_PER_SECOND } from '../constants.js';
+import { CARRIAGE_RETURN, EXEC_PIPED_HIDDEN, LINE_END, MS_PER_SECOND } from '../constants.js';
 import type { ChildStream, CreateTailFn, PickExecModeFn } from '../models.js';
-
-const LINE_END = '\n';
-const CARRIAGE_RETURN = /\r$/;
-
-const PIPED_HIDDEN = { pipe: true, echo: 'none', keep: true } as const;
 
 /**
  * How `ctx.exec` runs a child: the first row that applies, top to bottom. Output is piped only when
@@ -13,7 +8,7 @@ const PIPED_HIDDEN = { pipe: true, echo: 'none', keep: true } as const;
  */
 export const pickExecMode: PickExecModeFn = ({ capture, quiet, json, log }) => {
     if (capture || quiet) {
-        return PIPED_HIDDEN;
+        return EXEC_PIPED_HIDDEN;
     }
 
     if (json) {

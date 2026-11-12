@@ -8,6 +8,7 @@ import { CommandError } from '../errors/errors.js';
 import { manifest } from '../help/help.js';
 import type { IO, SkillCommandFn, SkillWords } from '../models.js';
 import { successEnvelope } from '../run/report.js';
+import { isNonEmptyText } from '../utils/is-text.js';
 import { resolveWorld } from '../run/world.js';
 import {
     SKILL_HELP,
@@ -20,8 +21,6 @@ import { shadowsWord } from './shadow.js';
 import { buildSkill } from './skill.js';
 import { parseSkillWords } from './skill-words.js';
 import { wordHelp } from './word-help.js';
-
-const isText = (value: unknown): value is string => typeof value === 'string' && value !== '';
 
 /** Text for a person, or under --json the one object the contract promises. */
 function print(io: IO, json: boolean, text: string, result: unknown): void {
@@ -77,8 +76,8 @@ export const skillCommand: SkillCommandFn = async (words, options, cwd) => {
     const { name, description } = project.manifest;
 
     const markdown = buildSkill(manifest(bin, registry), {
-        name: isText(name) ? name : undefined,
-        description: isText(description) ? description : undefined
+        name: isNonEmptyText(name) ? name : undefined,
+        description: isNonEmptyText(description) ? description : undefined
     });
 
     if (parsed.write === undefined) {

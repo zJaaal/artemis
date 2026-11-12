@@ -2,11 +2,10 @@ import path from 'node:path';
 
 import { MANIFEST_FILE } from '../constants.js';
 import type { DoctorCheck, DoctorFacts, DoctorFailureFn, RunDoctorFn } from '../models.js';
+import { DOCTOR_SINGULAR_FAILED } from './constants.js';
 import { installedCheck, rangeCheck, rangeOf } from './install-checks.js';
 
 // Pure: every check of `art doctor` from what the edges read. A `warn` or a `fail` always has a `fix`.
-
-const SINGULAR_FAILED = '1 check failed';
 
 const versionCheck = ({ running }: DoctorFacts): DoctorCheck => ({
     id: 'version',
@@ -148,7 +147,7 @@ export const doctorFailure: DoctorFailureFn = (checks) => {
     }
 
     return {
-        error: failed.length === 1 ? SINGULAR_FAILED : `${failed.length} checks failed`,
+        error: failed.length === 1 ? DOCTOR_SINGULAR_FAILED : `${failed.length} checks failed`,
         hint: failed[0]?.fix,
         checks: [...checks]
     };

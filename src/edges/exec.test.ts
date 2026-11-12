@@ -81,6 +81,33 @@ describe('spawnChild: how a child ends', () => {
         expect(Date.now() - started).toBeLessThan(GRANDCHILD_LIFETIME_MS / 2);
     });
 
+    test('a script that is not executable is a start error, not an exit code', async () => {
+        const script = path.join(folders.make('artemis-exec-'), 'run.sh');
+
+        fs.writeFileSync(script, '#!/bin/sh\nexit 0\n', { mode: 0o644 });
+
+        const { outcome } = await runNode('', { command: script, args: [] });
+
+        expect(outcome.startError).toMatch(/EACCES/);
+    });
+
+    test('a child that already exited with an error is not reported as stopped', async () => {
+        const child = spawnChild({
+            command: process.execPath,
+            args: ['-e', GRANDCHILD_JOB.replace('process.exit(0)', 'process.exit(2)')],
+            cwd: undefined,
+            env: undefined,
+            pipe: true,
+            timeoutMs: undefined,
+            onData: () => undefined
+        });
+
+        await new Promise((resolve) => setTimeout(resolve, GAP_MS * 2));
+        await child.stop();
+
+        expect(await child.done).toMatchObject({ code: 2, stopped: false });
+    });
+
     test('a child that runs past the timeout is killed and reported as timed out', async () => {
         const { outcome } = await runNode(SILENT_JOB, { timeoutMs: SHORT_TIMEOUT_MS });
 

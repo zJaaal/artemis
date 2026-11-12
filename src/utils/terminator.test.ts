@@ -33,8 +33,12 @@ describe('jsonRequested', () => {
         expect(jsonRequested(['echo', '--', '--json'])).toBe(false);
     });
 
-    test('is false when --json is the value of --log', () => {
-        expect(jsonRequested(['hello', '--log', '--json'])).toBe(false);
+    test('is true for --log --json, which the parser refuses as a usage error to report as JSON', () => {
+        expect(jsonRequested(['hello', '--log', '--json'])).toBe(true);
+    });
+
+    test('is false for --log=--json, which is a file of that name', () => {
+        expect(jsonRequested(['hello', '--log=--json'])).toBe(false);
     });
 
     test('is true when --json follows the value of --log', () => {
@@ -43,8 +47,8 @@ describe('jsonRequested', () => {
 });
 
 describe('quietRequested', () => {
-    test('is false when --quiet is the value of --log', () => {
-        expect(quietRequested(['hello', '--log', '--quiet'])).toBe(false);
+    test('is false for --log=--quiet, which is a file of that name', () => {
+        expect(quietRequested(['hello', '--log=--quiet'])).toBe(false);
     });
 
     test('is true when --quiet is among the arguments', () => {

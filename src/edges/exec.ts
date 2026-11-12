@@ -1,16 +1,22 @@
-import { spawn, type StdioOptions } from 'node:child_process';
+import { spawn } from 'node:child_process';
 import fs from 'node:fs';
 
-import { ERROR_CODE, EXEC_DRAIN_MS, EXEC_KILL_GRACE_MS, EXIT_CODE } from '../constants.js';
+import {
+    ERROR_CODE,
+    EXEC_DRAIN_MS,
+    EXEC_KILL_GRACE_MS,
+    EXEC_OUTPUT_ENCODING,
+    EXEC_STDIO_INHERITED,
+    EXEC_STDIO_PIPED,
+    EXIT_CODE
+} from '../constants.js';
 import type { ChildStream, SpawnChildFn, SpawnOutcome } from '../models.js';
 import { codeOf } from '../utils/error-code.js';
+import { messageOf } from '../utils/error-message.js';
 
 // Edge: the only place a child process starts for `ctx.exec`. It never uses a shell, so nothing in
-// `args` is interpreted, and it never lets a child outlive the call that asked for it.
-
-const STDIO_PIPED: StdioOptions = ['ignore', 'pipe', 'pipe'];
-const STDIO_INHERITED: StdioOptions = 'inherit';
-const OUTPUT_ENCODING = 'utf8';
+// `args` is interpreted, and it never lets the child it started outlive the call that asked for it (a grandchild the child started is
+// its own business: only the direct child is signalled).
 
 /** Starts a child. `done` resolves when it has ended; `stop` ends it politely, then for good. */
 export const spawnChild: SpawnChildFn = (request) => {
@@ -18,23 +24,28 @@ export const spawnChild: SpawnChildFn = (request) => {
         cwd: request.cwd,
         env: request.env,
         shell: false,
-        stdio: request.pipe ? STDIO_PIPED : STDIO_INHERITED
+        stdio: request.pipe ? EXEC_STDIO_PIPED : EXEC_STDIO_INHERITED
     });
 
     let ended = false;
     let timedOut = false;
     let stopped = false;
+    let exited = false;
     let killTimer: NodeJS.Timeout | undefined;
     let timeoutTimer: NodeJS.Timeout | undefined;
     let drainTimer: NodeJS.Timeout | undefined;
 
     const done = new Promise<SpawnOutcome>((resolve) => {
-        const finish = (outcome: Pick<SpawnOutcome, 'code' | 'notFound' | 'cwdMissing'>) => {
+        const finish = (
+            outcome: Pick<SpawnOutcome, 'code' | 'notFound' | 'cwdMissing'> & {
+                startError?: string | undefined;
+            }
+        ) => {
             ended = true;
             clearTimeout(killTimer);
             clearTimeout(timeoutTimer);
             clearTimeout(drainTimer);
-            resolve({ ...outcome, timedOut, stopped });
+            resolve({ startError: undefined, ...outcome, timedOut, stopped });
         };
 
         // 'error' fires when the executable cannot start; 'close' never does then. Node gives the
@@ -43,7 +54,12 @@ export const spawnChild: SpawnChildFn = (request) => {
             const cwdMissing = request.cwd !== undefined && !fs.existsSync(request.cwd);
             const notFound = codeOf(error) === ERROR_CODE.MISSING && !cwdMissing;
 
-            finish({ code: EXIT_CODE.FAILED, notFound, cwdMissing });
+            finish({
+                code: EXIT_CODE.FAILED,
+                notFound,
+                cwdMissing,
+                startError: notFound || cwdMissing ? undefined : messageOf(error)
+            });
         });
 
         // A child ended by a signal has no code: that is a failure
@@ -55,6 +71,8 @@ export const spawnChild: SpawnChildFn = (request) => {
         // (`npm run dev`) that outlives the child would hang the call. 'exit' is the child itself:
         // its pipes get a short moment to drain, then they are cut.
         child.on('exit', (code) => {
+            exited = true;
+
             drainTimer = setTimeout(() => {
                 child.stdout?.destroy();
                 child.stderr?.destroy();
@@ -66,7 +84,7 @@ export const spawnChild: SpawnChildFn = (request) => {
     const listen = (stream: ChildStream) => {
         const source = child[stream];
 
-        source?.setEncoding(OUTPUT_ENCODING);
+        source?.setEncoding(EXEC_OUTPUT_ENCODING);
         source?.on('data', (chunk: string) => request.onData(chunk, stream));
     };
 
@@ -78,7 +96,8 @@ export const spawnChild: SpawnChildFn = (request) => {
             return;
         }
 
-        stopped ||= !timedOut;
+        // A child that already ended on its own, with output still being read, did not end because of this
+        stopped ||= !timedOut && !exited;
         child.kill('SIGTERM');
 
         killTimer ??= setTimeout(

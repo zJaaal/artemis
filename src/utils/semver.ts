@@ -15,6 +15,7 @@ import type {
     ParseVersionFn,
     RangeBody,
     RangeVerdict,
+    SplitOperator,
     Version
 } from '../models.js';
 
@@ -125,7 +126,7 @@ function tilde({ numbers }: RangeBody): Bound[] {
 }
 
 /** The operator a comparator starts with (longest first, so `>=` is not read as `>`), and the rest. */
-function splitOperator(text: string): { op: string; rest: string } {
+function splitOperator(text: string): SplitOperator {
     const op = RANGE_OPERATORS.find((candidate) => text.startsWith(candidate)) ?? '';
 
     return { op, rest: text.slice(op.length) };

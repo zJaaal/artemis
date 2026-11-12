@@ -1,8 +1,6 @@
 import { UsageError } from '../errors/errors.js';
 import type { ParseSkillWordsFn, SkillWords } from '../models.js';
-import { SKILL_FLAGS, SKILL_USAGE_LINE, SKILL_WORD } from './constants.js';
-
-const WRITE_PREFIX = `${SKILL_FLAGS.write}=`;
+import { SKILL_FLAGS, SKILL_USAGE_LINE, SKILL_WORD, SKILL_WRITE_PREFIX } from './constants.js';
 
 const usageError = (message: string, hint: string): UsageError =>
     new UsageError(message, { usage: SKILL_USAGE_LINE, hint });
@@ -21,8 +19,8 @@ function applyFlag(read: SkillWords, flag: string): SkillWords | undefined {
         case SKILL_FLAGS.quiet:
             return { ...read, quiet: true };
         default:
-            return flag.startsWith(WRITE_PREFIX)
-                ? { ...read, write: flag.slice(WRITE_PREFIX.length) }
+            return flag.startsWith(SKILL_WRITE_PREFIX)
+                ? { ...read, write: flag.slice(SKILL_WRITE_PREFIX.length) }
                 : undefined;
     }
 }

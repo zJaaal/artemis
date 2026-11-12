@@ -148,3 +148,6 @@ export type IsValidNameFn = (name: string) => boolean;
 
 /** Something that runs with its own arguments, such as a registry operation. */
 export type Operation<TArgs extends unknown[], TResult> = (...args: TArgs) => TResult;
+
+/** A port outside the allowed range: the first slot that leaves it, and the port it gets there. */
+export type PortOutOfRange = { slot: number; port: number };

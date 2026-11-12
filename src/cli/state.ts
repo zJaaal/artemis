@@ -1,6 +1,7 @@
 import { GLOBAL_FLAG_TOKENS, TERMINATOR } from '../constants.js';
 import { UsageError } from '../errors/errors.js';
 import { isValidDocName } from '../kits/store/names.js';
+import { findStrayLeading } from '../resolve/resolve.js';
 import type {
     AssertLeadingFlagsFn,
     ParseStateWordsFn,
@@ -44,7 +45,7 @@ function applyFlag(words: StateWords, flag: string): StateWords {
  * --json state` is fine, `art --reset state steps` is not (it would read as `state steps --reset`).
  */
 export const assertLeadingFlags: AssertLeadingFlagsFn = (leading, word) => {
-    const stray = leading.find((flag) => !GLOBAL_FLAG_TOKENS.includes(flag));
+    const stray = findStrayLeading(leading);
 
     if (stray !== undefined) {
         throw usageError(

@@ -159,6 +159,10 @@ export type AskQuestionFn = (question: Question, streams?: PromptStreams) => Pro
 export type IsAbortFn = (error: unknown) => boolean;
 export type IsBooleanFn = (value: unknown) => value is boolean;
 export type IsTextFn = (value: unknown) => value is string;
+/** A range comparator split into its operator (`>=`, `^`, or none) and what follows it. */
+export type SplitOperator = { op: string; rest: string };
+
+export type IsNonEmptyTextFn = (value: unknown) => value is string;
 export type IsTextListFn = (value: unknown) => value is string[];
 
 /** The `ctx` a command receives. */
@@ -724,6 +728,8 @@ export type SpawnOutcome = {
     cwdMissing: boolean;
     /** The caller ended it (`stop`, when the run ended), as opposed to the timeout: not a failure. */
     stopped: boolean;
+    /** Why it could not start, when the cause is neither a missing program nor a missing folder (permissions, say). */
+    startError: string | undefined;
 };
 
 export type ChildHandle = {

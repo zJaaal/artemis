@@ -162,3 +162,6 @@ export const WORD_NAMES: readonly string[] = BUILTINS.map((builtin) => builtin.i
 export const DOCTOR_STATUS_LABEL = { ok: 'ok  ', warn: 'warn', fail: 'FAIL' } as const;
 export const DOCTOR_ID_WIDTH = 'installed'.length;
 export const DOCTOR_FIX_INDENT = '      ';
+
+export const SKILL_WRITE_PREFIX = `${SKILL_FLAGS.write}=`;
+export const DOCTOR_SINGULAR_FAILED = '1 check failed';

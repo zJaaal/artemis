@@ -85,12 +85,6 @@ describe('ctx.exec: what it returns', () => {
         expect([run.out, run.err]).toEqual(['', '']);
     });
 
-    test('--quiet still returns the output to the command', async () => {
-        const run = await art(['exec', HELLO_SCRIPT, '--quiet', '--json']);
-
-        expect(result(run.out).output).toBe('hi\n');
-    });
-
     test('a non-zero exit with reject: false returns the code', async () => {
         const run = await art(['exec', 'process.exit(4)', '--no-reject', '--json']);
 
@@ -181,6 +175,35 @@ describe('ctx.exec: a child that fails', () => {
 
     test('under --json the tail is only in the envelope, never printed as text', async () => {
         expect((await art(['exec', NOISY_FAILURE, '--json'])).out).not.toMatch(/Error:/);
+    });
+});
+
+describe('ctx.exec: what it keeps in memory', () => {
+    test('output is returned only to a call that asked for it', async () => {
+        const run = await art(['exec', 'console.log("hi")', '--quiet', '--json']);
+
+        expect(envelope(run).result).toMatchObject({ output: '' });
+    });
+
+    test('a capture call gets it', async () => {
+        const run = await art(['exec', 'console.log("hi")', '--capture', '--json']);
+
+        expect(envelope(run).result).toMatchObject({ output: 'hi\n' });
+    });
+});
+
+describe('ctx.exec: a program that cannot be started', () => {
+    test('is its own error with the cause, and fails even with reject: false', async () => {
+        const script = path.join(folders.make('artemis-exec-'), 'run.sh');
+
+        fs.writeFileSync(script, '#!/bin/sh\nexit 0\n', { mode: 0o644 });
+
+        const run = await art(['exec', 'unused', '--command', script, '--no-reject', '--json']);
+
+        expect(envelope(run)).toMatchObject({
+            ok: false,
+            error: expect.stringContaining('could not be started')
+        });
     });
 });
 

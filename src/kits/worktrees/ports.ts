@@ -1,5 +1,5 @@
 import { MAX_SLOT_PORT, MIN_SLOT_PORT } from './constants.js';
-import type { FindPortProblemsFn, PortPlan } from './models.js';
+import type { FindPortProblemsFn, PortOutOfRange, PortPlan } from './models.js';
 
 // Pure: the checks on the base ports an app hands to `defineWorktrees`. They run once, when it is
 // called, before any instance exists, so a mistake names its keys instead of surfacing as a Docker
@@ -29,10 +29,7 @@ function numberProblems({ ports, slotStep, maxSlots }: PortPlan): string[] {
 }
 
 /** The first slot whose port is outside the allowed range, or undefined. The port is linear in the slot, so the ends are enough. */
-function outOfRange(
-    base: number,
-    { slotStep, maxSlots }: PortPlan
-): { slot: number; port: number } | undefined {
+function outOfRange(base: number, { slotStep, maxSlots }: PortPlan): PortOutOfRange | undefined {
     if (base < MIN_SLOT_PORT || base > MAX_SLOT_PORT) {
         return { slot: 0, port: base };
     }
@@ -60,11 +57,14 @@ function rangeProblems(plan: PortPlan): string[] {
     });
 }
 
-/** Every pair of keys in a group, in the order they were declared. */
-const pairsOf = (keys: readonly string[]): [string, string][] =>
-    keys.flatMap((first, index) =>
-        keys.slice(index + 1).map((second): [string, string] => [first, second])
-    );
+/** Every pair of keys in a group, in the order they were declared: each key with the ones after it, then the rest. */
+function pairsOf(keys: readonly string[]): [string, string][] {
+    const [first, ...rest] = keys;
+
+    return first === undefined
+        ? []
+        : [...rest.map((second): [string, string] => [first, second]), ...pairsOf(rest)];
+}
 
 /** Keys grouped by `base % slotStep`: only bases in the same group can ever share a port. */
 function groupByRemainder(ports: Record<string, number>, slotStep: number): string[][] {

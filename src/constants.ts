@@ -1,4 +1,6 @@
-import type { FlagDefinition, StyleCodes } from './models.js';
+import type { StdioOptions } from 'node:child_process';
+
+import type { ExecMode, FlagDefinition, StyleCodes } from './models.js';
 
 /** Exit codes: 0 success, 1 the command failed, 2 the command line was wrong. */
 export const EXIT_CODE = { OK: 0, FAILED: 1, USAGE: 2 } as const;
@@ -118,6 +120,7 @@ export const NEXT_PREFIX = 'Next:';
 /** `ctx.exec`: how much of a failed child is kept, and how long a child gets to stop after SIGTERM. */
 export const EXEC_TAIL_LINES = 40;
 export const EXEC_TAIL_LINE_CHARS = 500;
+export const EXEC_START_HINT = 'Check that it is an executable this user may run.';
 export const EXEC_KILL_GRACE_MS = 5000;
 /** After a child exits, how long its output pipes get to drain before they are cut (a grandchild may hold them open). */
 export const EXEC_DRAIN_MS = 200;
@@ -201,3 +204,15 @@ export const SCOPE_PREFIX = /^@[^/]+\//;
 
 /** A string that is a URL, such as `file:///app/bin.js` or `http://x`, and not a path (`C:\\x` is a path). */
 export const URL_LIKE = /^(file:|[a-z][a-z0-9+.-]*:\/\/)/i;
+
+/** How `ctx.exec` starts a child: stdin ignored and both output streams piped, or everything inherited. */
+export const EXEC_STDIO_PIPED: StdioOptions = ['ignore', 'pipe', 'pipe'];
+export const EXEC_STDIO_INHERITED: StdioOptions = 'inherit';
+export const EXEC_OUTPUT_ENCODING = 'utf8';
+
+/** Piped output is split into lines for `tail`; a Windows child ends them with a carriage return too. */
+export const LINE_END = '\n';
+export const CARRIAGE_RETURN = /\r$/;
+
+/** The mode of a piped child whose output nobody is shown but `tail` keeps. */
+export const EXEC_PIPED_HIDDEN: ExecMode = { pipe: true, echo: 'none', keep: true };

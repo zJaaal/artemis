@@ -100,7 +100,7 @@ export type ExecOptions = {
 };
 export type ExecResult = {
     code: number; // 0 when skipped under --dry-run
-    output: string; // stdout and stderr interleaved, in every piped mode (not only capture); '' when the output was shown on the terminal (inherit mode) or skipped
+    output: string; // stdout and stderr interleaved, with `capture` or `readOnly` only; '' otherwise (shown on the terminal, echoed, hidden or skipped), so a child that runs for hours under `--log` does not pile up in memory
     skipped: boolean; // true under --dry-run for a call without readOnly: nothing ran
 };
 ```
@@ -115,7 +115,7 @@ log: { type: 'string', description: 'Write everything the command and its child 
 
 `dry-run`, `quiet` and `log` become reserved: `defineCommand` throws a `TypeError` for a command that declares any of them, as it does for `help`, `json` and `yes`. No short forms are added (`-q` and `-n` stay free for commands). `--brief` and `--agents` are not global. They are flags of the `help` word only, and anywhere else they stay unknown flags (exit 2), as today.
 
-`--log` parses like every string flag of spec 01: `--log file` and `--log=file` are the same, a repeated `--log` keeps the last value, and the word after `--log` is always its value, so `art --log hello` means the log file `hello` and no command. That is a `UsageError` (exit 2), because `--log` means nothing without a command and the help word does not take it (below).
+`--log` parses like every string flag of spec 01: `--log file` and `--log=file` are the same, a repeated `--log` keeps the last value, and the word after `--log` is its value, so `art --log hello` means the log file `hello` and no command. A value that starts with a dash (`--log --json`) is a usage error, which Node's parser finds ambiguous, and it is reported as JSON when `--json` was typed; `--log=--json` logs to a file of that name. That is a `UsageError` (exit 2), because `--log` means nothing without a command and the help word does not take it (below).
 
 The built-in words take the new global flags as follows. `--quiet` is accepted by `init`, `state`, `skill`, `doctor` and `help`, where it hides warnings. `--dry-run` and `--log` on any built-in word are a `UsageError` (exit 2), like any other flag a word does not take, because none of them runs `ctx.exec` or has a plan to show. `--log` with no command (`art --log hello`, `art help --log x`) is a `UsageError` too; its wording is not fixed.
 
@@ -333,6 +333,7 @@ Files that change for the two new words, beside `launch.ts`: `src/cli/shadow.ts`
 Failures:
 
 - A failed spawn (`ENOENT`) is `CommandError` "<command> was not found", hint "Install it, or check PATH."
+- A `cwd` that does not exist is `CommandError` "The folder <cwd> does not exist" (Node reports it with the same `ENOENT`). Any other failure to start (a script that is not executable, `EACCES`) is `CommandError` "<command> could not be started: <cause>". Both throw whatever `reject` says, because the child never ran.
 - A non-zero exit with `reject` (the default) is `CommandError` "<command> exited with code N". Its `tail` holds the last `EXEC_TAIL_LINES` non-blank lines (no `tail` key in inherit mode, where nothing was kept), and its hint is "Full log: <file>" with `--log`, or "Run again with --log <file> to keep its full output." without. In text mode, when the child's output was not shown (`--quiet` or `capture`), the tail is printed to stderr under the error, so a person sees why the child failed; with `--json` it is only in the envelope.
 - With `reject: false`, a non-zero exit returns `{ code, output, skipped: false }` instead of throwing.
 - A timeout always throws, `reject: false` included: "<command> took longer than N s", where N is `timeoutMs / 1000` written without trailing zeros (`1.5 s`, `30 s`). The kill is SIGTERM, then SIGKILL after `EXEC_KILL_GRACE_MS`. A timeout carries `tail` and the log hint like any other child failure.
@@ -515,7 +516,7 @@ Branch `spec-03` exists, cut from `main` after spec 02 was merged (`b084a02`). E
 | Risk | Mitigation |
 | --- | --- |
 | Piped children lose colors and progress bars | Only when output is piped: `--json`, `--quiet` and `capture`, where nobody reads the child's output in a terminal, and text mode with `--log`, where a person may be watching and loses the child's colors for the run. The README says so beside `--log`. Text mode without those flags keeps inherit. |
-| A child keeps running after Artemis fails or is interrupted | Every child is tracked and killed when `run` ends; a timeout sends SIGTERM, then SIGKILL after `EXEC_KILL_GRACE_MS`. Ctrl+C reaches inherited and piped children through the terminal's process group, as today. A SIGTERM sent to Artemis alone (not its group) is not forwarded: the children outlive it. Forwarding signals is out of scope; the README says to signal the process group. |
+| A child keeps running after Artemis fails or is interrupted | Every child is tracked and killed when `run` ends; a timeout sends SIGTERM, then SIGKILL after `EXEC_KILL_GRACE_MS`. Only the direct child is signalled: a grandchild it started (`npm run dev` starting a server) keeps running and keeps its port. Killing the process group would stop it, but a detached child no longer receives Ctrl+C from the terminal, so it is out of scope; the README says so. Ctrl+C reaches inherited and piped children through the terminal's process group, as today. A SIGTERM sent to Artemis alone (not its group) is not forwarded: the children outlive it. Forwarding signals is out of scope; the README says to signal the process group. |
 | Plan lines, `tail` and `--log` show a secret passed as an argument or printed by a child | They hold what was passed or printed, as is: what the child printed is what a terminal would have shown, and `tail` is capped. The README says so; commands should pass secrets through `env`, which is never shown. |
 | A `readOnly` exec that is not read-only changes something under `--dry-run` | The author vouches for it, call by call; AGENTS.md says to mark only calls that change nothing. Artemis cannot check it. |
 | The port probe breaks on some machine and every slot looks free | Fails open by design: the check is advice, and Docker still names the port in a real clash. |

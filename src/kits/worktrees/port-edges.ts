@@ -1,6 +1,6 @@
 import { spawnSync } from 'node:child_process';
 
-import { PORT_PROBE_SCRIPT, PORT_PROBE_TIMEOUT_MS } from './constants.js';
+import { PORT_PROBE_SCRIPT, PORT_PROBE_TIMEOUT_MS, PROBE_OUTPUT_SEPARATOR } from './constants.js';
 import type { PortProbeEdges, PortsInUseFn } from './models.js';
 
 // Edge: the default `portsInUse`. `ensure` runs inside the registry's synchronous lock, so it cannot
@@ -17,13 +17,11 @@ const REAL_EDGES: PortProbeEdges = {
     execPath: process.execPath
 };
 
-const ONE_PER_LINE = '\n';
-
 /** The ports a probe printed; a line that is not a port is ignored. */
 const readPorts = (stdout: string): Set<number> =>
     new Set(
         stdout
-            .split(ONE_PER_LINE)
+            .split(PROBE_OUTPUT_SEPARATOR)
             .map((line) => Number(line))
             .filter((port) => Number.isInteger(port) && port > 0)
     );
