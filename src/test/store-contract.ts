@@ -825,6 +825,96 @@ export const describeStoreContract = (label: string, create: CreateStoreFn): voi
             expect(await second).toBe('second');
         });
 
+        test('onWait is told the label of the holder, when it has one', async () => {
+            const store = create();
+            const door = createDoor();
+            const told: LockHolder[] = [];
+
+            const first = store.lock('build', () => door.closed, { label: 'build of core-feat-x' });
+
+            const second = store.lock('build', () => 'second', {
+                pollMs: POLL_MS,
+                onWait: (holder) => told.push(holder)
+            });
+
+            await sleepFor(WORK_MS * 3);
+            door.open();
+            await Promise.all([first, second]);
+
+            expect(told).toEqual([{ pid: process.pid, label: 'build of core-feat-x' }]);
+        });
+
+        test('a label with spaces comes back whole', async () => {
+            const store = create();
+            const door = createDoor();
+            const told: LockHolder[] = [];
+
+            const first = store.lock('build', () => door.closed, { label: 'a b  c d' });
+
+            const second = store.lock('build', () => 'second', {
+                pollMs: POLL_MS,
+                onWait: (holder) => told.push(holder)
+            });
+
+            await sleepFor(WORK_MS * 3);
+            door.open();
+            await Promise.all([first, second]);
+
+            expect(told[0]?.label).toBe('a b  c d');
+        });
+
+        test('a holder with no label tells onWait only the process', async () => {
+            const store = create();
+            const door = createDoor();
+            const told: LockHolder[] = [];
+
+            const first = store.lock('build', () => door.closed);
+
+            const second = store.lock('build', () => 'second', {
+                pollMs: POLL_MS,
+                onWait: (holder) => told.push(holder)
+            });
+
+            await sleepFor(WORK_MS * 3);
+            door.open();
+            await Promise.all([first, second]);
+
+            expect(told[0]).not.toHaveProperty('label');
+        });
+
+        test('the error after a timeout names the job the holder is doing', async () => {
+            const store = create();
+            const door = createDoor();
+            const first = store.lock('build', () => door.closed, { label: 'build of core-feat-x' });
+
+            await expect(
+                store.lock('build', () => 'never', { timeoutMs: WORK_MS, pollMs: POLL_MS })
+            ).rejects.toMatchObject({
+                message: expect.stringContaining(
+                    `is locked by process ${process.pid} (build of core-feat-x).`
+                )
+            });
+
+            door.open();
+            await first;
+        });
+
+        test.each([
+            { name: 'an empty label', label: '' },
+            { name: 'a label with a line break', label: 'one\ntwo' },
+            { name: 'a label with a carriage return', label: 'one\rtwo' },
+            { name: 'a label over the limit', label: 'x'.repeat(121) },
+            { name: 'a label that is not a string', label: 42 }
+        ])('$name is a TypeError', async ({ label }) => {
+            await expect(async () =>
+                create().lock('build', () => 'x', { label: label as string })
+            ).rejects.toBeInstanceOf(TypeError);
+        });
+
+        test('a label of exactly the limit is accepted', async () => {
+            expect(await create().lock('build', () => 'x', { label: 'x'.repeat(120) })).toBe('x');
+        });
+
         test('different names do not exclude each other', async () => {
             const store = create();
 

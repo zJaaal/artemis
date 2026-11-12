@@ -11,6 +11,11 @@ export const INT32_BYTES = 4;
 /** A named lock may be held for minutes (a build), so it is polled gently. */
 export const NAMED_LOCK_POLL_MS = 1000;
 
+/** A label on a named lock is one short line: it is shown to whoever waits, and written into the lock file. */
+export const LOCK_LABEL_MAX_LENGTH = 120;
+export const LOCK_FIELD_SEPARATOR = ' ';
+export const LINE_BREAK = /[\r\n]/;
+
 /** Signal 0 only asks whether the process exists. */
 export const PROBE_SIGNAL = 0;
 

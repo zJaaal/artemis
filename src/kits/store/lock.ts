@@ -9,7 +9,9 @@ import {
 } from '../../edges/files.js';
 import { CommandError } from '../../errors/errors.js';
 import { createHeldLocks } from './held.js';
+import { holderOf } from './labels.js';
 import {
+    LOCK_FIELD_SEPARATOR,
     LOCK_GRACE_MS,
     LOCK_POLL_MS,
     LOCK_SUFFIX,
@@ -41,8 +43,7 @@ const ACQUIRED: LockStep = { kind: 'acquired' };
 const RETRY: LockStep = { kind: 'retry' };
 
 /** The process id a lock names (`<pid> <token>`), or undefined when it holds none yet. */
-const holderPid = (content: string): number | undefined =>
-    Number.parseInt(content, 10) || undefined;
+const holderPid = (content: string): number | undefined => holderOf(content).pid;
 
 /** How long ago a file was written, by the injected clock; undefined when it is not there. */
 function ageOf(file: string, edges: LockAttempt['edges']): number | undefined {
@@ -81,7 +82,7 @@ function takeOver({ lock, ownership, edges }: LockAttempt, observed: string): Lo
         clearAbandonedGuard(guard, edges);
 
         // Someone else is taking over: wait for them, as for any other holder.
-        return { kind: 'wait', holder: { pid: holderPid(readTextIfExists(guard) ?? '') } };
+        return { kind: 'wait', holder: holderOf(readTextIfExists(guard) ?? '') };
     }
 
     try {
@@ -105,7 +106,7 @@ function contend(attempt: LockAttempt): LockStep {
     }
 
     if (isHeld(attempt.lock, observed, attempt.edges)) {
-        return { kind: 'wait', holder: { pid: holderPid(observed) } };
+        return { kind: 'wait', holder: holderOf(observed) };
     }
 
     return takeOver(attempt, observed);
@@ -122,8 +123,12 @@ function release({ lock, ownership }: LockAttempt): void {
     }
 }
 
-function attemptFor(file: string, edges: LockEdges): LockAttempt {
-    return { lock: `${file}${LOCK_SUFFIX}`, ownership: `${edges.pid} ${edges.token()}`, edges };
+/** A named lock writes its label after the token; a document lock is exactly `<pid> <token>`. */
+function attemptFor(file: string, edges: LockEdges, label?: string): LockAttempt {
+    const owner = `${edges.pid}${LOCK_FIELD_SEPARATOR}${edges.token()}`;
+    const ownership = label === undefined ? owner : `${owner}${LOCK_FIELD_SEPARATOR}${label}`;
+
+    return { lock: `${file}${LOCK_SUFFIX}`, ownership, edges };
 }
 
 /** A named lock the asking flow already holds: waiting for itself would never end. */
@@ -133,11 +138,19 @@ export const alreadyHeldError: AlreadyHeldErrorFn = (name) =>
     });
 
 /** The lock is held by someone alive and the wait ran out. */
-export function lockedError(file: string, lock: string, { pid }: LockHolder): CommandError {
-    return new CommandError(
-        `${file} is locked by ${pid === undefined ? 'another process' : `process ${pid}`}.`,
-        { hint: `If no other command is running, delete ${lock}.` }
-    );
+export function lockedError(file: string, lock: string, holder: LockHolder): CommandError {
+    return new CommandError(`${file} is locked by ${describeHolder(holder)}.`, {
+        hint: `If no other command is running, delete ${lock}.`
+    });
+}
+
+/** "process 80676", with the job in parentheses when the holder said what it is doing. */
+function describeHolder({ pid, label }: LockHolder): string {
+    if (label === undefined) {
+        return pid === undefined ? 'another process' : `process ${pid}`;
+    }
+
+    return `${pid === undefined ? 'an unknown process' : `process ${pid}`} (${label})`;
 }
 
 /**
@@ -184,8 +197,8 @@ export const withLockSync: WithLockSyncFn = (file, work, edges) => {
  * instead of waiting for itself forever.
  */
 export const withLockAsync: WithLockAsyncFn = async (file, work, edges, options = {}) => {
-    const attempt = attemptFor(file, edges);
-    const { onWait, pollMs = NAMED_LOCK_POLL_MS, timeoutMs } = options;
+    const { onWait, pollMs = NAMED_LOCK_POLL_MS, timeoutMs, label } = options;
+    const attempt = attemptFor(file, edges, label);
 
     if (heldAsynchronously.isHeldHere(attempt.lock)) {
         throw alreadyHeldError(path.basename(file));

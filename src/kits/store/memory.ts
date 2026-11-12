@@ -63,7 +63,7 @@ function memoryLocks(edges: LockEdges) {
     return async <TResult>(
         name: string,
         work: () => TResult | Promise<TResult>,
-        { onWait, pollMs = NAMED_LOCK_POLL_MS, timeoutMs }: NamedLockOptions = {}
+        { onWait, pollMs = NAMED_LOCK_POLL_MS, timeoutMs, label }: NamedLockOptions = {}
     ): Promise<TResult> => {
         if (held.isHeldHere(name)) {
             throw alreadyHeldError(name);
@@ -84,7 +84,11 @@ function memoryLocks(edges: LockEdges) {
 
             if (!announced) {
                 announced = true;
-                onWait?.({ pid: holder.pid });
+
+                onWait?.({
+                    pid: holder.pid,
+                    ...(holder.label === undefined ? {} : { label: holder.label })
+                });
             }
 
             await waitFor(holder, edges, pollMs, deadline);
@@ -96,7 +100,11 @@ function memoryLocks(edges: LockEdges) {
             letGo = resolve;
         });
 
-        holders.set(name, { pid: edges.pid, released });
+        holders.set(name, {
+            pid: edges.pid,
+            ...(label === undefined ? {} : { label }),
+            released
+        });
 
         try {
             return await held.holding(name, work);

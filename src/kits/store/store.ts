@@ -3,6 +3,7 @@ import path from 'node:path';
 import { makeDirectory, readTextIfExists, writeAtomic } from '../../edges/files.js';
 import { JSON_EXTENSION } from '../../constants.js';
 import { createDocument } from './doc.js';
+import { assertLockLabel } from './labels.js';
 import { resolveLockEdges } from './lock-options.js';
 import { withLockAsync, withLockSync } from './lock.js';
 import { UNVERSIONED } from './constants.js';
@@ -41,6 +42,10 @@ export const assembleStore: AssembleStoreFn = (dir, backend, lock) => ({
     },
     lock: (name, work, lockOptions) => {
         assertDocName(name);
+
+        if (lockOptions?.label !== undefined) {
+            assertLockLabel(lockOptions.label);
+        }
 
         return lock(name, work, lockOptions);
     }

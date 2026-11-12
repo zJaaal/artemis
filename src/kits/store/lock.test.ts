@@ -376,3 +376,14 @@ describe('withLockSync: reentrancy', () => {
         expect(withLockSync(stateFile, () => fs.existsSync(lock), edges)).toBe(true);
     });
 });
+
+describe('withLockSync: a document lock never has a label', () => {
+    test('is exactly the pid and the token', () => {
+        const file = path.join(folders.make('artemis-doc-lock-'), 'steps');
+        const { edges } = createFakeLockEdges({ isProcessAlive: () => false, timeoutMs: 100 });
+
+        expect(
+            withLockSync(file, () => fs.readFileSync(`${file}${LOCK_SUFFIX}`, 'utf8'), edges)
+        ).toBe(`${FAKE_PID} token-1`);
+    });
+});
