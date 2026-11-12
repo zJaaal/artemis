@@ -1,8 +1,17 @@
-import { describe, expect, test } from 'vitest';
+import path from 'node:path';
+
+import { afterEach, describe, expect, test } from 'vitest';
 
 import { EXIT_CODE } from '../constants.js';
 import { art, envelope } from '../test/art.js';
 import { BAD_COMMANDS_FIXTURE_DIR } from '../test/constants.js';
+import { createTempFolders } from '../test/temp.js';
+
+const folders = createTempFolders();
+
+afterEach(() => folders.cleanUp());
+
+const newLog = (): string => path.join(folders.make('artemis-run-flags-'), 'x.log');
 
 describe('run: resolving and running a command', () => {
     test('a top-level file is a command named after the file', async () => {
@@ -247,14 +256,15 @@ describe('run: prompts and nested commands', () => {
 
 describe('run: the global flags --dry-run, --quiet and --log', () => {
     test('--log before and after the command parse the same', async () => {
-        const before = await art(['--log', 'x.log', 'hello', '--json']);
-        const after = await art(['hello', '--log', 'x.log', '--json']);
+        const file = newLog();
+        const before = await art(['--log', file, 'hello', '--json']);
+        const after = await art(['hello', '--log', file, '--json']);
 
         expect(envelope(before).result).toEqual(envelope(after).result);
     });
 
     test('--log=file before the command is accepted', async () => {
-        expect((await art(['--log=x.log', 'hello'])).code).toBe(EXIT_CODE.OK);
+        expect((await art([`--log=${newLog()}`, 'hello'])).code).toBe(EXIT_CODE.OK);
     });
 
     test('--log with no value is a usage error', async () => {

@@ -119,6 +119,8 @@ export const NEXT_PREFIX = 'Next:';
 export const EXEC_TAIL_LINES = 40;
 export const EXEC_TAIL_LINE_CHARS = 500;
 export const EXEC_KILL_GRACE_MS = 5000;
+/** After a child exits, how long its output pipes get to drain before they are cut (a grandchild may hold them open). */
+export const EXEC_DRAIN_MS = 200;
 export const MS_PER_SECOND = 1000;
 export const EXEC_NOT_FOUND_HINT = 'Install it, or check PATH.';
 export const EXEC_LOG_HINT_PREFIX = 'Full log:';

@@ -17,6 +17,8 @@ const NOT_AN_EXECUTABLE = 'artemis-no-such-program';
 const SHORT_TIMEOUT_MS = 100;
 const SILENT_JOB = 'setInterval(() => {}, 1000)';
 const GAP_MS = 40;
+const GRANDCHILD_LIFETIME_MS = 4000;
+const GRANDCHILD_JOB = `require('node:child_process').spawn(process.execPath, ['-e', 'setTimeout(() => {}, ${GRANDCHILD_LIFETIME_MS})'], { stdio: 'inherit' }); process.exit(0)`;
 
 /** Runs `node -e <script> ...args` for real and collects what it printed, in arrival order. */
 const runNode = async (
@@ -61,6 +63,22 @@ describe('spawnChild: how a child ends', () => {
         });
 
         expect(await child.done).toMatchObject({ notFound: true });
+    });
+
+    test('a folder that does not exist is not reported as a missing program', async () => {
+        const { outcome } = await runNode('process.exit(0)', {
+            cwd: path.join(folders.make('artemis-exec-'), 'typo')
+        });
+
+        expect(outcome).toMatchObject({ notFound: false });
+    });
+
+    test('a child that leaves a grandchild holding its output does not hang the call', async () => {
+        const started = Date.now();
+
+        await runNode(GRANDCHILD_JOB);
+
+        expect(Date.now() - started).toBeLessThan(GRANDCHILD_LIFETIME_MS / 2);
     });
 
     test('a child that runs past the timeout is killed and reported as timed out', async () => {

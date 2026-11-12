@@ -1,6 +1,7 @@
 import { spawn, type StdioOptions } from 'node:child_process';
+import fs from 'node:fs';
 
-import { ERROR_CODE, EXEC_KILL_GRACE_MS, EXIT_CODE } from '../constants.js';
+import { ERROR_CODE, EXEC_DRAIN_MS, EXEC_KILL_GRACE_MS, EXIT_CODE } from '../constants.js';
 import type { ChildStream, SpawnChildFn, SpawnOutcome } from '../models.js';
 import { codeOf } from '../utils/error-code.js';
 
@@ -24,24 +25,39 @@ export const spawnChild: SpawnChildFn = (request) => {
     let timedOut = false;
     let killTimer: NodeJS.Timeout | undefined;
     let timeoutTimer: NodeJS.Timeout | undefined;
+    let drainTimer: NodeJS.Timeout | undefined;
 
     const done = new Promise<SpawnOutcome>((resolve) => {
         const finish = (outcome: Pick<SpawnOutcome, 'code' | 'notFound'>) => {
             ended = true;
             clearTimeout(killTimer);
             clearTimeout(timeoutTimer);
+            clearTimeout(drainTimer);
             resolve({ ...outcome, timedOut });
         };
 
-        // 'error' fires when the executable cannot start; 'close' never does then
+        // 'error' fires when the executable cannot start; 'close' never does then. Node gives the
+        // same ENOENT for a missing program and a missing folder, so a missing cwd is not "not found".
         child.on('error', (error) => {
-            const notFound = codeOf(error) === ERROR_CODE.MISSING;
+            const cwdMissing = request.cwd !== undefined && !fs.existsSync(request.cwd);
+            const notFound = codeOf(error) === ERROR_CODE.MISSING && !cwdMissing;
 
             finish({ code: EXIT_CODE.FAILED, notFound });
         });
 
         // A child ended by a signal has no code: that is a failure
         child.on('close', (code) => finish({ code: code ?? EXIT_CODE.FAILED, notFound: false }));
+
+        // 'close' waits for every process that shares the child's output pipes, so a grandchild
+        // (`npm run dev`) that outlives the child would hang the call. 'exit' is the child itself:
+        // its pipes get a short moment to drain, then they are cut.
+        child.on('exit', (code) => {
+            drainTimer = setTimeout(() => {
+                child.stdout?.destroy();
+                child.stderr?.destroy();
+                finish({ code: code ?? EXIT_CODE.FAILED, notFound: false });
+            }, EXEC_DRAIN_MS);
+        });
     });
 
     const listen = (stream: ChildStream) => {
