@@ -1,6 +1,6 @@
 [Back to the README](../README.md)
 
-# The quiver: how files become commands
+# How files become commands
 
 | What you write                | What you get                                                       |
 | ----------------------------- | ------------------------------------------------------------------ |
@@ -25,7 +25,7 @@ import { defineTopic } from '@zjaaal/artemis';
 export default defineTopic({ description: 'Database tasks' });
 ```
 
-## Writing an arrow: `defineCommand`
+## Writing a command: `defineCommand`
 
 ```js
 import { defineCommand, CommandError } from '@zjaaal/artemis';

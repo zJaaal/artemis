@@ -1,6 +1,6 @@
-<h1 align="center">🏹 Artemis</h1>
+<h1 align="center">Artemis</h1>
 
-<p align="center"><strong>Every file an arrow. Every folder a quiver.</strong></p>
+<p align="center"><strong>Drop a file, get a command an agent can call.</strong></p>
 
 <p align="center">
   <a href="https://github.com/zJaaal/artemis/actions/workflows/ci.yml"><img alt="CI" src="https://github.com/zJaaal/artemis/actions/workflows/ci.yml/badge.svg"></a>
@@ -23,7 +23,7 @@ $ art deploy staging --json
 
 The script does the work, the same way every time. The agent spends tokens on the call and on the small result it reads back, not on re-reading instructions or re-deriving the steps. That is near zero, not zero: a run still costs the call and its result, and discovery (`help --json`) costs tokens in proportion to how many commands you have. What it saves is the repeated work itself.
 
-Every file is a command, every folder is a group of commands, and there is no registry to keep up to date: Artemis hunts down whatever you drop in the folder. Everything an agent needs to call a command (arguments, flags, defaults, allowed values, examples) is machine-readable, and people get a normal CLI with `--help`.
+Every file is a command, every folder is a group of commands, and there is no registry to keep up to date: Artemis finds whatever you drop in the folder. Everything an agent needs to call a command (arguments, flags, defaults, allowed values, examples) is machine-readable, and people get a normal CLI with `--help`.
 
 ```
 commands/
@@ -33,17 +33,6 @@ commands/
     migrate.js        ->  art db migrate
     reset.js          ->  art db reset
 ```
-
-## The hunt, in one table
-
-The metaphor is branding. In the API, the help text and the errors, things keep their plain names.
-
-| In the story | In the code                                                 |
-| ------------ | ----------------------------------------------------------- |
-| An **arrow** | A command: one `.js` file                                   |
-| A **quiver** | A folder: `commands/` itself, or a topic inside it          |
-| **The hunt** | Discovery: Artemis walks the folder and finds every command |
-| **`art`**    | The CLI you build on it (the name is yours)                 |
 
 ## Where it fits
 
