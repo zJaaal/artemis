@@ -9,4 +9,3 @@ src/test/fixtures
 specs
 .claude
 # the owner's working notes, not formatted by the code rules
-docs/HANDOFF.md
