@@ -1,0 +1,58 @@
+name: Release check
+
+# The "release" label and the version move together. A PR labelled "release" must bump "version" in
+# package.json to a new, higher, untagged version, and merging it stages that version (release.yml). A PR
+# without the label must leave "version" alone, so code can merge freely and wait for the next release PR.
+# It runs again when a label is added or removed, so the check follows the label.
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, labeled, unlabeled]
+
+permissions:
+  contents: read
+
+jobs:
+  version:
+    name: Version matches the release label
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0 # the base branch and the tags
+
+      - env:
+          RELEASE: ${{ contains(github.event.pull_request.labels.*.name, 'release') }}
+          BASE_REF: ${{ github.base_ref }}
+        run: |
+          base="$(git show "origin/$BASE_REF:package.json" | jq -r .version)"
+          head="$(jq -r .version package.json)"
+
+          if [ "$RELEASE" != "true" ]; then
+            if [ "$head" != "$base" ]; then
+              echo "This PR changes version $base -> $head but has no \"release\" label." >&2
+              echo "Add the label to release it, or put the version back to $base." >&2
+              exit 1
+            fi
+
+            echo "Not a release: version stays $base."
+            exit 0
+          fi
+
+          if [ "$head" = "$base" ]; then
+            echo "This PR has the \"release\" label but version is still $base. Bump it in package.json." >&2
+            exit 1
+          fi
+
+          highest="$(printf '%s\n%s\n' "$base" "$head" | sort -V | tail -n 1)"
+
+          if [ "$highest" != "$head" ]; then
+            echo "Version $head is lower than $base on $BASE_REF." >&2
+            exit 1
+          fi
+
+          if git rev-parse -q --verify "refs/tags/v$head" >/dev/null; then
+            echo "v$head is already tagged: pick a new version." >&2
+            exit 1
+          fi
+
+          echo "Release: $base -> $head. Merging stages v$head."

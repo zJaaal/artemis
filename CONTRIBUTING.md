@@ -9,6 +9,7 @@
 
 ## Releasing
 
-- A release is a PR that bumps `version` in `package.json`. When it merges, the Release workflow runs the checks, stages the package on npm (`npm stage publish --provenance`) and tags the merged commit `v<version>`. A merge that leaves the version alone stages nothing.
+- A release is a PR with the `release` label that bumps `version` in `package.json`. The "Release check" workflow keeps the two together: a labelled PR must bump to a new, higher, untagged version, and a PR without the label must leave `version` alone. Code PRs merge without a release and wait for the next release PR.
+- Merging a release PR runs the Release workflow: the checks, then `npm stage publish --provenance`, then the tag `v<version>` on the merged commit. Any other merge stages nothing.
 - Nothing is public until the owner approves the staged package with 2FA: `npx -y npm@12.2.1 stage approve @zjaaal/artemis@<version>`.
 - If staging fails, re-run the workflow: the tag is only pushed after a successful stage.

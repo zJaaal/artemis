@@ -1,9 +1,9 @@
 name: Release
 
-# Every merge to main runs this. It stages a release only when package.json carries a version that has no
-# tag yet: bumping "version" in a PR is what makes a release, and any other merge stages nothing. After
-# staging it tags the merged commit v<version>, so the next merge with the same version is skipped. A tag
-# pushed with the workflow's token starts no other workflow.
+# Every merge to main runs this. It stages a release only when the merged PR carries the "release" label
+# and package.json has a version with no tag yet (release-check.yml makes a labelled PR bump it); any other
+# merge stages nothing. After staging it tags the merged commit v<version>, so the same version is never
+# staged twice. A tag pushed with the workflow's token starts no other workflow.
 #
 # Releases are staged, not published: this workflow only ever runs `npm stage publish`, and nothing is
 # public until the owner approves the staged package with 2FA (`npm stage approve`). That protects the
@@ -23,8 +23,11 @@ permissions:
 
 jobs:
   version:
-    name: Is this a new version?
+    name: Is this a release?
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: read # the labels of the merged PR
     outputs:
       tag: ${{ steps.check.outputs.tag }}
       release: ${{ steps.check.outputs.release }}
@@ -34,11 +37,19 @@ jobs:
           fetch-depth: 0 # the tags, to know whether this version was already released
 
       - id: check
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: |
           tag="v$(jq -r .version package.json)"
           echo "tag=$tag" >> "$GITHUB_OUTPUT"
 
-          if git rev-parse -q --verify "refs/tags/$tag" >/dev/null; then
+          labelled="$(gh api "repos/$GITHUB_REPOSITORY/commits/$GITHUB_SHA/pulls" \
+            --jq '[.[].labels[].name] | index("release") != null')"
+
+          if [ "$labelled" != "true" ]; then
+            echo "The merged PR has no \"release\" label: nothing to stage."
+            echo "release=false" >> "$GITHUB_OUTPUT"
+          elif git rev-parse -q --verify "refs/tags/$tag" >/dev/null; then
             echo "$tag is already tagged: nothing to stage."
             echo "release=false" >> "$GITHUB_OUTPUT"
           else
