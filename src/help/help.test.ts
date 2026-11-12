@@ -179,7 +179,10 @@ describe('help --json: the manifest', () => {
         expect(manifest.globalFlags.map((flag) => [flag.name, flag.short])).toEqual([
             ['help', 'h'],
             ['json', null],
-            ['yes', 'y']
+            ['yes', 'y'],
+            ['dry-run', null],
+            ['quiet', null],
+            ['log', null]
         ]);
     });
 

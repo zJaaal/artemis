@@ -63,14 +63,18 @@ describe('defineCommand: args', () => {
 });
 
 describe('defineCommand: flags', () => {
-    test.each([{ name: 'help' }, { name: 'json' }, { name: 'yes' }])(
-        'the flag --$name is reserved',
-        ({ name }) => {
-            expect(() =>
-                defineCommand({ description: 'x', run, flags: { [name]: { type: 'boolean' } } })
-            ).toThrow(`defineCommand: flag "--${name}" is reserved by Artemis`);
-        }
-    );
+    test.each([
+        { name: 'help' },
+        { name: 'json' },
+        { name: 'yes' },
+        { name: 'dry-run' },
+        { name: 'quiet' },
+        { name: 'log' }
+    ])('the flag --$name is reserved', ({ name }) => {
+        expect(() =>
+            defineCommand({ description: 'x', run, flags: { [name]: { type: 'boolean' } } })
+        ).toThrow(`defineCommand: flag "--${name}" is reserved by Artemis`);
+    });
 
     test.each([{ short: 'h' }, { short: 'y' }])(
         'the short flag -$short is reserved',

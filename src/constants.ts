@@ -28,6 +28,16 @@ export const GLOBAL_FLAGS = {
         type: 'boolean',
         short: 'y',
         description: 'Never prompt; use flags, saved values or defaults'
+    },
+    'dry-run': { type: 'boolean', description: 'Say what the command would do, and do none of it' },
+    quiet: {
+        type: 'boolean',
+        description:
+            'Hide warnings, Next: lines, the version warning and child output; the result and errors still print'
+    },
+    log: {
+        type: 'string',
+        description: 'Write everything the command and its child processes print to this file'
     }
 } as const satisfies Record<string, FlagDefinition>;
 
@@ -47,6 +57,10 @@ export const HELP_WORD = 'help';
 /** Ends the flags: everything after it is a plain argument. */
 export const TERMINATOR = '--';
 export const JSON_FLAG = '--json';
+export const LOG_FLAG = '--log';
+export const LOG_FLAG_PREFIX = '--log=';
+export const DRY_RUN_FLAG = '--dry-run';
+export const QUIET_FLAG = '--quiet';
 export const FLAG_PREFIX = '-';
 
 /** Files and folders starting with one of these are private: helpers, data, the topic file. */

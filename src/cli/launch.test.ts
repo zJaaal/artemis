@@ -814,7 +814,7 @@ describe('cli: the init word of the shipped binary', () => {
     test('plain --help is still the usage text', async () => {
         const result = await art(['init', '--help'], folders.make('artemis-cli-'));
 
-        expect(result.out).toContain('Usage: init [--json]');
+        expect(result.out).toContain('Usage: init [--quiet] [--json]');
     });
 
     test('a global flag before the word works too', async () => {
@@ -864,7 +864,7 @@ describe('cli: the init word of the shipped binary', () => {
         const dir = folders.make('artemis-cli-');
         const result = await art(['init', '--help'], dir);
 
-        expect(result.out).toContain('Usage: init [--json]');
+        expect(result.out).toContain('Usage: init [--quiet] [--json]');
         expect(fs.existsSync(path.join(dir, 'package.json'))).toBe(false);
     });
 
@@ -922,5 +922,43 @@ describe('cli: the init word of the shipped binary', () => {
             ok: false,
             error: 'Unknown command "init".'
         });
+    });
+});
+
+describe('cli: the global flags on the built-in words', () => {
+    test('init accepts --quiet', async () => {
+        const root = folders.make('artemis-cli-');
+
+        expect((await art(['init', '--quiet'], root)).code).toBe(EXIT_CODE.OK);
+    });
+
+    test('init refuses --dry-run with a usage error', async () => {
+        const root = folders.make('artemis-cli-');
+
+        expect((await art(['init', '--dry-run'], root)).code).toBe(EXIT_CODE.USAGE);
+    });
+
+    test('state refuses --log with a usage error', async () => {
+        const root = folders.make('artemis-cli-');
+
+        makeProject(root, { greeting: 'project' });
+
+        expect((await art(['state', '--log', 'x.log'], root)).code).toBe(EXIT_CODE.USAGE);
+    });
+
+    test('state accepts --quiet', async () => {
+        const root = folders.make('artemis-cli-');
+
+        makeProject(root, { greeting: 'project' });
+
+        expect((await art(['state', '--quiet'], root)).code).toBe(EXIT_CODE.OK);
+    });
+
+    test('state refuses --dry-run before the word', async () => {
+        const root = folders.make('artemis-cli-');
+
+        makeProject(root, { greeting: 'project' });
+
+        expect((await art(['--dry-run', 'state'], root)).code).toBe(EXIT_CODE.USAGE);
     });
 });

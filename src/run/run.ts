@@ -1,5 +1,12 @@
 import { createContext } from '../context/context.js';
-import { EXIT_CODE, FLAG_PREFIX, HELP_WORD, ID_SEPARATOR } from '../constants.js';
+import {
+    DRY_RUN_FLAG,
+    EXIT_CODE,
+    FLAG_PREFIX,
+    HELP_WORD,
+    ID_SEPARATOR,
+    LOG_FLAG
+} from '../constants.js';
 import { discover } from '../discover/discover.js';
 import { CommandError, UsageError, isUsageError } from '../errors/errors.js';
 import {
@@ -31,7 +38,8 @@ import { reportError } from './report.js';
 import { resolveWorld } from './world.js';
 import {
     findCommand,
-    isGlobalFlagToken,
+    findStrayLeading,
+    hasLogFlag,
     resolve,
     splitLeadingFlags,
     suggest
@@ -210,10 +218,25 @@ function showHelpFor(session: Session, words: string[]): void {
     print(session, text, data);
 }
 
+/** The help word takes neither `--log` nor `--dry-run`: it runs nothing, so there is nothing to log or plan. */
+function assertHelpFlags(session: Session, leading: string[], rest: string[]): void {
+    const tokens = [...leading, ...rest];
+    const refused = hasLogFlag(tokens) ? LOG_FLAG : tokens.find((token) => token === DRY_RUN_FLAG);
+
+    if (refused !== undefined) {
+        const subject =
+            rest[0] === HELP_WORD ? `${HELP_WORD} does not take` : 'There is no command for';
+
+        throw new UsageError(`${subject} ${refused}`, {
+            hint: `${refused} goes with a command: ${session.bin} <command> ${refused}`
+        });
+    }
+}
+
 /** Works out what the command line asks for and does it. */
 async function dispatch(session: Session, argv: string[]): Promise<number> {
     const { leading, rest } = splitLeadingFlags(argv);
-    const stray = leading.find((token) => !isGlobalFlagToken(token));
+    const stray = findStrayLeading(leading);
 
     if (stray) {
         throw new UsageError(`Unknown option "${stray}"`, {
@@ -224,6 +247,8 @@ async function dispatch(session: Session, argv: string[]): Promise<number> {
     const [first] = rest;
 
     if (first === undefined || first === HELP_WORD) {
+        assertHelpFlags(session, leading, rest);
+
         showHelpFor(
             session,
             rest.slice(1).filter((token) => !isFlagToken(token))

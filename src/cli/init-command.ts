@@ -47,9 +47,11 @@ export const initCommand: InitCommandFn = (words, options, cwd) => {
 
     const result = initProject(cwd);
 
+    const quiet = words.includes(INIT_FLAGS.quiet);
+
     const output = json
         ? JSON.stringify({ ok: true, command: INIT_WORD, result })
-        : describeResult(result);
+        : describeResult(quiet ? { ...result, warnings: [] } : result);
 
     io.stdout.write(`${output}\n`);
 

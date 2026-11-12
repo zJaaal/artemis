@@ -29,10 +29,12 @@ function applyFlag(words: StateWords, flag: string): StateWords {
             return { ...words, yes: true };
         case STATE_FLAGS.reset:
             return { ...words, reset: true };
+        case STATE_FLAGS.quiet:
+            return { ...words, quiet: true };
         default:
             throw usageError(
                 `Unknown option "${flag}"`,
-                `${STATE_WORD} takes --reset, --yes, --json and --help.`
+                `${STATE_WORD} takes --reset, --yes, --quiet, --json and --help.`
             );
     }
 }
@@ -59,7 +61,15 @@ export const assertLeadingFlags: AssertLeadingFlagsFn = (leading) => {
  */
 export const parseStateWords: ParseStateWordsFn = (words) => {
     let terminated = false;
-    let read: StateWords = { name: undefined, reset: false, yes: false, json: false, help: false };
+
+    let read: StateWords = {
+        name: undefined,
+        reset: false,
+        yes: false,
+        json: false,
+        help: false,
+        quiet: false
+    };
 
     for (const word of words) {
         if (!terminated && word === TERMINATOR) {

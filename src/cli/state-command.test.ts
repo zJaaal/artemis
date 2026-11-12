@@ -620,7 +620,7 @@ describe('art state --help', () => {
 
         expect([result.code, result.out]).toEqual([
             EXIT_CODE.OK,
-            expect.stringContaining('Usage: state [<doc>] [--reset] [--yes] [--json]')
+            expect.stringContaining('Usage: state [<doc>] [--reset] [--yes] [--quiet] [--json]')
         ]);
     });
 

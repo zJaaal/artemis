@@ -179,7 +179,9 @@ export const stateCommand: StateCommandFn = async (words, host, cwd, edges = { l
     const existing = documentNames(dir);
     const interactive = canPrompt && !parsed.yes && !parsed.json;
 
-    if (shadowsWord(resolveSettings(project, 'shipped').commandsDir, STATE_WORD)) {
+    const isShadowed = shadowsWord(resolveSettings(project, 'shipped').commandsDir, STATE_WORD);
+
+    if (isShadowed && !parsed.quiet) {
         io.stderr.write(`Warning: ${STATE_SHADOW_WARNING}\n`);
     }
 

@@ -104,6 +104,24 @@ describe('splitLeadingFlags', () => {
         });
     });
 
+    test('the word after --log is its value and stays with the leading flags', () => {
+        expect(splitLeadingFlags(['--log', 'b.log', 'math', 'add'])).toEqual({
+            leading: ['--log', 'b.log'],
+            rest: ['math', 'add']
+        });
+    });
+
+    test('--log=file is one leading token', () => {
+        expect(splitLeadingFlags(['--log=b.log', 'math'])).toEqual({
+            leading: ['--log=b.log'],
+            rest: ['math']
+        });
+    });
+
+    test('--log at the end has no value to take', () => {
+        expect(splitLeadingFlags(['--log'])).toEqual({ leading: ['--log'], rest: [] });
+    });
+
     test('an empty line is empty on both sides', () => {
         expect(splitLeadingFlags([])).toEqual({ leading: [], rest: [] });
     });

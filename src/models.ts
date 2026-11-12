@@ -272,7 +272,15 @@ export type UsageErrorOptions = { hint?: string | undefined; usage?: string | un
 // Parsing
 // ---------------------------------------------------------------------------------------------
 
-export type GlobalFlags = { help: boolean; json: boolean; yes: boolean };
+export type GlobalFlags = {
+    help: boolean;
+    json: boolean;
+    yes: boolean;
+    dryRun: boolean;
+    quiet: boolean;
+    /** The `--log` file, as typed. */
+    log: string | undefined;
+};
 
 export type ParsedCommandLine = {
     args: Record<string, string | undefined>;
@@ -704,6 +712,8 @@ export type StateWords = {
     yes: boolean;
     json: boolean;
     help: boolean;
+    /** `--quiet`: hides the warnings of the word. */
+    quiet: boolean;
 };
 
 export type ParseStateWordsFn = (words: readonly string[]) => StateWords;

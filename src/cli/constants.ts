@@ -2,11 +2,16 @@ import type { Builtin } from '../models.js';
 
 /** A word the shipped `art` handles itself, like `help`: it makes a folder a project. */
 export const INIT_WORD = 'init';
-export const INIT_USAGE_LINE = `${INIT_WORD} [--json]`;
+export const INIT_USAGE_LINE = `${INIT_WORD} [--quiet] [--json]`;
 export const INIT_HELP = `Usage: ${INIT_USAGE_LINE}\n\nMakes the current folder a project: a package.json with an "artemis" key, a commands/ folder and a sample command. Nothing that exists is overwritten. It takes no arguments: go to the folder first.`;
 
 /** The only flags \`init\` takes: it is a fixed word of the binary, not a command, so it needs no more. */
-export const INIT_FLAGS = { json: '--json', help: '--help', helpShort: '-h' } as const;
+export const INIT_FLAGS = {
+    json: '--json',
+    help: '--help',
+    helpShort: '-h',
+    quiet: '--quiet'
+} as const;
 
 /** What `init` writes for the declaration, and the fields of a package.json it has to create. */
 export const INIT_DECLARATION = { commandsDir: 'commands' } as const;
@@ -45,7 +50,7 @@ export const LF = '\n';
 
 /** `state` is the second word of the shipped binary that is not a command file: it lists, shows and resets what the app keeps. */
 export const STATE_WORD = 'state';
-export const STATE_USAGE_LINE = `${STATE_WORD} [<doc>] [--reset] [--yes] [--json]`;
+export const STATE_USAGE_LINE = `${STATE_WORD} [<doc>] [--reset] [--yes] [--quiet] [--json]`;
 export const STATE_HELP = `Usage: ${STATE_USAGE_LINE}
 
 Lists the documents the app keeps in its state folder, shows one, or resets one so the app starts again from its defaults.
@@ -62,7 +67,8 @@ export const STATE_FLAGS = {
     helpShort: '-h',
     yes: '--yes',
     yesShort: '-y',
-    reset: '--reset'
+    reset: '--reset',
+    quiet: '--quiet'
 } as const;
 
 export const STATE_SHADOW_WARNING =

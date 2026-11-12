@@ -4,6 +4,8 @@ import {
     HELP_WORD,
     ID_SEPARATOR,
     GLOBAL_FLAG_TOKENS,
+    LOG_FLAG,
+    LOG_FLAG_PREFIX,
     SUGGEST_LENGTH_DIVISOR,
     SUGGEST_MIN_DISTANCE,
     TERMINATOR
@@ -148,15 +150,44 @@ export const resolve: ResolveFn = (registry, argv) => {
     return matchLongest(registry, tokens, words) ?? { kind: 'unknown', name: words[0] ?? first };
 };
 
-export const isGlobalFlagToken: IsGlobalFlagTokenFn = (token) => GLOBAL_FLAG_TOKENS.includes(token);
+export const isGlobalFlagToken: IsGlobalFlagTokenFn = (token) =>
+    GLOBAL_FLAG_TOKENS.includes(token) || token.startsWith(LOG_FLAG_PREFIX);
+
+/** Whether a token is a flag that takes the next word as its value (`--log file`). */
+const takesNextWord = (token: string): boolean => token === LOG_FLAG;
+
+/** Where the leading flags end: the first word, or `--`. The word after `--log` is its value. */
+function leadingEnd(argv: readonly string[]): number {
+    let index = 0;
+
+    while (index < argv.length) {
+        const token = argv[index] ?? '';
+
+        if (!isFlagToken(token) || token === TERMINATOR) {
+            return index;
+        }
+
+        index += takesNextWord(token) ? 2 : 1;
+    }
+
+    return argv.length;
+}
 
 /**
  * Splits off the flags typed before the command name (`art --json math add 1 2`). They belong to
- * the run, not to a command; `--` ends them like it ends any flags.
+ * the run, not to a command; `--` ends them like it ends any flags. `--log` takes a value, so the
+ * word after it stays with the leading flags.
  */
 export const splitLeadingFlags: SplitLeadingFlagsFn = (argv) => {
-    const firstWord = argv.findIndex((token) => !isFlagToken(token) || token === TERMINATOR);
-    const end = firstWord === -1 ? argv.length : firstWord;
+    const end = Math.min(leadingEnd(argv), argv.length);
 
     return { leading: argv.slice(0, end), rest: argv.slice(end) };
 };
+
+/** The leading flags that are not global ones, skipping the value that follows `--log`. */
+export const findStrayLeading = (leading: readonly string[]): string | undefined =>
+    leading.find((token, index) => !(leading[index - 1] === LOG_FLAG) && !isGlobalFlagToken(token));
+
+/** Whether `--log` was typed (with a value attached or not) among these tokens. */
+export const hasLogFlag = (tokens: readonly string[]): boolean =>
+    tokens.some((token) => token === LOG_FLAG || token.startsWith(LOG_FLAG_PREFIX));

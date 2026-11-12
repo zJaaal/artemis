@@ -244,3 +244,28 @@ describe('run: prompts and nested commands', () => {
         });
     });
 });
+
+describe('run: the global flags --dry-run, --quiet and --log', () => {
+    test('--log before and after the command parse the same', async () => {
+        const before = await art(['--log', 'x.log', 'hello', '--json']);
+        const after = await art(['hello', '--log', 'x.log', '--json']);
+
+        expect(envelope(before).result).toEqual(envelope(after).result);
+    });
+
+    test('--log=file before the command is accepted', async () => {
+        expect((await art(['--log=x.log', 'hello'])).code).toBe(EXIT_CODE.OK);
+    });
+
+    test('--log with no value is a usage error', async () => {
+        expect((await art(['hello', '--log'])).code).toBe(EXIT_CODE.USAGE);
+    });
+
+    test('--log followed by a word that would be a command is a usage error, not a command', async () => {
+        expect((await art(['--log', 'hello'])).code).toBe(EXIT_CODE.USAGE);
+    });
+
+    test('the help word does not take --log', async () => {
+        expect((await art(['help', '--log', 'x.log'])).code).toBe(EXIT_CODE.USAGE);
+    });
+});

@@ -47,7 +47,10 @@ function parseCommandLine(argv: readonly string[], options: ParseOptions, usage:
 const readGlobalFlags = (values: ParsedValues): GlobalFlags => ({
     help: Boolean(values.help),
     json: Boolean(values.json),
-    yes: Boolean(values.yes)
+    yes: Boolean(values.yes),
+    dryRun: Boolean(values['dry-run']),
+    quiet: Boolean(values.quiet),
+    log: typeof values.log === 'string' ? values.log : undefined
 });
 
 function checkChoice({ kind, name, value, choices, usage }: ChoiceCheck): void {

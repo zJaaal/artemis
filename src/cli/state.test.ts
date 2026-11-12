@@ -11,7 +11,8 @@ const NO_WORDS: StateWords = {
     reset: false,
     yes: false,
     json: false,
-    help: false
+    help: false,
+    quiet: false
 };
 
 describe('parseStateWords', () => {

@@ -14,7 +14,14 @@ import type {
 import { COMMANDS_FIXTURE_DIR } from '../test/constants.js';
 import { createSink } from '../test/sink.js';
 
-const quietFlags: GlobalFlags = { help: false, json: false, yes: false };
+const quietFlags: GlobalFlags = {
+    help: false,
+    json: false,
+    yes: false,
+    dryRun: false,
+    quiet: false,
+    log: undefined
+};
 
 let registry: Registry;
 
