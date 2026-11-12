@@ -34,9 +34,6 @@ const moduleCheck = ({ project }: DoctorFacts): DoctorCheck =>
               fix: `Add "type": "module" to ${MANIFEST_FILE}.`
           };
 
-/** Warnings that are about an alias are a clash, not a file that failed to load. */
-const isAliasWarning = (warning: string): boolean => warning.startsWith('alias ');
-
 function commandsCheck({ commands }: DoctorFacts): DoctorCheck {
     if (commands?.problem !== undefined) {
         return {
@@ -58,23 +55,12 @@ function commandsCheck({ commands }: DoctorFacts): DoctorCheck {
         };
     }
 
-    const failures = commands.warnings.filter((warning) => !isAliasWarning(warning));
-
-    if (failures.length) {
-        return {
-            id: 'commands',
-            status: 'fail',
-            message: failures.join('; '),
-            fix: 'Fix or remove the files listed.'
-        };
-    }
-
     if (commands.warnings.length) {
         return {
             id: 'commands',
-            status: 'warn',
+            status: 'fail',
             message: commands.warnings.join('; '),
-            fix: 'Rename the alias that is already taken.'
+            fix: 'Fix or remove the files listed, and rename an alias that is already taken.'
         };
     }
 

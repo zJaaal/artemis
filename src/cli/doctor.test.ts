@@ -136,7 +136,7 @@ describe('runDoctor: commands', () => {
         });
     });
 
-    test('warns, not fails, for an alias that is already taken', () => {
+    test('fails for an alias that is already taken', () => {
         const facts = {
             ...healthy(),
             commands: {
@@ -146,7 +146,7 @@ describe('runDoctor: commands', () => {
             }
         };
 
-        expect(checkOf(runDoctor(facts), 'commands')?.status).toBe('warn');
+        expect(checkOf(runDoctor(facts), 'commands')?.status).toBe('fail');
     });
 
     test('fails with the message of a bad "artemis" key', () => {
