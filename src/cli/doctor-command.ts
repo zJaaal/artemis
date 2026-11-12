@@ -3,6 +3,7 @@ import path from 'node:path';
 import { EXIT_CODE, JSON_EXTENSION } from '../constants.js';
 import { discover } from '../discover/discover.js';
 import { isFolder, listJsonFiles, pathExists, readManifest } from '../edges/files.js';
+import { shadowKind } from './shadow.js';
 import { findLocalCopy, readRunningPackage } from '../edges/package-info.js';
 import { CommandError, UsageError } from '../errors/errors.js';
 import { isValidDocName } from '../kits/store/names.js';
@@ -79,12 +80,10 @@ function hiding(
     commands: NonNullable<DoctorFacts['commands']>,
     word: string
 ): HiddenWord | undefined {
-    if (pathExists(path.join(commands.dir, `${word}.js`))) {
-        return { word, by: 'file' };
-    }
+    const by = shadowKind(commands.dir, word);
 
-    if (pathExists(path.join(commands.dir, word))) {
-        return { word, by: 'folder' };
+    if (by !== undefined) {
+        return { word, by };
     }
 
     const target = commands.aliases?.find(([alias]) => alias === word)?.[1];

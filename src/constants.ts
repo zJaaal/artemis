@@ -130,7 +130,6 @@ export const EXEC_LOG_HINT_PREFIX = 'Full log:';
 export const EXEC_NO_LOG_HINT = 'Run again with --log <file> to keep its full output.';
 export const LINE_BREAK = '\n';
 /** `w` creates the file or empties the one that is there. */
-export const LOG_WITHOUT_COMMAND_HINT = '--log goes with a command: <command> --log <file>';
 export const LOG_FILE_OPEN_MODE = 'w';
 /** The log is written in batches: when this much is waiting, or this long after the first line waits. */
 export const LOG_FLUSH_BYTES = 64 * 1024;
@@ -202,6 +201,10 @@ export const SCOPE_FOLDER_PREFIX = '@';
 export const DEFAULT_COMMANDS_FOLDER = 'commands';
 export const DEFAULT_STATE_FOLDER = 'state';
 export const DEFAULT_BIN_NAME = 'art';
+export const FLAG_WITHOUT_COMMAND_SUBJECT = 'There is no command for';
+/** Said where a version cannot be read. */
+export const UNKNOWN_VERSION_TEXT = 'an unknown version';
+export const VERSION_NOT_CHECKED = 'not checked: the running version is unknown';
 
 /** npm names the command of a string `bin` after the package, without its `@scope/`. */
 export const SCOPE_PREFIX = /^@[^/]+\//;

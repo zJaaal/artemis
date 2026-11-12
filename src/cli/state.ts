@@ -8,14 +8,14 @@ import type {
     PlanStateFn,
     StateWords
 } from '../models.js';
+import { isFlagToken } from '../utils/flag-token.js';
 import { STATE_FLAGS, STATE_USAGE_LINE, STATE_WORD } from './constants.js';
 
 const usageError = (message: string, hint: string): UsageError =>
     new UsageError(message, { usage: STATE_USAGE_LINE, hint });
 
 /** Whether a word is a flag. After `--` nothing is: it is a document name, whatever it looks like. */
-const isFlagWord = (word: string, terminated: boolean): boolean =>
-    !terminated && word.startsWith('-');
+const isFlagWord = (word: string, terminated: boolean): boolean => !terminated && isFlagToken(word);
 
 /** Applies one flag to the words read so far; an unknown one is a usage error. */
 function applyFlag(words: StateWords, flag: string): StateWords {

@@ -1,7 +1,6 @@
 import {
     ALIAS_SEPARATOR,
     FLAG_ALONE_WORDS,
-    FLAG_PREFIX,
     FLAG_WITH_VALUE_WORDS,
     HELP_WORD,
     ID_SEPARATOR,
@@ -12,6 +11,7 @@ import {
     SUGGEST_MIN_DISTANCE,
     TERMINATOR
 } from '../constants.js';
+import { isFlagToken } from '../utils/flag-token.js';
 import type {
     CommandEntry,
     FindCommandFn,
@@ -74,8 +74,6 @@ export const findCommand: FindCommandFn = (registry, id) => {
 
     return registry.commands.get(id) ?? (aliased ? registry.commands.get(aliased) : undefined);
 };
-
-const isFlagToken = (token: string): boolean => token.startsWith(FLAG_PREFIX);
 
 /** The words that can name a command: everything before the first flag. */
 function leadingWords(tokens: string[]): string[] {

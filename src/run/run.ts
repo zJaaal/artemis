@@ -9,7 +9,6 @@ import {
     BRIEF_FLAG,
     DRY_RUN_FLAG,
     EXIT_CODE,
-    FLAG_PREFIX,
     HELP_WORD,
     ID_SEPARATOR,
     LOG_FLAG,
@@ -63,9 +62,9 @@ import {
     suggest
 } from '../resolve/resolve.js';
 import { printResult } from './report.js';
+import { flagWithoutCommand } from '../utils/flag-without-command.js';
+import { isFlagToken } from '../utils/flag-token.js';
 import { beforeTerminator, jsonRequested, quietRequested } from '../utils/terminator.js';
-
-const isFlagToken = (token: string): boolean => token.startsWith(FLAG_PREFIX);
 
 /** What `printResult` takes for this run: text, or under --json the data wrapped in the success envelope. */
 const shown = (
@@ -389,12 +388,9 @@ function assertHelpFlags(session: Session, leading: string[], rest: string[]): v
     const refused = hasLogFlag(tokens) ? LOG_FLAG : tokens.find((token) => token === DRY_RUN_FLAG);
 
     if (refused !== undefined) {
-        const subject =
-            rest[0] === HELP_WORD ? `${HELP_WORD} does not take` : 'There is no command for';
+        const subject = rest[0] === HELP_WORD ? `${HELP_WORD} does not take` : undefined;
 
-        throw new UsageError(`${subject} ${refused}`, {
-            hint: `${refused} goes with a command: ${session.bin} <command> ${refused}`
-        });
+        throw flagWithoutCommand(refused, session.bin, subject);
     }
 }
 

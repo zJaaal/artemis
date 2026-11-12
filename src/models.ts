@@ -5,7 +5,7 @@ import type { AbstractPromptOptions } from '@topcli/prompts';
 
 import type { EXIT_CODE, STYLE_CODES } from './constants.js';
 import type { LockOptions } from './kits/store/models.js';
-import type { CommandError } from './errors/errors.js';
+import type { CommandError, UsageError } from './errors/errors.js';
 
 // ---------------------------------------------------------------------------------------------
 // Definitions: what a command file declares
@@ -1166,3 +1166,11 @@ export type StateRun = {
 };
 
 export type ShadowsWordFn = (commandsDir: string, word: string) => boolean;
+/** What in the commands folder hides a word of the binary: a command file, a topic folder, or nothing. */
+export type ShadowKindFn = (commandsDir: string, word: string) => 'file' | 'folder' | undefined;
+export type IsFlagTokenFn = (token: string) => boolean;
+export type FlagWithoutCommandFn = (
+    flag: string,
+    bin: string | undefined,
+    subject?: string
+) => UsageError;

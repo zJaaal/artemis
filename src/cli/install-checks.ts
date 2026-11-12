@@ -1,4 +1,10 @@
-import { ARTEMIS_PACKAGE, DEPENDENCY_FIELDS, DOCTOR_COMMAND_HINT } from '../constants.js';
+import {
+    ARTEMIS_PACKAGE,
+    UNKNOWN_VERSION_TEXT,
+    VERSION_NOT_CHECKED,
+    DEPENDENCY_FIELDS,
+    DOCTOR_COMMAND_HINT
+} from '../constants.js';
 import type { DoctorCheck, InstallCheckFn, InstallFacts, RangeOfFn } from '../models.js';
 import { isRecord } from '../utils/is-record.js';
 import { checkRange, parseVersion } from '../utils/semver.js';
@@ -30,7 +36,7 @@ export const rangeCheck: InstallCheckFn = ({ running, range }): DoctorCheck => {
         return {
             id: 'range',
             status: 'ok',
-            message: 'not checked: the running version is unknown'
+            message: VERSION_NOT_CHECKED
         };
     }
 
@@ -62,7 +68,7 @@ export const installedCheck: InstallCheckFn = ({ running, local }): DoctorCheck 
         return {
             id: 'installed',
             status: 'ok',
-            message: `not installed in this project; running ${running.version ?? 'an unknown version'} from ${running.root}`
+            message: `not installed in this project; running ${running.version ?? UNKNOWN_VERSION_TEXT} from ${running.root}`
         };
     }
 
@@ -70,7 +76,7 @@ export const installedCheck: InstallCheckFn = ({ running, local }): DoctorCheck 
         return {
             id: 'installed',
             status: 'ok',
-            message: 'not checked: the running version is unknown'
+            message: VERSION_NOT_CHECKED
         };
     }
 

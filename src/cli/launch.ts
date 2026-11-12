@@ -1,17 +1,11 @@
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-import {
-    CONFIG_KEY,
-    LOG_FLAG,
-    LOG_WITHOUT_COMMAND_HINT,
-    MANIFEST_FILE,
-    URL_LIKE
-} from '../constants.js';
+import { CONFIG_KEY, LOG_FLAG, MANIFEST_FILE, URL_LIKE } from '../constants.js';
 import { isFolder, readManifest } from '../edges/files.js';
 import { currentProcess } from '../edges/process.js';
 import { workingDirectory } from '../edges/system.js';
-import { CommandError, UsageError } from '../errors/errors.js';
+import { CommandError } from '../errors/errors.js';
 import type {
     CliFn,
     CliRoute,
@@ -34,6 +28,7 @@ import { initCommand } from './init-command.js';
 import { assertLeadingFlags } from './state.js';
 import { stateCommand } from './state-command.js';
 import { findProject, noProjectError, resolveSettings } from './settings.js';
+import { flagWithoutCommand } from '../utils/flag-without-command.js';
 import { versionWarning } from './version-warning.js';
 
 /** What `root` stands for as a path, or a CommandError that says what to pass instead. */
@@ -155,13 +150,7 @@ export const launch: CliFn = async (options = {}) => {
 
     // `--log` takes the next word as its file, so `art --log init` is a log file called init and no command
     if (!rest.length && hasLogFlag(leading)) {
-        return reportSetupFailure(
-            argv,
-            new UsageError(`There is no command for ${LOG_FLAG}`, {
-                hint: LOG_WITHOUT_COMMAND_HINT
-            }),
-            host
-        );
+        return reportSetupFailure(argv, flagWithoutCommand(LOG_FLAG, undefined), host);
     }
 
     // The shipped binary's own words, like `help`. `init` and `doctor` have to work where there is no project

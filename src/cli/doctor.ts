@@ -1,6 +1,6 @@
 import path from 'node:path';
 
-import { MANIFEST_FILE } from '../constants.js';
+import { MANIFEST_FILE, UNKNOWN_VERSION_TEXT } from '../constants.js';
 import type {
     DoctorCheck,
     DoctorFacts,
@@ -16,7 +16,7 @@ import { installedCheck, rangeCheck, rangeOf } from './install-checks.js';
 const versionCheck = ({ running }: DoctorFacts): DoctorCheck => ({
     id: 'version',
     status: 'ok',
-    message: `art ${running.version ?? 'an unknown version'} (${running.root})`
+    message: `art ${running.version ?? UNKNOWN_VERSION_TEXT} (${running.root})`
 });
 
 const projectCheck = ({ project }: DoctorFacts): DoctorCheck =>
