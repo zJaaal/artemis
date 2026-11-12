@@ -4,6 +4,43 @@ export const FIRST_WORKTREE_SLOT = 1;
 
 export const DEFAULT_MAIN_NAME = 'main';
 export const DEFAULT_SLOT_STEP = 100;
+
+/** Slots run from 0 (the main checkout) up to this many, slot 0 included. */
+export const DEFAULT_MAX_SLOTS = 20;
+
+/** Below 1024 a port needs root; from 49152 up the OS may hand it to an outgoing connection. */
+export const MIN_SLOT_PORT = 1024;
+export const MAX_SLOT_PORT = 49151;
+export const PORT_PROBE_TIMEOUT_MS = 5000;
+
+/**
+ * What the probe child runs: for each port it was given, try to listen on every interface, one after
+ * the other (a dual-stack `::` listener would clash with a `0.0.0.0` one of its own), close at once,
+ * and print the ports whose listen failed with EADDRINUSE. Any other error (IPv6 turned off) is free.
+ */
+export const PORT_PROBE_SCRIPT = `
+const net = require('node:net');
+const hosts = ['0.0.0.0', '::', '127.0.0.1', '::1'];
+const isTaken = (port, host) => new Promise((resolve) => {
+    const server = net.createServer();
+    server.once('error', (error) => resolve(error.code === 'EADDRINUSE'));
+    server.once('listening', () => server.close(() => resolve(false)));
+    server.listen({ port, host, exclusive: true });
+});
+const isInUse = async (port) => {
+    for (const host of hosts) {
+        if (await isTaken(port, host)) return true;
+    }
+    return false;
+};
+(async () => {
+    const used = [];
+    for (const arg of process.argv.slice(1)) {
+        if (await isInUse(Number(arg))) used.push(arg);
+    }
+    process.stdout.write(used.join('\\n'));
+})();
+`;
 export const DEFAULT_COLORS = ['blue', 'green', 'magenta', 'cyan', 'yellow', 'red'] as const;
 
 /** An instance name is a lowercase letter or digit, then letters, digits and dashes. */
@@ -13,3 +50,6 @@ export const INVALID_NAME_RUN = /[^a-z0-9-]+/g;
 export const EDGE_DASHES = /^-+|-+$/g;
 export const FIRST_SUFFIX = 2;
 export const FALLBACK_WORKTREE_NAME = 'worktree';
+
+/** The probe prints the ports in use, one per line. */
+export const PROBE_OUTPUT_SEPARATOR = '\n';

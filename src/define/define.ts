@@ -50,6 +50,13 @@ function validateArgs(args: ArgDefinitions): void {
     });
 }
 
+/** `destructive` and `dryRun` are markers an agent reads, so a truthy string or a number is a mistake. */
+function validateMarker(name: string, value: unknown): void {
+    if (typeof value !== 'boolean') {
+        fail(`${name} must be true or false`);
+    }
+}
+
 const isReservedShort = (flag: FlagDefinition): boolean =>
     Boolean(flag.short) && RESERVED_SHORTS.includes(flag.short ?? '');
 
@@ -121,6 +128,8 @@ export const defineCommand: DefineCommandFn = (definition) => {
         flags: declaredFlags,
         aliases = [],
         examples = [],
+        destructive = false,
+        dryRun = false,
         ...extra
     } = definition ?? {};
 
@@ -136,6 +145,8 @@ export const defineCommand: DefineCommandFn = (definition) => {
         fail('a run function is required');
     }
 
+    validateMarker('destructive', destructive);
+    validateMarker('dryRun', dryRun);
     validateArgs(args);
     Object.entries(flags).forEach(([name, flag]) => validateFlag(name, flag));
 
@@ -147,6 +158,8 @@ export const defineCommand: DefineCommandFn = (definition) => {
         flags,
         aliases,
         examples,
+        destructive,
+        dryRun,
         ...extra
     });
 };

@@ -14,7 +14,14 @@ import type {
 import { COMMANDS_FIXTURE_DIR } from '../test/constants.js';
 import { createSink } from '../test/sink.js';
 
-const quietFlags: GlobalFlags = { help: false, json: false, yes: false };
+const quietFlags: GlobalFlags = {
+    help: false,
+    json: false,
+    yes: false,
+    dryRun: false,
+    quiet: false,
+    log: undefined
+};
 
 let registry: Registry;
 
@@ -42,6 +49,11 @@ const setUp = (overrides: Partial<ContextParts> = {}) => {
         style,
         registry,
         invoke: () => Promise.resolve(undefined),
+        plan: [],
+        bin: 'art',
+        next: [],
+        exec: () => Promise.reject(new Error('not used here')),
+        logFile: undefined,
         ...overrides
     });
 
@@ -210,5 +222,18 @@ describe('ctx.prompt when nobody can answer', () => {
         const error = await ask(ctx, {}).catch((caught: unknown) => caught);
 
         expect(error).toMatchObject({ exitCode: EXIT_CODE.FAILED });
+    });
+});
+
+describe('ctx.next: what it refuses', () => {
+    test.each([
+        { name: 'an empty string', line: '' },
+        { name: 'a number', line: 42 },
+        { name: 'a line that starts with the bin', line: 'art hello' },
+        { name: 'an environment assignment', line: 'ART_INSTANCE=x hello' }
+    ])('$name is a TypeError', ({ line }) => {
+        const { ctx } = setUp();
+
+        expect(() => ctx.next(line as string)).toThrow(TypeError);
     });
 });

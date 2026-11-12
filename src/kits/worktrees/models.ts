@@ -37,6 +37,14 @@ export type WorktreesOptions = {
     envVar?: string;
     /** Port shift per slot. Default 100. */
     slotStep?: number;
+    /** How many slots there can be, slot 0 (the main checkout) included. Default 20. */
+    maxSlots?: number;
+    /**
+     * Which of these ports are in use on the machine. Asked once per candidate slot when a new slot
+     * is given out, never for a registered instance. `() => new Set()` turns the check off. Default:
+     * a short child process that tries to listen on every interface, as Vite does.
+     */
+    portsInUse?: PortsInUseFn;
     /** One per slot, cycling. */
     colors?: readonly string[];
     /** Name of the main checkout's instance. Default "main". */
@@ -69,6 +77,9 @@ export type KitConfig = {
     isCheckout: IsCheckoutFn;
     envVar: string | undefined;
     slotStep: number;
+    maxSlots: number;
+    /** A probe for one `ensure`: the default one shares a single deadline across every candidate slot it asks about. */
+    newProbe: () => PortsInUseFn;
     colors: readonly string[];
     mainName: string;
     env: NodeJS.ProcessEnv;
@@ -83,7 +94,51 @@ export type DescribeInstanceFn = (
     record: WorktreeRecord
 ) => WorktreeInstance;
 
-export type NextFreeSlotFn = (records: WorktreeRecords) => number;
+/** What the probe needs from the machine: run a child with a timeout, tell the time, and know where node is. Faked in tests. */
+export type PortProbeEdges = {
+    spawn: (
+        command: string,
+        args: readonly string[],
+        timeoutMs: number
+    ) => { status: number | null; stdout: string; failed: boolean };
+    now: () => number;
+    execPath: string;
+};
+
+/** Which of these ports are in use on the machine. */
+export type PortsInUseFn = (ports: readonly number[]) => ReadonlySet<number>;
+
+/** A candidate slot that was skipped, and the ports that blocked it, by key. */
+export type BlockedSlot = { slot: number; inUse: { key: string; port: number }[] };
+
+/** What the search for a new slot found: a free one, none left, or every free one blocked by a port in use. */
+export type SlotChoice =
+    { kind: 'slot'; slot: number } | { kind: 'full' } | { kind: 'blocked'; blocked: BlockedSlot[] };
+
+/** What the slot search needs to know about the app. */
+export type SlotSearch = Pick<KitConfig, 'ports' | 'slotStep' | 'maxSlots'>;
+
+/**
+ * The lowest slot from 1 up that no worktree has registered, is below `maxSlots` and has no port in
+ * use, asking `probe` about each candidate lowest first and stopping at the first free one.
+ */
+export type NextFreeSlotFn = (
+    records: WorktreeRecords,
+    search: SlotSearch,
+    probe: PortsInUseFn
+) => SlotChoice;
+
+/** The ports of one slot, by key. */
+export type PortsOfSlotFn = (
+    config: Pick<KitConfig, 'ports' | 'slotStep'>,
+    slot: number
+) => Record<string, number>;
+
+/** What the port checks need: the base ports of the app, the shift per slot and the number of slots. */
+export type PortPlan = { ports: Record<string, number>; slotStep: number; maxSlots: number };
+
+/** Every problem with a port plan, as the lines of one TypeError message; empty when it is sound. */
+export type FindPortProblemsFn = (plan: PortPlan) => string[];
 export type RecordOfFn = (records: WorktreeRecords, name: string) => WorktreeRecord | undefined;
 
 /** A name that is not taken by a registered worktree or by the main checkout. */
@@ -93,3 +148,6 @@ export type IsValidNameFn = (name: string) => boolean;
 
 /** Something that runs with its own arguments, such as a registry operation. */
 export type Operation<TArgs extends unknown[], TResult> = (...args: TArgs) => TResult;
+
+/** A port outside the allowed range: the first slot that leaves it, and the port it gets there. */
+export type PortOutOfRange = { slot: number; port: number };

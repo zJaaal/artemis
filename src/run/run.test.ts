@@ -1,8 +1,17 @@
-import { describe, expect, test } from 'vitest';
+import path from 'node:path';
+
+import { afterEach, describe, expect, test } from 'vitest';
 
 import { EXIT_CODE } from '../constants.js';
 import { art, envelope } from '../test/art.js';
 import { BAD_COMMANDS_FIXTURE_DIR } from '../test/constants.js';
+import { createTempFolders } from '../test/temp.js';
+
+const folders = createTempFolders();
+
+afterEach(() => folders.cleanUp());
+
+const newLog = (): string => path.join(folders.make('artemis-run-flags-'), 'x.log');
 
 describe('run: resolving and running a command', () => {
     test('a top-level file is a command named after the file', async () => {
@@ -55,6 +64,13 @@ describe('run: resolving and running a command', () => {
 
         expect(result.code).toBe(EXIT_CODE.OK);
         expect(result.err).toMatch(/oops\.js/);
+    });
+
+    test('--quiet hides the warning about a file that did not load', async () => {
+        const result = await art(['good', '--quiet'], { commandsDir: BAD_COMMANDS_FIXTURE_DIR });
+
+        expect(result.code).toBe(EXIT_CODE.OK);
+        expect(result.err).toBe('');
     });
 });
 
@@ -242,5 +258,47 @@ describe('run: prompts and nested commands', () => {
             error: 'ctx.invoke("math add"): Missing required argument "b"',
             hint: 'Usage: art math add <a> <b>'
         });
+    });
+});
+
+describe('run: the global flags --dry-run, --quiet and --log', () => {
+    test('--log before and after the command parse the same', async () => {
+        const file = newLog();
+        const before = await art(['--log', file, 'hello', '--json']);
+        const after = await art(['hello', '--log', file, '--json']);
+
+        expect(envelope(before).result).toEqual(envelope(after).result);
+    });
+
+    test('--log=file before the command is accepted', async () => {
+        expect((await art([`--log=${newLog()}`, 'hello'])).code).toBe(EXIT_CODE.OK);
+    });
+
+    test('a topic does not take --log: nothing would be written', async () => {
+        expect((await art(['math', '--log', newLog()])).code).toBe(EXIT_CODE.USAGE);
+    });
+
+    test('a topic does not take --dry-run either', async () => {
+        expect((await art(['math', '--dry-run'])).code).toBe(EXIT_CODE.USAGE);
+    });
+
+    test('after -- a topic takes --dry-run as a plain argument, like everywhere else', async () => {
+        expect((await art(['math', '--', '--dry-run'])).code).toBe(EXIT_CODE.OK);
+    });
+
+    test('--log --json is a usage error that comes out as the object asked for', async () => {
+        expect(envelope(await art(['hello', '--log', '--json'])).ok).toBe(false);
+    });
+
+    test('--log with no value is a usage error', async () => {
+        expect((await art(['hello', '--log'])).code).toBe(EXIT_CODE.USAGE);
+    });
+
+    test('--log followed by a word that would be a command is a usage error, not a command', async () => {
+        expect((await art(['--log', 'hello'])).code).toBe(EXIT_CODE.USAGE);
+    });
+
+    test('the help word does not take --log', async () => {
+        expect((await art(['help', '--log', 'x.log'])).code).toBe(EXIT_CODE.USAGE);
     });
 });

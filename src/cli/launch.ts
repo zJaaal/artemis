@@ -1,23 +1,35 @@
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-import { CONFIG_KEY, MANIFEST_FILE, URL_LIKE } from '../constants.js';
+import { CONFIG_KEY, LOG_FLAG, MANIFEST_FILE, URL_LIKE } from '../constants.js';
 import { isFolder, readManifest } from '../edges/files.js';
 import { currentProcess } from '../edges/process.js';
 import { workingDirectory } from '../edges/system.js';
 import { CommandError } from '../errors/errors.js';
-import type { CliFn, CliRoute, FolderOfRootFn, HostOptions, SettingsForFn } from '../models.js';
+import type {
+    CliFn,
+    CliRoute,
+    FolderOfRootFn,
+    HostOptions,
+    Project,
+    SettingsForFn,
+    ShippedWord
+} from '../models.js';
 import { reportError } from '../run/report.js';
 import { run } from '../run/run.js';
 import { resolveWorld } from '../run/world.js';
 import { messageOf } from '../utils/error-message.js';
-import { splitLeadingFlags } from '../resolve/resolve.js';
-import { jsonRequested } from '../utils/terminator.js';
-import { BUILTINS, INIT_WORD, STATE_WORD } from './constants.js';
+import { hasLogFlag, splitLeadingFlags } from '../resolve/resolve.js';
+import { jsonRequested, quietRequested } from '../utils/terminator.js';
+import { BUILTINS, DOCTOR_WORD, INIT_WORD, SKILL_WORD, STATE_WORD } from './constants.js';
+import { skillCommand } from './skill-command.js';
+import { doctorCommand } from './doctor-command.js';
 import { initCommand } from './init-command.js';
 import { assertLeadingFlags } from './state.js';
 import { stateCommand } from './state-command.js';
 import { findProject, noProjectError, resolveSettings } from './settings.js';
+import { flagWithoutCommand } from '../utils/flag-without-command.js';
+import { versionWarning } from './version-warning.js';
 
 /** What `root` stands for as a path, or a CommandError that says what to pass instead. */
 function pathOfRoot(root: string | URL): string {
@@ -91,8 +103,25 @@ const settingsFor: SettingsForFn = (start, route) => {
         throw missingCommandsError(settings.commandsDir, project.root, route);
     }
 
-    return settings;
+    return { settings, project };
 };
+
+const SHIPPED_WORDS: readonly ShippedWord[] = [
+    { word: INIT_WORD, run: initCommand },
+    { word: STATE_WORD, run: (words, host, cwd) => stateCommand(words, host, cwd) },
+    { word: SKILL_WORD, run: skillCommand },
+    { word: DOCTOR_WORD, run: doctorCommand }
+];
+
+/** Prints the one-line version warning to stderr, when the running Artemis is not the project's. */
+function warnAboutVersion(project: Project, host: HostOptions): void {
+    const { io, style } = resolveWorld(host);
+    const warning = versionWarning(project, style);
+
+    if (warning !== undefined) {
+        io.stderr.write(`${warning}\n`);
+    }
+}
 
 /** A setup failure goes out the way any failure does: one object under --json, text otherwise. */
 function reportSetupFailure(
@@ -119,49 +148,55 @@ export const launch: CliFn = async (options = {}) => {
     const route: CliRoute = root === undefined ? 'shipped' : 'own';
     const { leading, rest } = splitLeadingFlags(argv);
 
-    // `init` is the shipped binary's own word, like `help`: it has to work where there is no project yet.
-    if (route === 'shipped' && rest[0] === INIT_WORD) {
+    // `--log` takes the next word as its file, so `art --log init` is a log file called init and no command
+    if (!rest.length && hasLogFlag(leading)) {
+        return reportSetupFailure(argv, flagWithoutCommand(LOG_FLAG, undefined), host);
+    }
+
+    // The shipped binary's own words, like `help`. `init` and `doctor` have to work where there is no project
+    // (`init` makes one, `doctor` reports its absence); `state` and `skill` need none of the commands to load.
+    const word =
+        route === 'shipped' ? SHIPPED_WORDS.find(({ word: name }) => name === rest[0]) : undefined;
+
+    if (word) {
         try {
-            return initCommand(
+            assertLeadingFlags(leading, word.word);
+
+            return await word.run(
                 [...leading, ...rest.slice(1)],
                 host,
                 path.resolve(cwd ?? workingDirectory())
             );
         } catch (error) {
-            return reportSetupFailure(argv, error, host);
-        }
-    }
-
-    // `state` too: it reads the state folder of the project, and works with no commands folder at all.
-    if (route === 'shipped' && rest[0] === STATE_WORD) {
-        try {
-            assertLeadingFlags(leading);
-
-            return await stateCommand(
-                [...leading, ...rest.slice(1)],
+            return reportSetupFailure(
+                argv,
+                error,
                 host,
-                path.resolve(cwd ?? workingDirectory())
+                word.word === INIT_WORD ? undefined : word.word
             );
-        } catch (error) {
-            return reportSetupFailure(argv, error, host, STATE_WORD);
         }
     }
 
-    let settings;
+    let found;
 
     try {
         const start = path.resolve(
             root === undefined ? (cwd ?? workingDirectory()) : folderOfRoot(root)
         );
 
-        settings = settingsFor(start, route);
+        found = settingsFor(start, route);
     } catch (error) {
         return reportSetupFailure(argv, error, host);
     }
 
+    if (route === 'shipped' && !quietRequested(argv)) {
+        warnAboutVersion(found.project, host);
+    }
+
     return run(argv, {
         ...host,
-        ...settings,
+        ...found.settings,
+        cwd,
         ...(route === 'shipped' ? { builtins: BUILTINS } : {})
     });
 };

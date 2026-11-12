@@ -3,6 +3,8 @@ import { format } from 'node:util';
 import {
     ASKS_REGARDLESS_HINT,
     CANCELLED_MESSAGE,
+    ENV_ASSIGNMENT,
+    ID_SEPARATOR,
     NOT_INTERACTIVE_HINT,
     NOT_INTERACTIVE_MESSAGE
 } from '../constants.js';
@@ -101,6 +103,42 @@ export const createPrompter = (mode: PrompterMode): Prompter => ({
     }
 });
 
+const isEnvAssignment = (line: string): boolean => ENV_ASSIGNMENT.test(line);
+
+/** A line `ctx.next` refuses, or undefined: the bin is added for you, and an env prefix is invisible in `help --json`. */
+function badNextLine(bin: string, line: unknown): string | undefined {
+    if (typeof line !== 'string' || line.trim() === '') {
+        return 'ctx.next takes non-empty strings: what follows the bin';
+    }
+
+    if (line.startsWith(`${bin}${ID_SEPARATOR}`)) {
+        return `ctx.next adds "${bin}" itself, so "${line}" would print it twice`;
+    }
+
+    if (isEnvAssignment(line)) {
+        return `ctx.next lines cannot start with an environment assignment ("${line}"): pass it as a flag or argument, which help --json shows`;
+    }
+
+    return undefined;
+}
+
+/** Adds the lines in order, with the bin in front, and drops the ones already there. */
+function collectNext(bin: string, collected: string[], lines: readonly unknown[]): void {
+    lines.forEach((line) => {
+        const problem = badNextLine(bin, line);
+
+        if (problem !== undefined) {
+            throw new TypeError(problem);
+        }
+
+        const full = `${bin}${ID_SEPARATOR}${String(line)}`;
+
+        if (!collected.includes(full)) {
+            collected.push(full);
+        }
+    });
+}
+
 /**
  * The `ctx` a command receives. It keeps commands honest about their environment: `log` stays
  * quiet under --json so stdout is parseable, and `prompt` refuses to hang when nobody can answer.
@@ -111,20 +149,44 @@ export const createContext: CreateContextFn = ({
     interactive,
     style,
     registry,
-    invoke
+    invoke,
+    plan,
+    bin,
+    next,
+    exec,
+    logFile
 }) => ({
     json: global.json,
     interactive,
     style,
     log: (...parts) => {
+        const line = `${format(...parts)}\n`;
+
+        logFile?.write(line);
+
         if (!global.json) {
-            io.stdout.write(`${format(...parts)}\n`);
+            io.stdout.write(line);
         }
     },
     warn: (...parts) => {
-        io.stderr.write(`${format(...parts)}\n`);
+        const line = `${format(...parts)}\n`;
+
+        logFile?.write(line);
+
+        if (!global.quiet) {
+            io.stderr.write(line);
+        }
     },
     prompt: createPrompter({ interactive, flagsSkipQuestions: global.yes || global.json }),
     commands: [...registry.commands.values()],
-    invoke
+    invoke,
+    dryRun: global.dryRun,
+    plan: (step) => {
+        if (global.dryRun) {
+            plan.push(step);
+        }
+    },
+    next: (...lines) => collectNext(bin, next, lines),
+    quiet: global.quiet,
+    exec
 });

@@ -9,6 +9,8 @@ import path from 'node:path';
 
 const EXIT_FAILED = 1;
 const EXIT_USAGE = 2;
+const NOISY_LINES = 2000;
+const PACKED_ROOT_FILES = ['README.md', 'LICENSE', 'package.json', 'AGENTS.md'];
 
 const root = fs.mkdtempSync(path.join(os.tmpdir(), 'artemis-bin-'));
 const prefix = path.join(root, 'prefix');
@@ -276,12 +278,224 @@ export default defineCommand({
 
     assert.deepEqual(
         builtins.map((builtin) => builtin.id),
-        ['init', 'state'],
+        ['init', 'state', 'skill', 'doctor'],
         'help --json lists the built-in words'
     );
 
     console.log(
         'ok   art state lists, shows and resets what a command wrote through the store kit'
+    );
+
+    // Agent economy: the brief manifest, destructive and dry-run, quiet and log, the skill, the shipped
+    // AGENTS.md and the doctor, all through the installed art.
+    const agentic = makeProject('agentic');
+    const wiped = path.join(agentic, 'wiped');
+
+    fs.writeFileSync(
+        path.join(agentic, 'commands', 'wipe.js'),
+        `import fs from 'node:fs';
+import { defineCommand } from '@zjaaal/artemis';
+
+export default defineCommand({
+    description: 'Delete the data',
+    destructive: true,
+    dryRun: true,
+    examples: ['wipe'],
+    run({ ctx }) {
+        ctx.plan('write the wiped marker');
+
+        if (ctx.dryRun) {
+            return { wiped: false };
+        }
+
+        fs.writeFileSync(${JSON.stringify(wiped)}, '1');
+
+        return { wiped: true };
+    }
+});
+`
+    );
+
+    fs.writeFileSync(
+        path.join(agentic, 'commands', 'noisy.js'),
+        `import { defineCommand } from '@zjaaal/artemis';
+
+const CHILD = "for (let i = 0; i < ${NOISY_LINES}; i++) console.log('line ' + i)";
+
+export default defineCommand({
+    description: 'Runs a child that prints a lot',
+    async run({ ctx }) {
+        await ctx.exec(process.execPath, ['-e', CHILD]);
+
+        return { done: true };
+    }
+});
+`
+    );
+
+    const brief = json(execute(art, ['help', '--json', '--brief'], agentic)).result;
+    const wipeEntry = brief.commands.find((command) => command.id === 'wipe');
+
+    assert.deepEqual(
+        wipeEntry,
+        { id: 'wipe', description: 'Delete the data', destructive: true, dryRun: true },
+        'the brief manifest marks what an agent must not miss'
+    );
+
+    assert.equal(brief.more, 'art help <command> --json');
+    assert.equal('globalFlags' in brief, false, 'and has no global flags');
+    console.log('ok   help --json --brief lists ids and descriptions, with the two markers');
+
+    const refusedWipe = execute(art, ['wipe', '--json'], agentic);
+
+    assert.equal(
+        refusedWipe.code,
+        EXIT_FAILED,
+        'a destructive command with nobody to answer fails'
+    );
+
+    assert.match(json(refusedWipe).hint, /Pass --yes to confirm\./);
+    assert.ok(!fs.existsSync(wiped), 'and run was never called');
+    console.log('ok   a destructive command run with --json and no --yes exits 1 with the hint');
+
+    const planned = execute(art, ['wipe', '--dry-run', '--json'], agentic);
+
+    assert.deepEqual(
+        [json(planned).dryRun, json(planned).plan],
+        [true, ['write the wiped marker']],
+        'a dry run carries its plan'
+    );
+
+    assert.ok(!fs.existsSync(wiped), 'and changes nothing on disk');
+
+    assert.equal(
+        execute(art, ['hello', '--dry-run'], agentic).code,
+        EXIT_USAGE,
+        'not on a command that does not support it'
+    );
+
+    console.log('ok   --dry-run --json gives a plan and changes nothing');
+
+    const quiet = execute(art, ['noisy', '--json', '--quiet'], agentic);
+
+    assert.equal(
+        quiet.err,
+        '',
+        'a child that prints 2,000 lines writes nothing to stderr under --quiet'
+    );
+
+    assert.deepEqual(json(quiet).result, { done: true }, 'and stdout is exactly one object');
+
+    const logFile = path.join(agentic, 'noisy.log');
+    const logged = execute(art, ['noisy', '--json', '--quiet', '--log', logFile], agentic);
+
+    assert.equal(json(logged).log, logFile, 'the envelope names the log');
+
+    assert.equal(
+        fs.readFileSync(logFile, 'utf8').split('\n').filter(Boolean).length,
+        NOISY_LINES,
+        'and the file has every line'
+    );
+
+    console.log('ok   --quiet keeps a noisy child out of the output, and --log keeps every line');
+
+    const skill = execute(art, ['skill'], agentic).out;
+
+    assert.match(skill, /^---\nname: art\n/);
+    assert.ok(skill.includes('`art help --agents`'), 'the skill names help --agents');
+
+    assert.ok(
+        skill.includes('- `art wipe`: Delete the data (`--dry-run`)'),
+        'and lists the destructive commands'
+    );
+
+    console.log('ok   art skill is built from the manifest and points at help --agents');
+
+    // The packed AGENTS.md, from a project with no local copy: it must name nothing the package does not ship.
+    const agents = json(execute(art, ['help', '--agents', '--json'], agentic)).result;
+
+    assert.equal(
+        agents.markdown,
+        fs.readFileSync('AGENTS.md', 'utf8'),
+        'help --agents prints the packed AGENTS.md'
+    );
+
+    const outside = agents.markdown
+        .split('\n')
+        .filter((line) => /docs\/|specs\/|CODE_STANDARDS|pnpm run/.test(line));
+
+    assert.deepEqual(outside, [], 'and it names no file or script the package does not ship');
+
+    console.log(
+        'ok   help --agents prints the AGENTS.md of the running copy, with no global install needed'
+    );
+
+    const listing = JSON.parse(
+        execFileSync('npm', ['pack', '--dry-run', '--json'], {
+            encoding: 'utf8',
+            stdio: ['ignore', 'pipe', 'ignore']
+        })
+    )[0].files.map((file) => file.path);
+
+    const unexpected = listing.filter(
+        (file) => !file.startsWith('dist/') && !PACKED_ROOT_FILES.includes(file)
+    );
+
+    assert.deepEqual(
+        unexpected,
+        [],
+        'the package holds dist/ and the root files, and nothing else'
+    );
+
+    for (const file of PACKED_ROOT_FILES) {
+        assert.ok(listing.includes(file), `${file} is in the package`);
+    }
+
+    assert.ok(
+        !listing.includes('CONTRIBUTING.md') && !listing.includes('CLAUDE.md'),
+        'and the repository-only files are not'
+    );
+
+    console.log(
+        'ok   the package holds dist/, README, LICENSE, package.json and AGENTS.md, and nothing else'
+    );
+
+    // A project that installs another copy than the one that runs: the doctor says so, and the warning is not doubled on it.
+    const other = path.join(root, 'other');
+    const otherCopy = path.join(other, 'node_modules', '@zjaaal', 'artemis');
+
+    fs.mkdirSync(path.join(other, 'commands'), { recursive: true });
+    fs.mkdirSync(otherCopy, { recursive: true });
+
+    fs.writeFileSync(
+        path.join(other, 'package.json'),
+        JSON.stringify({ name: 'other', type: 'module', artemis: {} })
+    );
+
+    fs.writeFileSync(
+        path.join(otherCopy, 'package.json'),
+        JSON.stringify({ name: '@zjaaal/artemis', version: '0.0.1' })
+    );
+
+    const doctor = execute(art, ['doctor', '--json'], other);
+    const installed = json(doctor).result.checks.find((check) => check.id === 'installed');
+
+    assert.equal(installed.status, 'warn', 'the doctor warns about the other copy');
+    assert.ok(installed.fix, 'with a fix');
+    assert.ok(!doctor.err.includes('Run art doctor'), 'and prints no every-run line on top');
+
+    const everyRun = execute(art, ['help', '--json'], other);
+
+    assert.equal(
+        everyRun.err.split('\n').filter((line) => line.includes('Run art doctor.')).length,
+        1,
+        'any other run prints exactly one line'
+    );
+
+    assert.ok(JSON.parse(everyRun.out).ok, 'and stdout is still one object');
+
+    console.log(
+        'ok   art doctor reports a different installed copy; every other run says so once on stderr'
     );
 
     // 2. A consumer that ships the same CLI under its own name, with the framework as a dependency.

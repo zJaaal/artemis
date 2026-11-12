@@ -6,7 +6,7 @@ import { BUILTINS } from '../cli/constants.js';
 import { discover } from '../discover/discover.js';
 import { COMMANDS_FIXTURE_DIR } from '../test/constants.js';
 import { art, envelope } from '../test/art.js';
-import { describeBuiltins, manifest, rootHelp, topicManifest } from './help.js';
+import { briefManifest, describeBuiltins, manifest, rootHelp, topicManifest } from './help.js';
 import { createStyle } from './help.js';
 
 const manifestOf = async (...argv: string[]): Promise<Manifest> =>
@@ -142,7 +142,18 @@ describe('help --json: the manifest', () => {
                     choices: null
                 }
             ],
-            examples: []
+            examples: [],
+            destructive: false,
+            dryRun: false
+        });
+    });
+
+    test('a destructive command with dry-run support says so in the manifest', async () => {
+        const manifest = await manifestOf('help');
+
+        expect(manifest.commands.find((command) => command.id === 'wipe')).toMatchObject({
+            destructive: true,
+            dryRun: true
         });
     });
 
@@ -169,7 +180,9 @@ describe('help --json: the manifest', () => {
             'aliases',
             'args',
             'flags',
-            'examples'
+            'examples',
+            'destructive',
+            'dryRun'
         ]);
     });
 
@@ -179,7 +192,10 @@ describe('help --json: the manifest', () => {
         expect(manifest.globalFlags.map((flag) => [flag.name, flag.short])).toEqual([
             ['help', 'h'],
             ['json', null],
-            ['yes', 'y']
+            ['yes', 'y'],
+            ['dry-run', null],
+            ['quiet', null],
+            ['log', null]
         ]);
     });
 
@@ -230,7 +246,9 @@ describe('help: the binary’s own words', () => {
 
         expect((result.result as Manifest).builtins?.map((builtin) => builtin.id)).toEqual([
             'init',
-            'state'
+            'state',
+            'skill',
+            'doctor'
         ]);
     });
 
@@ -245,7 +263,9 @@ describe('help: the binary’s own words', () => {
             'aliases',
             'args',
             'flags',
-            'examples'
+            'examples',
+            'destructive',
+            'dryRun'
         ]);
     });
 
@@ -372,5 +392,42 @@ describe('help: the binary’s own words', () => {
         const narrowed = topicManifest(manifest('art', registry, BUILTINS), 'math');
 
         expect('builtins' in narrowed).toBe(false);
+    });
+});
+
+describe('briefManifest: a nested topic', () => {
+    const command = (id: string) => ({
+        id,
+        description: id,
+        usage: id,
+        aliases: [],
+        args: [],
+        flags: [],
+        examples: [],
+        destructive: false,
+        dryRun: false
+    });
+
+    const everything: Manifest = {
+        bin: 'art',
+        topics: [
+            { id: 'dotcms', description: 'dotCMS' },
+            { id: 'dotcms db', description: 'Database' }
+        ],
+        commands: [command('dotcms start'), command('dotcms db dump')],
+        globalFlags: []
+    };
+
+    test('does not list the topics above the one asked for', () => {
+        expect(briefManifest(everything, 'dotcms db').topics.map((topic) => topic.id)).toEqual([
+            'dotcms db'
+        ]);
+    });
+
+    test('lists the topic asked for and the ones below it', () => {
+        expect(briefManifest(everything, 'dotcms').topics.map((topic) => topic.id)).toEqual([
+            'dotcms',
+            'dotcms db'
+        ]);
     });
 });

@@ -10,7 +10,10 @@ import type { Envelope } from '../test/models.js';
 import { makeProject } from '../test/project.js';
 import { createSink } from '../test/sink.js';
 import { createTempFolders } from '../test/temp.js';
+import { readRunningPackage } from '../edges/package-info.js';
 import { cli } from './index.js';
+
+const readRunning = readRunningPackage;
 
 const folders = createTempFolders();
 
@@ -230,7 +233,9 @@ describe('cli: the built-in words in help', () => {
 
         expect((await manifestOf(root)).builtins?.map((builtin) => builtin.id)).toEqual([
             'init',
-            'state'
+            'state',
+            'skill',
+            'doctor'
         ]);
     });
 
@@ -249,7 +254,9 @@ describe('cli: the built-in words in help', () => {
 
         expect((await manifestOf(root)).builtins?.map((builtin) => builtin.usage)).toEqual([
             'mytool init',
-            'mytool state [doc] [flags]'
+            'mytool state [doc] [flags]',
+            'mytool skill [flags]',
+            'mytool doctor'
         ]);
     });
 
@@ -331,6 +338,7 @@ describe('cli: when it cannot find what to run', () => {
         const nowhere = folders.make('artemis-cli-');
         const result = await art(['hello', '--json'], nowhere);
 
+        expect(envelope(result.out).hint).toMatch(/^[^]*init[^]*$/);
         expect(envelope(result.out).hint).not.toMatch(/\bart\b/);
     });
 
@@ -439,6 +447,7 @@ describe('cli: when it cannot find what to run', () => {
         const result = await art(['hello'], root);
 
         expect(result.err).toContain(`Cannot read ${path.join(root, 'package.json')}`);
+        expect(result.code).toBe(EXIT_CODE.FAILED);
         expect(result.err).not.toMatch(/\s+at /);
     });
 });
@@ -661,6 +670,7 @@ describe('cli: a project’s own bin file', () => {
 
         const result = await ownArt(['hello', '--json'], path.join(tool, 'bin', 'mytool.js'));
 
+        expect(envelope(result.out).hint).toEqual(expect.any(String));
         expect(envelope(result.out).hint).not.toContain('parent folder');
     });
 
@@ -712,6 +722,7 @@ describe('cli: a project’s own bin file', () => {
 
         const result = await art(['hello', '--json'], root);
 
+        expect(envelope(result.out).hint).toEqual(expect.any(String));
         expect(envelope(result.out).hint).not.toContain('author');
     });
 
@@ -814,7 +825,7 @@ describe('cli: the init word of the shipped binary', () => {
     test('plain --help is still the usage text', async () => {
         const result = await art(['init', '--help'], folders.make('artemis-cli-'));
 
-        expect(result.out).toContain('Usage: init [--json]');
+        expect(result.out).toContain('Usage: init [--quiet] [--json]');
     });
 
     test('a global flag before the word works too', async () => {
@@ -864,7 +875,7 @@ describe('cli: the init word of the shipped binary', () => {
         const dir = folders.make('artemis-cli-');
         const result = await art(['init', '--help'], dir);
 
-        expect(result.out).toContain('Usage: init [--json]');
+        expect(result.out).toContain('Usage: init [--quiet] [--json]');
         expect(fs.existsSync(path.join(dir, 'package.json'))).toBe(false);
     });
 
@@ -922,5 +933,247 @@ describe('cli: the init word of the shipped binary', () => {
             ok: false,
             error: 'Unknown command "init".'
         });
+    });
+});
+
+describe('cli: a flag typed before a built-in word', () => {
+    test.each(['init', 'skill', 'doctor'])('the error names %s, not state', async (word) => {
+        const root = folders.make('artemis-cli-');
+
+        makeProject(root, { greeting: 'project' });
+
+        const result = await art(['--reset', word, '--json'], root);
+
+        expect(envelope(result.out).error).toBe(`"--reset" cannot come before ${word}`);
+    });
+});
+
+describe('cli: --log with no command', () => {
+    test.each(['init', 'state', 'doctor'])(
+        'art --log %s is a usage error, wherever it is run',
+        async (word) => {
+            const root = folders.make('artemis-cli-');
+
+            expect((await art(['--log', word], root)).code).toBe(EXIT_CODE.USAGE);
+        }
+    );
+});
+
+describe('cli: a leading --log before a built-in word', () => {
+    test('is not misread as a stray flag: its value is not "x.log cannot come before doctor"', async () => {
+        const root = folders.make('artemis-cli-');
+
+        makeProject(root, { greeting: 'project' });
+
+        const result = await art(['--log', 'x.log', 'doctor', '--json'], root);
+
+        expect(envelope(result.out)).toMatchObject({
+            command: 'doctor',
+            ok: false,
+            error: expect.stringContaining('--log')
+        });
+
+        expect(envelope(result.out).error).not.toMatch(/cannot come before/);
+    });
+
+    test('the word refuses --log itself, with a usage error', async () => {
+        const root = folders.make('artemis-cli-');
+
+        makeProject(root, { greeting: 'project' });
+
+        expect((await art(['--log', 'x.log', 'doctor'], root)).code).toBe(EXIT_CODE.USAGE);
+    });
+});
+
+describe('cli: --log, --json and --quiet together', () => {
+    test('--log --json is a usage error, and it comes out as the one object that was asked for', async () => {
+        const root = folders.make('artemis-cli-');
+
+        makeProject(root, { greeting: 'project' });
+
+        const result = await art(['hello', '--log', '--json'], root);
+
+        expect(envelope(result.out)).toMatchObject({ ok: false });
+    });
+
+    test('--log=--json logs to a file of that name', async () => {
+        const root = folders.make('artemis-cli-');
+
+        makeProject(root, { greeting: 'project' });
+        await art(['hello', '--log=--json'], root);
+
+        expect(fs.existsSync(path.join(root, '--json'))).toBe(true);
+    });
+
+    test('a relative --log path is resolved against the cwd the embedder passed', async () => {
+        const root = folders.make('artemis-cli-');
+
+        makeProject(root, { greeting: 'project' });
+        await art(['hello', '--log', 'run.log'], root);
+
+        expect(fs.existsSync(path.join(root, 'run.log'))).toBe(true);
+    });
+});
+
+describe('cli: the global flags on the built-in words', () => {
+    test('init accepts --quiet', async () => {
+        const root = folders.make('artemis-cli-');
+
+        expect((await art(['init', '--quiet'], root)).code).toBe(EXIT_CODE.OK);
+    });
+
+    test('init refuses --dry-run with a usage error', async () => {
+        const root = folders.make('artemis-cli-');
+
+        expect((await art(['init', '--dry-run'], root)).code).toBe(EXIT_CODE.USAGE);
+    });
+
+    test('state refuses --log with a usage error', async () => {
+        const root = folders.make('artemis-cli-');
+
+        makeProject(root, { greeting: 'project' });
+
+        expect((await art(['state', '--log', 'x.log'], root)).code).toBe(EXIT_CODE.USAGE);
+    });
+
+    test('state accepts --quiet', async () => {
+        const root = folders.make('artemis-cli-');
+
+        makeProject(root, { greeting: 'project' });
+
+        expect((await art(['state', '--quiet'], root)).code).toBe(EXIT_CODE.OK);
+    });
+
+    test('state refuses --dry-run before the word', async () => {
+        const root = folders.make('artemis-cli-');
+
+        makeProject(root, { greeting: 'project' });
+
+        expect((await art(['--dry-run', 'state'], root)).code).toBe(EXIT_CODE.USAGE);
+    });
+});
+
+describe('cli: the every-run version warning', () => {
+    const putCopy = (dir: string, version: string): void => {
+        const copy = path.join(dir, 'node_modules', '@zjaaal', 'artemis');
+
+        fs.mkdirSync(copy, { recursive: true });
+        fs.writeFileSync(path.join(copy, 'package.json'), JSON.stringify({ version }));
+    };
+
+    const projectWanting = (range: string | undefined): string => {
+        const root = folders.make('artemis-warn-');
+
+        makeProject(root, {
+            greeting: 'project',
+            manifest: range === undefined ? {} : { devDependencies: { '@zjaaal/artemis': range } }
+        });
+
+        return root;
+    };
+
+    const warnings = (err: string): string[] =>
+        err.split('\n').filter((line) => line.includes('Run art doctor.'));
+
+    /** Runs `hello` and fails unless it ran: a crash prints no warning either. */
+    const runHello = async (root: string, extra: string[] = []) => {
+        const run = await art(['hello', ...extra], root);
+
+        expect(run.code).toBe(EXIT_CODE.OK);
+
+        return run;
+    };
+
+    test('a range the running version does not satisfy gets one line naming art doctor', async () => {
+        const root = projectWanting('^99.0.0');
+
+        expect(warnings((await art(['hello'], root)).err)).toHaveLength(1);
+    });
+
+    test('a different local copy gets one line', async () => {
+        const root = projectWanting(undefined);
+
+        putCopy(root, '0.0.1');
+
+        expect(warnings((await art(['hello'], root)).err)).toHaveLength(1);
+    });
+
+    test('a copy hoisted to a parent node_modules is found too', async () => {
+        const parent = folders.make('artemis-warn-');
+        const root = path.join(parent, 'packages', 'app');
+
+        putCopy(parent, '0.0.1');
+        makeProject(root, { greeting: 'project' });
+
+        expect(warnings((await art(['hello'], root)).err)).toHaveLength(1);
+    });
+
+    test('both facts at once are still one line', async () => {
+        const root = projectWanting('^99.0.0');
+
+        putCopy(root, '0.0.1');
+
+        expect(warnings((await art(['hello'], root)).err)).toHaveLength(1);
+    });
+
+    test('a local copy equal to the running one says nothing', async () => {
+        const root = projectWanting(undefined);
+
+        const { version } = readRunning();
+
+        // Without a readable version there is nothing to compare, and this test would prove nothing
+        expect(version).toBeDefined();
+        putCopy(root, version ?? '');
+
+        expect(warnings((await runHello(root)).err)).toHaveLength(0);
+    });
+
+    test('a project with no copy and no dependency says nothing', async () => {
+        const root = projectWanting(undefined);
+
+        expect(warnings((await runHello(root)).err)).toHaveLength(0);
+    });
+
+    test('a form it does not understand (workspace:*) says nothing', async () => {
+        const root = projectWanting('workspace:*');
+
+        expect(warnings((await runHello(root)).err)).toHaveLength(0);
+    });
+
+    test('--quiet hides it', async () => {
+        const root = projectWanting('^99.0.0');
+
+        expect(warnings((await runHello(root, ['--quiet'])).err)).toHaveLength(0);
+    });
+
+    test('--quiet before the command hides it too', async () => {
+        const root = projectWanting('^99.0.0');
+
+        const run = await art(['--quiet', 'hello'], root);
+
+        expect(run.code).toBe(EXIT_CODE.OK);
+        expect(warnings(run.err)).toHaveLength(0);
+    });
+
+    test('under --json stdout is still exactly one object', async () => {
+        const root = projectWanting('^99.0.0');
+        const result = await art(['hello', '--json'], root);
+
+        expect(() => JSON.parse(result.out)).not.toThrow();
+    });
+
+    test('and the envelope never contains the warning', async () => {
+        const root = projectWanting('^99.0.0');
+
+        const run = await art(['hello', '--json'], root);
+
+        expect(envelope(run.out).ok).toBe(true);
+        expect(run.out).not.toMatch(/doctor/);
+    });
+
+    test('it goes to stderr, and the warning still lets the command run', async () => {
+        const root = projectWanting('^99.0.0');
+
+        expect(await greeting(root)).toEqual({ greeting: 'project' });
     });
 });

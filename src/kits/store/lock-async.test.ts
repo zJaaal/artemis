@@ -19,6 +19,8 @@ const SHORT_TIMEOUT_MS = 100;
 const MINUTES_OF_WAITING_MS = 600_000;
 const POLL_MS = 50;
 const WAITS_BEFORE_RELEASE = 3;
+/** Short polls, so a lock with no pid yet is still inside its grace period when the wait gives up. */
+const UNREADABLE_POLL_MS = 10;
 
 afterEach(() => folders.cleanUp());
 
@@ -284,5 +286,129 @@ describe('withLockAsync: asking again from the same process', () => {
         await withLockAsync(file, () => undefined, edges);
 
         expect(await withLockAsync(file, () => 'second time', edges)).toBe('second time');
+    });
+});
+
+describe('withLockAsync: the label of a named lock', () => {
+    const LABEL = 'build of core-feat-x';
+
+    const writeLock = (lock: string, content: string) => {
+        fs.mkdirSync(path.dirname(lock), { recursive: true });
+        fs.writeFileSync(lock, content);
+    };
+
+    test('is written after the pid and the token while the work runs', async () => {
+        const { file, lock } = setUp();
+
+        const { edges } = createFakeLockEdges({
+            isProcessAlive: nobodyIsAlive,
+            timeoutMs: SHORT_TIMEOUT_MS
+        });
+
+        const content = await withLockAsync(file, () => fs.readFileSync(lock, 'utf8'), edges, {
+            label: LABEL
+        });
+
+        expect(content).toBe(`${FAKE_PID} token-1 ${LABEL}`);
+    });
+
+    test('is released like any lock: only if the whole content is still ours', async () => {
+        const { file, lock } = setUp();
+
+        const { edges } = createFakeLockEdges({
+            isProcessAlive: nobodyIsAlive,
+            timeoutMs: SHORT_TIMEOUT_MS
+        });
+
+        await withLockAsync(file, () => undefined, edges, { label: LABEL });
+
+        expect(fs.existsSync(lock)).toBe(false);
+    });
+
+    test('a lock file written with a label is read for its pid: a holder that is alive makes it wait', async () => {
+        const { file, lock } = setUp();
+        const told: LockHolder[] = [];
+
+        const { edges } = createFakeLockEdges({
+            isProcessAlive: holderIsAlive,
+            timeoutMs: SHORT_TIMEOUT_MS,
+            onPause: () => fs.rmSync(lock, { force: true })
+        });
+
+        writeLock(lock, `${HOLDER_PID} theirs ${LABEL}`);
+
+        await withLockAsync(file, () => undefined, edges, {
+            onWait: (holder) => told.push(holder)
+        });
+
+        expect(told).toEqual([{ pid: HOLDER_PID, label: LABEL }]);
+    });
+
+    test('and a holder that is gone has it taken over, whatever label it wrote', async () => {
+        const { file, lock } = setUp();
+
+        const { edges, pauses } = createFakeLockEdges({
+            isProcessAlive: nobodyIsAlive,
+            timeoutMs: SHORT_TIMEOUT_MS
+        });
+
+        writeLock(lock, `${DEAD_PID} gone ${LABEL}`);
+
+        expect(await withLockAsync(file, () => 'took over', edges)).toBe('took over');
+        expect(pauses).toEqual([]);
+    });
+
+    test('the error after a timeout names the process and the job', async () => {
+        const { file, lock } = setUp();
+
+        const { edges } = createFakeLockEdges({
+            isProcessAlive: holderIsAlive,
+            timeoutMs: SHORT_TIMEOUT_MS
+        });
+
+        writeLock(lock, `${HOLDER_PID} theirs ${LABEL}`);
+
+        await expect(
+            withLockAsync(file, () => 'never', edges, { timeoutMs: SHORT_TIMEOUT_MS })
+        ).rejects.toMatchObject({
+            message: `${file} is locked by process ${HOLDER_PID} (${LABEL}).`
+        });
+    });
+
+    test('with no readable pid it says "an unknown process"', async () => {
+        const { file, lock } = setUp();
+
+        const { edges } = createFakeLockEdges({
+            isProcessAlive: holderIsAlive,
+            timeoutMs: SHORT_TIMEOUT_MS
+        });
+
+        writeLock(lock, `? theirs ${LABEL}`);
+
+        await expect(
+            withLockAsync(file, () => 'never', edges, {
+                timeoutMs: SHORT_TIMEOUT_MS,
+                pollMs: UNREADABLE_POLL_MS
+            })
+        ).rejects.toMatchObject({
+            message: `${file} is locked by an unknown process (${LABEL}).`
+        });
+    });
+
+    test('without a label the error is the one it always was', async () => {
+        const { file, lock } = setUp();
+
+        const { edges } = createFakeLockEdges({
+            isProcessAlive: holderIsAlive,
+            timeoutMs: SHORT_TIMEOUT_MS
+        });
+
+        writeLock(lock, `${HOLDER_PID} theirs`);
+
+        await expect(
+            withLockAsync(file, () => 'never', edges, { timeoutMs: SHORT_TIMEOUT_MS })
+        ).rejects.toMatchObject({
+            message: `${file} is locked by process ${HOLDER_PID}.`
+        });
     });
 });

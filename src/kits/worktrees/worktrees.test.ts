@@ -67,6 +67,7 @@ const kit = (overrides: Partial<WorktreesOptions> = {}) =>
         slotStep: SLOT_STEP,
         colors: COLORS,
         env: {},
+        portsInUse: () => new Set(),
         ...overrides
     });
 
@@ -489,6 +490,234 @@ describe('names that look like members of an object', () => {
     test('are not found by ensure outside a checkout when nothing was registered under them', () => {
         expect(thrownBy(() => kit().ensure({ cwd: dir, name: 'constructor' }))).toBeInstanceOf(
             UsageError
+        );
+    });
+});
+
+describe('defineWorktrees: the port plan', () => {
+    test('bases that meet in two slots below the limit are a TypeError that names both keys', () => {
+        expect(
+            thrownBy(() => kit({ ports: { elasticsearch: 9200, elasticsearchPerf: 9600 } }))
+        ).toMatchObject({
+            name: 'TypeError',
+            message: expect.stringMatching(/elasticsearch \(9200\) and elasticsearchPerf \(9600\)/)
+        });
+    });
+
+    test('the same bases pass once they are not a multiple of the step apart', () => {
+        expect(() =>
+            kit({ ports: { elasticsearch: 9200, elasticsearchPerf: 9650 } })
+        ).not.toThrow();
+    });
+
+    test('a pair far apart passes with the default limit and is refused with a bigger one', () => {
+        expect(thrownBy(() => kit({ ports: { a: 9200, b: 4200 }, maxSlots: 51 }))).toBeInstanceOf(
+            TypeError
+        );
+    });
+
+    test('a port below 1024 is a TypeError naming the key, the slot and the port', () => {
+        expect(thrownBy(() => kit({ ports: { http: 80 } }))).toMatchObject({
+            message: expect.stringMatching(/ports\.http is 80 in slot 0/)
+        });
+    });
+
+    test('a slotStep of 0 is a TypeError', () => {
+        expect(thrownBy(() => kit({ slotStep: 0 }))).toBeInstanceOf(TypeError);
+    });
+
+    test('a fractional maxSlots is a TypeError', () => {
+        expect(thrownBy(() => kit({ maxSlots: 2.5 }))).toBeInstanceOf(TypeError);
+    });
+
+    test('the message names the function', () => {
+        expect(thrownBy(() => kit({ slotStep: 0 }))).toMatchObject({
+            message: expect.stringMatching(/^defineWorktrees: /)
+        });
+    });
+});
+
+describe('maxSlots', () => {
+    const detached = (worktrees: ReturnType<typeof kit>, count: number) =>
+        Array.from({ length: count }, (_, index) =>
+            worktrees.ensureDetached({ name: `image-${index + 1}` })
+        );
+
+    test('with every slot from 1 to maxSlots - 1 registered, the next one is "All 19 slots are taken"', () => {
+        const worktrees = kit();
+
+        detached(worktrees, 19);
+
+        expect(thrownBy(() => worktrees.ensureDetached({ name: 'one-more' }))).toMatchObject({
+            message: 'All 19 slots are taken',
+            hint: expect.stringContaining('maxSlots')
+        });
+    });
+
+    test('it is a CommandError, so a person sees a hint and not a stack', () => {
+        const worktrees = kit({ maxSlots: 2 });
+
+        detached(worktrees, 1);
+
+        expect(thrownBy(() => worktrees.ensureDetached({ name: 'one-more' }))).toBeInstanceOf(
+            CommandError
+        );
+    });
+
+    test('never gives out slot 0, the main checkout', () => {
+        expect(kit({ maxSlots: 2 }).ensureDetached({ name: 'image-1' }).slot).toBe(
+            FIRST_WORKTREE_SLOT
+        );
+    });
+
+    test('a worktree is refused the same way', () => {
+        const worktrees = kit({ maxSlots: 2 });
+
+        worktrees.ensureDetached({ name: 'image-1' });
+
+        expect(thrownBy(() => worktrees.ensure({ root: worktree('feat-a') }))).toMatchObject({
+            message: 'All 1 slots are taken'
+        });
+    });
+
+    test('a registry that already holds a slot past the limit still lists it', () => {
+        const shared = registry();
+
+        shared.write({ far: { slot: 40, root: null } });
+
+        expect(
+            kit({ registry: shared, maxSlots: 20 })
+                .list()
+                .map((instance) => instance.name)
+        ).toEqual(['main', 'far']);
+    });
+
+    test('an instance already registered keeps its slot and is not refused, even when the registry is full', () => {
+        const worktrees = kit({ maxSlots: 2 });
+        const first = worktrees.ensureDetached({ name: 'image-1' });
+
+        expect(worktrees.ensureDetached({ name: 'image-1' }).slot).toBe(first.slot);
+    });
+});
+
+describe('portsInUse', () => {
+    const takenAt = (slot: number) => new Set([portsAt(slot).http, portsAt(slot).frontend]);
+
+    /** A probe that says what is in use and records what it was asked. */
+    const probe = (inUse: ReadonlySet<number>) => {
+        const asked: (readonly number[])[] = [];
+
+        return {
+            asked,
+            portsInUse: (ports: readonly number[]) => {
+                asked.push(ports);
+
+                return new Set(ports.filter((port) => inUse.has(port)));
+            }
+        };
+    };
+
+    test('a new instance skips a slot with a port in use and takes the next', () => {
+        const { portsInUse } = probe(takenAt(FIRST_WORKTREE_SLOT));
+
+        expect(kit({ portsInUse }).ensureDetached({ name: 'image-1' }).slot).toBe(
+            FIRST_WORKTREE_SLOT + 1
+        );
+    });
+
+    test('the skipped slot is a gap: the instance keeps the slot it got', () => {
+        const { portsInUse } = probe(takenAt(FIRST_WORKTREE_SLOT));
+        const worktrees = kit({ portsInUse });
+
+        worktrees.ensureDetached({ name: 'image-1' });
+
+        expect(worktrees.get('image-1').slot).toBe(FIRST_WORKTREE_SLOT + 1);
+    });
+
+    test('it is asked about the lowest slot first, and not again after a free one', () => {
+        const { portsInUse, asked } = probe(takenAt(FIRST_WORKTREE_SLOT));
+
+        kit({ portsInUse }).ensureDetached({ name: 'image-1' });
+
+        expect(asked).toEqual([
+            [portsAt(FIRST_WORKTREE_SLOT).http, portsAt(FIRST_WORKTREE_SLOT).frontend],
+            [portsAt(FIRST_WORKTREE_SLOT + 1).http, portsAt(FIRST_WORKTREE_SLOT + 1).frontend]
+        ]);
+    });
+
+    test('a registered instance is never checked', () => {
+        const worktrees = kit();
+
+        worktrees.ensureDetached({ name: 'image-1' });
+
+        const { portsInUse, asked } = probe(takenAt(FIRST_WORKTREE_SLOT));
+
+        kit({ portsInUse }).ensureDetached({ name: 'image-1' });
+
+        expect(asked).toEqual([]);
+    });
+
+    test('with every free slot blocked, the error says how many and names the ports of the lowest', () => {
+        const blocked = new Set([
+            ...takenAt(FIRST_WORKTREE_SLOT),
+            ...takenAt(FIRST_WORKTREE_SLOT + 1)
+        ]);
+
+        const { portsInUse } = probe(blocked);
+
+        expect(
+            thrownBy(() => kit({ portsInUse, maxSlots: 3 }).ensureDetached({ name: 'image-1' }))
+        ).toMatchObject({
+            message: 'No free slot below 3: 2 of them have ports in use',
+            hint: `Slot 1: http (${portsAt(1).http}), frontend (${portsAt(1).frontend}) are in use. Stop what uses it, or move that base.`
+        });
+    });
+
+    test('one key in use reads "is in use"', () => {
+        const { portsInUse } = probe(new Set([portsAt(1).http]));
+
+        expect(
+            thrownBy(() => kit({ portsInUse, maxSlots: 2 }).ensureDetached({ name: 'image-1' }))
+        ).toMatchObject({
+            hint: `Slot 1: http (${portsAt(1).http}) is in use. Stop what uses it, or move that base.`
+        });
+    });
+
+    test('that error is not the one for a registry that is full', () => {
+        const { portsInUse } = probe(takenAt(FIRST_WORKTREE_SLOT));
+
+        expect(
+            thrownBy(() => kit({ portsInUse, maxSlots: 2 }).ensureDetached({ name: 'image-1' }))
+        ).not.toMatchObject({
+            message: expect.stringMatching(/slots are taken/)
+        });
+    });
+
+    test('() => new Set() turns the check off: the lowest slot is given out', () => {
+        expect(kit({ portsInUse: () => new Set() }).ensureDetached({ name: 'image-1' }).slot).toBe(
+            FIRST_WORKTREE_SLOT
+        );
+    });
+
+    test('a worktree registers through the same check', () => {
+        const { portsInUse } = probe(takenAt(FIRST_WORKTREE_SLOT));
+
+        expect(kit({ portsInUse }).ensure({ root: worktree('feat-a') }).slot).toBe(
+            FIRST_WORKTREE_SLOT + 1
+        );
+    });
+
+    test('with no option the default probe runs a real child and gives out a slot', () => {
+        const worktrees = defineWorktrees({
+            registry: registry(),
+            mainCheckout: main.root,
+            ports: BASE_PORTS,
+            slotStep: SLOT_STEP,
+            env: {}
+        });
+
+        expect(worktrees.ensureDetached({ name: 'image-1' }).slot).toBeGreaterThanOrEqual(
+            FIRST_WORKTREE_SLOT
         );
     });
 });

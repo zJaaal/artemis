@@ -2,6 +2,9 @@ import {
     ANSI_ESCAPE,
     ANSI_RESET,
     GLOBAL_FLAGS,
+    BRIEF_MORE_SUFFIX,
+    DESTRUCTIVE_NOTE,
+    DRY_RUN_NOTE,
     ID_SEPARATOR,
     NOTE_SEPARATOR,
     SECTION_SEPARATOR,
@@ -11,6 +14,10 @@ import {
 } from '../constants.js';
 import type {
     ArgDefinition,
+    BriefCommand,
+    BriefManifest,
+    BriefManifestFn,
+    BriefTopic,
     Builtin,
     BuiltinHelpFn,
     CommandEntry,
@@ -215,6 +222,14 @@ function subjectHelp(bin: string, subject: HelpSubject, style: Style): string {
     const { description, args, flags, aliases, examples } = subject;
     const sections = [description, `${style.bold('Usage')}  ${subject.usage}`];
 
+    if (subject.destructive) {
+        sections.push(`${style.bold('Destructive')}  ${DESTRUCTIVE_NOTE}`);
+    }
+
+    if (subject.dryRun) {
+        sections.push(`${style.bold('Supports --dry-run')}  ${DRY_RUN_NOTE}`);
+    }
+
     if (args.length) {
         sections.push(section('Arguments', table(argRows(args), style), style));
     }
@@ -280,7 +295,9 @@ const describeCommand = (bin: string, entry: CommandEntry): ManifestCommand => (
     aliases: entry.definition.aliases,
     args: describeArgs(entry.definition.args),
     flags: describeFlags(entry.definition.flags),
-    examples: entry.definition.examples
+    examples: entry.definition.examples,
+    destructive: entry.definition.destructive,
+    dryRun: entry.definition.dryRun
 });
 
 /** The words of the shipped binary, described like commands so a caller reads both the same way. */
@@ -292,7 +309,9 @@ export const describeBuiltins: DescribeBuiltinsFn = (bin, builtins) =>
         aliases: [],
         args: describeArgs(builtin.args),
         flags: describeFlags(builtin.flags),
-        examples: builtin.examples
+        examples: builtin.examples,
+        destructive: false,
+        dryRun: false
     }));
 
 /**
@@ -308,7 +327,95 @@ export const manifest: ManifestFn = (bin, registry, builtins): Manifest => ({
 });
 
 const isWithin = (id: string, topicId: string): boolean =>
-    id === topicId || id.startsWith(`${topicId} `);
+    id === topicId || id.startsWith(`${topicId}${ID_SEPARATOR}`);
+
+/** Every topic id above a command id: `dotcms db seed` sits under `dotcms` and `dotcms db`. */
+const topicPrefixes = (id: string): string[] => {
+    const words = id.split(ID_SEPARATOR).slice(0, -1);
+
+    return words.map((_, index) => words.slice(0, index + 1).join(ID_SEPARATOR));
+};
+
+const briefCommand = (command: Manifest['commands'][number]): BriefCommand => ({
+    id: command.id,
+    description: command.description,
+    ...(command.destructive ? { destructive: true as const } : {}),
+    ...(command.dryRun ? { dryRun: true as const } : {})
+});
+
+/**
+ * The brief manifest: ids and one-line descriptions, and `destructive` and `dryRun` only when true,
+ * because they are the two facts an agent must not miss before calling. Topics are listed at any
+ * depth, by full id, when they hold a command of the listing.
+ */
+export const briefManifest: BriefManifestFn = (everything, topicId) => {
+    const commands = everything.commands.filter(
+        (command) => topicId === undefined || isWithin(command.id, topicId)
+    );
+
+    const withCommands = new Set(commands.flatMap((command) => topicPrefixes(command.id)));
+
+    const topics: BriefTopic[] = everything.topics
+        .filter(
+            (topic) =>
+                withCommands.has(topic.id) && (topicId === undefined || isWithin(topic.id, topicId))
+        )
+        .map((topic) => ({ id: topic.id, description: topic.description }));
+
+    return {
+        bin: everything.bin,
+        topics,
+        commands: commands.map(briefCommand),
+        ...(everything.builtins === undefined || topicId !== undefined
+            ? {}
+            : {
+                  builtins: everything.builtins.map(({ id, description }) => ({ id, description }))
+              }),
+        more: `${everything.bin} ${BRIEF_MORE_SUFFIX}`
+    };
+};
+
+/** One line per command: `id  description`, with what an agent must not miss in parentheses. */
+const briefRows = (commands: BriefCommand[]): TableRow[] =>
+    commands.map((command) => [
+        command.id,
+        withNotes(command.description, [
+            ...(command.destructive ? ['destructive'] : []),
+            ...(command.dryRun ? ['--dry-run'] : [])
+        ])
+    ]);
+
+/** `help --brief` as text: the same listing as the JSON, one line per command. */
+export const briefHelp = (brief: BriefManifest, style: Style): string => {
+    const sections: string[] = [];
+
+    if (brief.topics.length) {
+        sections.push(
+            section(
+                'Topics',
+                table(
+                    brief.topics.map((topic) => [topic.id, topic.description]),
+                    style
+                ),
+                style
+            )
+        );
+    }
+
+    if (brief.commands.length) {
+        sections.push(section('Commands', table(briefRows(brief.commands), style), style));
+    }
+
+    if (brief.builtins?.length) {
+        const rows: TableRow[] = brief.builtins.map((builtin) => [builtin.id, builtin.description]);
+
+        sections.push(section('Built-in', table(rows, style), style));
+    }
+
+    sections.push(style.dim(`One command in full: ${brief.more}`));
+
+    return sections.join(SECTION_SEPARATOR);
+};
 
 /**
  * The manifest of one topic: the topic and its sub-topics, and every command under it. It keeps the

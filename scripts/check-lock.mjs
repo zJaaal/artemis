@@ -1,7 +1,8 @@
 // Run after `pnpm run build`. Races real processes against the built kits. Registrations: each
 // process registers its own instance at the same moment, and every one must get its own slot.
 // Documents: processes update one counter, and none may be lost. Named locks: processes do a slow
-// read-modify-write under one lock, and none may be lost either.
+// read-modify-write under one lock, and none may be lost either. Labeled named locks: a process
+// that waits for a lock held by another one is told which job it is waiting for.
 import assert from 'node:assert/strict';
 import { spawn } from 'node:child_process';
 import fs from 'node:fs';
@@ -16,6 +17,10 @@ const COUNTER_UPDATES = 50;
 const LOCKED_PROCESSES = 6;
 const LOCKED_ROUNDS = 5;
 const SLOW_WORK_MS = 5;
+const HOLD_MS = 400;
+const WAIT_POLL_MS = 20;
+const READY_POLL_MS = 10;
+const LABEL = 'build of core-feat-x';
 
 const worktrees = pathToFileURL(path.resolve('dist/kits/worktrees/index.js')).href;
 const storeKit = pathToFileURL(path.resolve('dist/kits/store/index.js')).href;
@@ -38,7 +43,7 @@ const registerInChild = (folder, name) =>
              import { defineWorktrees } from ${JSON.stringify(worktrees)};
              const registry = defineStore({ dir: ${JSON.stringify(path.join(folder, 'state'))} })
                  .doc('worktrees', { fallback: {} });
-             defineWorktrees({ registry, mainCheckout: ${JSON.stringify(folder)}, ports: { http: 8080 } })
+             defineWorktrees({ registry, mainCheckout: ${JSON.stringify(folder)}, ports: { http: 8080 }, portsInUse: () => new Set() })
                  .ensureDetached({ name: ${JSON.stringify(name)} });`);
 
 const countInChild = (dir) =>
@@ -61,6 +66,25 @@ const lockedCountInChild = (dir) =>
                      counter.write({ count: seen + 1 });
                  });
              }`);
+
+const holdLabeledInChild = (dir, ready) =>
+    inChild(`import fs from 'node:fs';
+             import { setTimeout as sleep } from 'node:timers/promises';
+             import { defineStore } from ${JSON.stringify(storeKit)};
+             const store = defineStore({ dir: ${JSON.stringify(dir)} });
+             await store.lock('build', async () => {
+                 fs.writeFileSync(${JSON.stringify(ready)}, '1');
+                 await sleep(${HOLD_MS});
+             }, { label: ${JSON.stringify(LABEL)} });`);
+
+const waitForLabeledInChild = (dir, seen) =>
+    inChild(`import fs from 'node:fs';
+             import { defineStore } from ${JSON.stringify(storeKit)};
+             const store = defineStore({ dir: ${JSON.stringify(dir)} });
+             await store.lock('build', () => undefined, {
+                 pollMs: ${WAIT_POLL_MS},
+                 onWait: (holder) => fs.writeFileSync(${JSON.stringify(seen)}, JSON.stringify(holder))
+             });`);
 
 const withFolder = async (work) => {
     const folder = fs.mkdtempSync(path.join(os.tmpdir(), 'artemis-lock-'));
@@ -119,6 +143,31 @@ const namedLockRace = () =>
         assert.deepEqual(fs.readdirSync(folder), ['counter.json'], 'nothing is left behind');
     });
 
+const labeledLockRace = () =>
+    withFolder(async (folder) => {
+        const ready = path.join(folder, 'ready');
+        const seen = path.join(folder, 'seen');
+        const holder = holdLabeledInChild(folder, ready);
+
+        while (!fs.existsSync(ready)) {
+            await new Promise((resolve) => setTimeout(resolve, READY_POLL_MS));
+        }
+
+        await waitForLabeledInChild(folder, seen);
+        await holder;
+
+        const told = JSON.parse(fs.readFileSync(seen, 'utf8'));
+
+        assert.equal(told.label, LABEL, 'the waiter was told which job it waited for');
+        assert.equal(typeof told.pid, 'number', 'and which process held it');
+
+        assert.deepEqual(
+            fs.readdirSync(folder).sort(),
+            ['ready', 'seen'],
+            'no lock file is left behind'
+        );
+    });
+
 for (let round = 0; round < ROUNDS; round++) {
     await race(round);
 }
@@ -136,3 +185,7 @@ await namedLockRace();
 console.log(
     `ok   ${LOCKED_PROCESSES} real processes doing slow work under one named lock: ${LOCKED_PROCESSES * LOCKED_ROUNDS}`
 );
+
+await labeledLockRace();
+
+console.log('ok   a process waiting on a labeled named lock is told the job and the process');

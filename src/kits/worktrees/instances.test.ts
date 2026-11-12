@@ -1,7 +1,7 @@
 import { describe, expect, test } from 'vitest';
 
 import { KIT_BASE_PORTS, KIT_COLORS, KIT_SLOT_STEP } from '../../test/constants.js';
-import { FIRST_WORKTREE_SLOT, MAIN_SLOT } from './constants.js';
+import { DEFAULT_MAX_SLOTS, FIRST_WORKTREE_SLOT, MAIN_SLOT } from './constants.js';
 import { describeInstance, nextFreeSlot, uniqueName } from './instances.js';
 
 const config = { ports: KIT_BASE_PORTS, slotStep: KIT_SLOT_STEP, colors: KIT_COLORS };
@@ -46,8 +46,33 @@ describe('describeInstance', () => {
 });
 
 describe('nextFreeSlot', () => {
+    const search = { ports: KIT_BASE_PORTS, slotStep: KIT_SLOT_STEP, maxSlots: DEFAULT_MAX_SLOTS };
+    const nothingInUse = () => new Set<number>();
+
+    /** A probe that records what it was asked and says these ports are in use. */
+    const probeSaying = (inUse: number[]) => {
+        const asked: (readonly number[])[] = [];
+
+        return {
+            asked,
+            probe: (ports: readonly number[]) => {
+                asked.push(ports);
+
+                return new Set(ports.filter((port) => inUse.includes(port)));
+            }
+        };
+    };
+
+    const portsAt = (slot: number) => [
+        KIT_BASE_PORTS.http + slot * KIT_SLOT_STEP,
+        KIT_BASE_PORTS.frontend + slot * KIT_SLOT_STEP
+    ];
+
     test('is the first worktree slot when nothing is registered', () => {
-        expect(nextFreeSlot({})).toBe(FIRST_WORKTREE_SLOT);
+        expect(nextFreeSlot({}, search, nothingInUse)).toEqual({
+            kind: 'slot',
+            slot: FIRST_WORKTREE_SLOT
+        });
     });
 
     test('fills the lowest gap', () => {
@@ -56,13 +81,111 @@ describe('nextFreeSlot', () => {
             c: { slot: FIRST_WORKTREE_SLOT + 2, root: null }
         };
 
-        expect(nextFreeSlot(records)).toBe(FIRST_WORKTREE_SLOT + 1);
+        expect(nextFreeSlot(records, search, nothingInUse)).toEqual({
+            kind: 'slot',
+            slot: FIRST_WORKTREE_SLOT + 1
+        });
     });
 
     test('goes past the last slot when there is no gap', () => {
         const records = { a: { slot: FIRST_WORKTREE_SLOT, root: null } };
 
-        expect(nextFreeSlot(records)).toBe(FIRST_WORKTREE_SLOT + 1);
+        expect(nextFreeSlot(records, search, nothingInUse)).toEqual({
+            kind: 'slot',
+            slot: FIRST_WORKTREE_SLOT + 1
+        });
+    });
+
+    test('is full when every slot below the limit is registered', () => {
+        const records = {
+            a: { slot: FIRST_WORKTREE_SLOT, root: null },
+            b: { slot: FIRST_WORKTREE_SLOT + 1, root: null }
+        };
+
+        expect(
+            nextFreeSlot(records, { ...search, maxSlots: FIRST_WORKTREE_SLOT + 2 }, nothingInUse)
+        ).toEqual({
+            kind: 'full'
+        });
+    });
+
+    test('is never slot 0, the main checkout', () => {
+        expect(nextFreeSlot({}, search, nothingInUse)).not.toMatchObject({ slot: MAIN_SLOT });
+    });
+
+    test('a slot registered past the limit does not matter to the ones below it', () => {
+        const records = { far: { slot: DEFAULT_MAX_SLOTS + 5, root: null } };
+
+        expect(nextFreeSlot(records, search, nothingInUse)).toEqual({
+            kind: 'slot',
+            slot: FIRST_WORKTREE_SLOT
+        });
+    });
+
+    test('skips a slot with a port in use and takes the next', () => {
+        const { probe } = probeSaying([portsAt(FIRST_WORKTREE_SLOT)[0] ?? 0]);
+
+        expect(nextFreeSlot({}, search, probe)).toEqual({
+            kind: 'slot',
+            slot: FIRST_WORKTREE_SLOT + 1
+        });
+    });
+
+    test('asks about one slot at a time, lowest first, and stops at the first free one', () => {
+        const { probe, asked } = probeSaying([portsAt(FIRST_WORKTREE_SLOT)[1] ?? 0]);
+
+        nextFreeSlot({}, search, probe);
+
+        expect(asked).toEqual([portsAt(FIRST_WORKTREE_SLOT), portsAt(FIRST_WORKTREE_SLOT + 1)]);
+    });
+
+    test('asks about a free first candidate only once', () => {
+        const { probe, asked } = probeSaying([]);
+
+        nextFreeSlot({}, search, probe);
+
+        expect(asked).toHaveLength(1);
+    });
+
+    test('never asks about a slot that is registered', () => {
+        const { probe, asked } = probeSaying([]);
+        const records = { a: { slot: FIRST_WORKTREE_SLOT, root: null } };
+
+        nextFreeSlot(records, search, probe);
+
+        expect(asked).toEqual([portsAt(FIRST_WORKTREE_SLOT + 1)]);
+    });
+
+    test('when every free slot is blocked it says which keys of each are in use', () => {
+        const everything = Array.from(
+            { length: DEFAULT_MAX_SLOTS },
+            (_, slot) => portsAt(slot)[0] ?? 0
+        );
+
+        const choice = nextFreeSlot({}, search, probeSaying(everything).probe);
+
+        expect(choice).toMatchObject({
+            kind: 'blocked',
+            blocked: expect.arrayContaining([
+                {
+                    slot: FIRST_WORKTREE_SLOT,
+                    inUse: [{ key: 'http', port: portsAt(FIRST_WORKTREE_SLOT)[0] }]
+                }
+            ])
+        });
+    });
+
+    test('and lists as many blocked slots as there were candidates', () => {
+        const everything = Array.from(
+            { length: DEFAULT_MAX_SLOTS },
+            (_, slot) => portsAt(slot)[0] ?? 0
+        );
+
+        const choice = nextFreeSlot({}, search, probeSaying(everything).probe);
+
+        expect(choice.kind === 'blocked' && choice.blocked).toHaveLength(
+            DEFAULT_MAX_SLOTS - FIRST_WORKTREE_SLOT
+        );
     });
 });
 

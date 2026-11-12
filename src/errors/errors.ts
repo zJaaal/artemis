@@ -1,9 +1,12 @@
-import { COMMAND_ERROR_TAG, EXIT_CODE, USAGE_ERROR_TAG } from '../constants.js';
+import { COMMAND_ERROR_TAG, EXEC_ERROR_TAG, EXIT_CODE, USAGE_ERROR_TAG } from '../constants.js';
 import type {
     CommandErrorOptions,
     CommandErrorShape,
+    ExecErrorOptions,
+    ExecErrorShape,
     ExitCode,
     IsCommandErrorFn,
+    IsExecErrorFn,
     IsUsageErrorFn,
     UsageErrorOptions,
     UsageErrorShape
@@ -46,6 +49,23 @@ export class UsageError extends CommandError {
     }
 }
 
+/** A child run through `ctx.exec` failed. It carries the last lines of its output for the envelope's `tail`. */
+export class ExecError extends CommandError {
+    /** The last lines the child printed, each cut. */
+    readonly tail: readonly string[];
+
+    /** Whether a person has to be shown them under the error (the child's output was hidden). */
+    readonly showTail: boolean;
+
+    constructor(message: string, { tail, showTail, ...options }: ExecErrorOptions) {
+        super(message, options);
+        this.name = 'ExecError';
+        this.tail = tail;
+        this.showTail = showTail;
+        Object.defineProperty(this, EXEC_ERROR_TAG, { value: true });
+    }
+}
+
 /**
  * Whether something is an expected failure (a `CommandError`), even one thrown by another copy of
  * Artemis, where `instanceof` would say no and the hint and exit code would be lost.
@@ -56,3 +76,7 @@ export const isCommandError: IsCommandErrorFn = (value): value is CommandErrorSh
 /** Whether something is a wrong-command-line failure (a `UsageError`), from any copy of Artemis. */
 export const isUsageError: IsUsageErrorFn = (value): value is UsageErrorShape =>
     isCommandError(value) && hasTag(value, USAGE_ERROR_TAG);
+
+/** Whether something is a failed `ctx.exec` (an `ExecError`). */
+export const isExecError: IsExecErrorFn = (value): value is ExecErrorShape =>
+    isCommandError(value) && hasTag(value, EXEC_ERROR_TAG);

@@ -1,20 +1,21 @@
 import { GLOBAL_FLAG_TOKENS, TERMINATOR } from '../constants.js';
 import { UsageError } from '../errors/errors.js';
 import { isValidDocName } from '../kits/store/names.js';
+import { findStrayLeading } from '../resolve/resolve.js';
 import type {
     AssertLeadingFlagsFn,
     ParseStateWordsFn,
     PlanStateFn,
     StateWords
 } from '../models.js';
+import { isFlagToken } from '../utils/flag-token.js';
 import { STATE_FLAGS, STATE_USAGE_LINE, STATE_WORD } from './constants.js';
 
 const usageError = (message: string, hint: string): UsageError =>
     new UsageError(message, { usage: STATE_USAGE_LINE, hint });
 
 /** Whether a word is a flag. After `--` nothing is: it is a document name, whatever it looks like. */
-const isFlagWord = (word: string, terminated: boolean): boolean =>
-    !terminated && word.startsWith('-');
+const isFlagWord = (word: string, terminated: boolean): boolean => !terminated && isFlagToken(word);
 
 /** Applies one flag to the words read so far; an unknown one is a usage error. */
 function applyFlag(words: StateWords, flag: string): StateWords {
@@ -29,10 +30,12 @@ function applyFlag(words: StateWords, flag: string): StateWords {
             return { ...words, yes: true };
         case STATE_FLAGS.reset:
             return { ...words, reset: true };
+        case STATE_FLAGS.quiet:
+            return { ...words, quiet: true };
         default:
             throw usageError(
                 `Unknown option "${flag}"`,
-                `${STATE_WORD} takes --reset, --yes, --json and --help.`
+                `${STATE_WORD} takes --reset, --yes, --quiet, --json and --help.`
             );
     }
 }
@@ -41,13 +44,13 @@ function applyFlag(words: StateWords, flag: string): StateWords {
  * The flags typed before `state` belong to the run, so only the global ones may be there: `art
  * --json state` is fine, `art --reset state steps` is not (it would read as `state steps --reset`).
  */
-export const assertLeadingFlags: AssertLeadingFlagsFn = (leading) => {
-    const stray = leading.find((flag) => !GLOBAL_FLAG_TOKENS.includes(flag));
+export const assertLeadingFlags: AssertLeadingFlagsFn = (leading, word) => {
+    const stray = findStrayLeading(leading);
 
     if (stray !== undefined) {
         throw usageError(
-            `"${stray}" cannot come before ${STATE_WORD}`,
-            `Only ${GLOBAL_FLAG_TOKENS.join(', ')} may come first. Try: ${STATE_WORD} <doc> ${stray}`
+            `"${stray}" cannot come before ${word}`,
+            `Only ${GLOBAL_FLAG_TOKENS.join(', ')} may come first. Try: ${word} ${stray}`
         );
     }
 };
@@ -59,7 +62,15 @@ export const assertLeadingFlags: AssertLeadingFlagsFn = (leading) => {
  */
 export const parseStateWords: ParseStateWordsFn = (words) => {
     let terminated = false;
-    let read: StateWords = { name: undefined, reset: false, yes: false, json: false, help: false };
+
+    let read: StateWords = {
+        name: undefined,
+        reset: false,
+        yes: false,
+        json: false,
+        help: false,
+        quiet: false
+    };
 
     for (const word of words) {
         if (!terminated && word === TERMINATOR) {

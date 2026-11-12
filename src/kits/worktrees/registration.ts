@@ -3,8 +3,9 @@ import path from 'node:path';
 import { pathExists, realPathOrResolve } from '../../edges/files.js';
 import { workingDirectory } from '../../edges/system.js';
 import { CommandError, UsageError } from '../../errors/errors.js';
-import { FALLBACK_WORKTREE_NAME } from './constants.js';
+import { FALLBACK_WORKTREE_NAME, FIRST_WORKTREE_SLOT } from './constants.js';
 import type {
+    BlockedSlot,
     EnsureDetachedOptions,
     EnsureOptions,
     KitConfig,
@@ -89,11 +90,45 @@ function registerCheckout(
 
     const base = toWorktreeName(path.basename(target)) || FALLBACK_WORKTREE_NAME;
     const finalName = uniqueName(name ?? base, base, isTakenBy(config, records));
-    const record = { slot: nextFreeSlot(records), root: target };
+    const record = { slot: chooseSlot(config, records), root: target };
 
     config.registry.write({ ...records, [finalName]: record });
 
     return describeInstance(config, finalName, record);
+}
+
+/** The hint for a blocked search: the lowest blocked slot, and every key of it whose port is in use. */
+function blockedHint({ slot, inUse }: BlockedSlot): string {
+    const ports = inUse.map(({ key, port }) => `${key} (${port})`).join(', ');
+    const verb = inUse.length === 1 ? 'is' : 'are';
+
+    return `Slot ${slot}: ${ports} ${verb} in use. Stop what uses it, or move that base.`;
+}
+
+/**
+ * The slot a new instance gets. A registered instance never gets here: its ports are its own and may
+ * well be in use by itself. Two different failures: every slot is registered, or the ones that are
+ * not each have a port in use on the machine.
+ */
+function chooseSlot(config: KitConfig, records: WorktreeRecords): number {
+    const choice = nextFreeSlot(records, config, config.newProbe());
+
+    if (choice.kind === 'slot') {
+        return choice.slot;
+    }
+
+    if (choice.kind === 'blocked') {
+        const [lowest] = choice.blocked;
+
+        throw new CommandError(
+            `No free slot below ${config.maxSlots}: ${choice.blocked.length} of them have ports in use`,
+            { hint: lowest ? blockedHint(lowest) : undefined }
+        );
+    }
+
+    throw new CommandError(`All ${config.maxSlots - FIRST_WORKTREE_SLOT} slots are taken`, {
+        hint: 'Remove an instance you no longer need, or raise maxSlots in defineWorktrees.'
+    });
 }
 
 /**
@@ -151,7 +186,7 @@ export function ensureDetachedInstance(
         });
     }
 
-    const record = { slot: existing?.slot ?? nextFreeSlot(records), root: null, meta };
+    const record = { slot: existing?.slot ?? chooseSlot(config, records), root: null, meta };
 
     config.registry.write({ ...records, [name]: record });
 

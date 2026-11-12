@@ -10,7 +10,7 @@ export type SleepFn = (ms: number, signal?: AbortSignal) => Promise<void>;
 export type TokenFn = () => string;
 
 /** Who holds a lock. `pid` is undefined while the holder is still writing the file. */
-export type LockHolder = { pid: number | undefined };
+export type LockHolder = { pid: number | undefined; label?: string };
 
 /** The clock, process liveness and waiting, injected so lock tests never sleep. */
 export type LockEdges = {
@@ -55,7 +55,19 @@ export type NamedLockOptions = {
     pollMs?: number;
     /** How long to wait before giving up. Default: as long as it takes. */
     timeoutMs?: number;
+    /**
+     * What this holder is doing (`build of core-feat-x`): one line of at most 120 characters. It is
+     * written into the lock file, so whoever waits (and the "is locked" error) can say which job it
+     * is waiting for and not just which process.
+     */
+    label?: string;
 };
+
+/** The label of a named lock, checked: a non-empty single line within the limit. A TypeError otherwise. */
+export type AssertLockLabelFn = (label: unknown) => void;
+
+/** What a lock file says about its holder: the process, and the label of a named lock. */
+export type HolderOfFn = (content: string) => LockHolder;
 
 export type WithLockAsyncFn = <TResult>(
     file: string,
@@ -129,7 +141,7 @@ export type MemoryStoreOptions = { documents?: Record<string, unknown> } & Pick<
 >;
 
 /** Who holds a named lock in a memory store, and the promise that settles when it lets go. */
-export type MemoryHolder = { pid: number; released: Promise<void> };
+export type MemoryHolder = { pid: number; label?: string; released: Promise<void> };
 
 export type DefineStoreFn = (options: StoreOptions) => Store;
 export type CreateMemoryStoreFn = (options?: MemoryStoreOptions) => Store;

@@ -101,8 +101,32 @@ describe('parse: global flags', () => {
         expect(parseIt(greet, ['--json', '-y']).global).toEqual({
             help: false,
             json: true,
-            yes: true
+            yes: true,
+            dryRun: false,
+            quiet: false,
+            log: undefined
         });
+    });
+
+    test('--dry-run and --quiet are read as booleans', () => {
+        expect(parseIt(greet, ['--dry-run', '--quiet']).global).toMatchObject({
+            dryRun: true,
+            quiet: true
+        });
+    });
+
+    test('--log file and --log=file are the same', () => {
+        expect(parseIt(greet, ['--log', 'a.log']).global.log).toBe(
+            parseIt(greet, ['--log=a.log']).global.log
+        );
+    });
+
+    test('a repeated --log keeps the last value', () => {
+        expect(parseIt(greet, ['--log', 'a.log', '--log', 'b.log']).global.log).toBe('b.log');
+    });
+
+    test('--log without a value is a usage error', () => {
+        expect(thrownBy(() => parseIt(greet, ['--log']))).toBeInstanceOf(UsageError);
     });
 
     test('--help skips validation, so help works with required args missing', () => {

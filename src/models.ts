@@ -5,7 +5,7 @@ import type { AbstractPromptOptions } from '@topcli/prompts';
 
 import type { EXIT_CODE, STYLE_CODES } from './constants.js';
 import type { LockOptions } from './kits/store/models.js';
-import type { CommandError } from './errors/errors.js';
+import type { CommandError, UsageError } from './errors/errors.js';
 
 // ---------------------------------------------------------------------------------------------
 // Definitions: what a command file declares
@@ -159,6 +159,10 @@ export type AskQuestionFn = (question: Question, streams?: PromptStreams) => Pro
 export type IsAbortFn = (error: unknown) => boolean;
 export type IsBooleanFn = (value: unknown) => value is boolean;
 export type IsTextFn = (value: unknown) => value is string;
+/** A range comparator split into its operator (`>=`, `^`, or none) and what follows it. */
+export type SplitOperator = { op: string; rest: string };
+
+export type IsNonEmptyTextFn = (value: unknown) => value is string;
 export type IsTextListFn = (value: unknown) => value is string[];
 
 /** The `ctx` a command receives. */
@@ -174,9 +178,23 @@ export type CommandContext = {
     prompt: Prompter;
     /** Every discovered command. */
     commands: CommandEntry[];
-    /** Runs another command by id or alias and returns its result. Inherits --json and --yes. */
+    /** Runs another command by id or alias and returns its result. Inherits --json, --yes and --dry-run. */
     invoke: InvokeFn;
+    /** `--dry-run` was passed (only ever true for a command with `dryRun: true`). */
+    dryRun: boolean;
+    /** Under `--dry-run`: describes one thing the command would do. A no-op otherwise. */
+    plan: PlanFn;
+    /** Suggests what to run after this succeeds: what follows the bin, which Artemis adds. */
+    next: NextFn;
+    /** `--quiet` was passed. */
+    quiet: boolean;
+    /** Runs a child process whose output follows `--quiet`, `--log` and `--json`. Never through a shell. */
+    exec: ExecFn;
 };
+
+export type PlanFn = (step: string) => void;
+/** What an agent would type after the bin (`'dotcms wait --instance x --json'`). */
+export type NextFn = (...lines: string[]) => void;
 
 /** Where output goes, and what the command was told about how it runs. */
 export type ContextParts = {
@@ -186,6 +204,15 @@ export type ContextParts = {
     style: Style;
     registry: Registry;
     invoke: InvokeFn;
+    /** Where `ctx.plan` collects its steps: shared with the commands this one invokes. */
+    plan: string[];
+    /** The name help shows (`art`): put in front of every line `ctx.next` is given. */
+    bin: string;
+    /** Where `ctx.next` collects its lines; the caller reads them after the command succeeds. */
+    next: string[];
+    exec: ExecFn;
+    /** The `--log` file: `ctx.log` and `ctx.warn` lines are copied into it, whatever hides them. */
+    logFile: LogSink | undefined;
 };
 
 export type CreateContextFn = (parts: ContextParts) => CommandContext;
@@ -212,6 +239,10 @@ export type CommandDefinition<
     flags?: TFlags;
     aliases?: readonly string[];
     examples?: readonly string[];
+    /** Changes or deletes data the user cannot get back. It asks in a terminal and needs `--yes` otherwise. Default false. */
+    destructive?: boolean;
+    /** Honors `ctx.dryRun`: under `--dry-run` it reports what it would do and does none of it. Default false. */
+    dryRun?: boolean;
     [extra: string]: unknown;
 };
 
@@ -224,6 +255,8 @@ export type Command<
     flags: TFlags;
     aliases: readonly string[];
     examples: readonly string[];
+    destructive: boolean;
+    dryRun: boolean;
 };
 
 /** What `defineTopic` takes: only the description is kept. */
@@ -266,13 +299,30 @@ export type CommandErrorOptions = {
     exitCode?: ExitCode;
     cause?: unknown;
 };
+/** What a failed `ctx.exec` adds to a CommandError: the last lines of the child, and whether a person must be shown them. */
+export type ExecErrorOptions = CommandErrorOptions & {
+    tail: readonly string[];
+    /** True when the child's output was hidden (`--quiet`, `capture`) and the run is not `--json`. */
+    showTail: boolean;
+};
+export type ExecErrorShape = CommandErrorShape & { tail: readonly string[]; showTail: boolean };
+export type IsExecErrorFn = (value: unknown) => value is ExecErrorShape;
+
 export type UsageErrorOptions = { hint?: string | undefined; usage?: string | undefined };
 
 // ---------------------------------------------------------------------------------------------
 // Parsing
 // ---------------------------------------------------------------------------------------------
 
-export type GlobalFlags = { help: boolean; json: boolean; yes: boolean };
+export type GlobalFlags = {
+    help: boolean;
+    json: boolean;
+    yes: boolean;
+    dryRun: boolean;
+    quiet: boolean;
+    /** The `--log` file, as typed. */
+    log: string | undefined;
+};
 
 export type ParsedCommandLine = {
     args: Record<string, string | undefined>;
@@ -405,6 +455,8 @@ export type HelpSubject = {
     flags: FlagDefinitions;
     aliases: readonly string[];
     examples: readonly string[];
+    destructive?: boolean;
+    dryRun?: boolean;
 };
 
 export type ManifestArg = {
@@ -433,6 +485,8 @@ export type ManifestCommand = {
     args: ManifestArg[];
     flags: ManifestFlag[];
     examples: readonly string[];
+    destructive: boolean;
+    dryRun: boolean;
 };
 
 /** Everything help shows, as data: what an agent reads to know which commands exist. */
@@ -453,6 +507,305 @@ export type Builtin = {
     flags: FlagDefinitions;
     examples: readonly string[];
 };
+
+/** What a call to a command says about how it will be confirmed. */
+export type DestructiveCall = {
+    bin: string;
+    id: string;
+    destructive: boolean;
+    supportsDryRun: boolean;
+    dryRun: boolean;
+    yes: boolean;
+    /** Whether anyone can answer: a terminal, and neither `--yes` nor `--json`. */
+    interactive: boolean;
+};
+
+export type DestructivePlan = 'run' | 'ask' | 'refuse';
+export type PlanDestructiveFn = (call: DestructiveCall) => DestructivePlan;
+export type ConfirmDestructiveFn = (call: DestructiveCall) => Promise<void>;
+
+// ---------------------------------------------------------------------------------------------
+// ctx.exec
+// ---------------------------------------------------------------------------------------------
+
+export type ExecOptions = {
+    cwd?: string;
+    /** Default: the process environment. */
+    env?: NodeJS.ProcessEnv;
+    /** Return the output instead of showing it (`git rev-parse`, `docker ps`). Default false. */
+    capture?: boolean;
+    /** The call changes nothing, so it runs even under `--dry-run`, captured. Implies `capture`. Default false. */
+    readOnly?: boolean;
+    /** A non-zero exit throws. Default true. A timeout throws regardless. */
+    reject?: boolean;
+    /** Kills the child (SIGTERM, then SIGKILL after the grace period) and throws. Default: none. */
+    timeoutMs?: number;
+};
+
+export type ExecResult = {
+    /** 0 when skipped under `--dry-run`. */
+    code: number;
+    /** Stdout and stderr interleaved; '' when the output went to the terminal (inherit mode) or the call was skipped. */
+    output: string;
+    /** True under `--dry-run` for a call without `readOnly`: nothing ran. */
+    skipped: boolean;
+};
+
+/** Opens the `--log` file, truncated. `cwd` is what a relative path is relative to. */
+export type OpenLogFileFn = (file: string, cwd: string) => LogSink;
+
+// ---------------------------------------------------------------------------------------------
+// Version ranges (the doctor and the every-run warning)
+// ---------------------------------------------------------------------------------------------
+
+/** major, minor, patch. */
+export type Version = readonly [major: number, minor: number, patch: number];
+
+/** Whether a version is inside a range, or the range is a form the checker does not understand. */
+export type RangeVerdict = 'satisfied' | 'unsatisfied' | 'not-checked';
+
+/** One bound a version has to meet: `>= 1.2.3`, `< 2.0.0`, `= 1.2.3`. */
+export type Bound = { op: '>=' | '>' | '<=' | '<' | '='; version: Version };
+
+/** What a range body (`1`, `1.2`, `1.2.3`, `1.x`) says: the numbers given, in order. A `*` first part gives none. */
+export type RangeBody = { numbers: number[] };
+
+/** What the words after `doctor` ask for. */
+export type DoctorWordsRead = { json: boolean; help: boolean; quiet: boolean };
+
+export type ParseVersionFn = (text: string) => Version | undefined;
+export type CheckRangeFn = (version: string, range: string) => RangeVerdict;
+
+// ---------------------------------------------------------------------------------------------
+// `art doctor` and the every-run version warning
+// ---------------------------------------------------------------------------------------------
+
+export type DoctorCheckId =
+    'version' | 'range' | 'installed' | 'project' | 'module' | 'commands' | 'words' | 'state';
+
+export type DoctorStatus = 'ok' | 'warn' | 'fail';
+
+export type DoctorCheck = {
+    id: DoctorCheckId;
+    status: DoctorStatus;
+    message: string;
+    /** What to run or change; present on `warn` and `fail`. */
+    fix?: string;
+};
+
+/** The copy of Artemis that is running: its version, and the folder of its package. `version` is undefined when its package.json could not be read. */
+export type RunningPackage = { version: string | undefined; root: string };
+
+/** A copy of Artemis inside a project's node_modules. */
+export type LocalCopy = { version: string; root: string };
+
+/** What the install checks need, read by edges: pure code decides from it. */
+export type InstallFacts = {
+    running: RunningPackage;
+    /** The project's range for Artemis in `dependencies` or `devDependencies`; undefined when it has none. */
+    range: string | undefined;
+    /** The project's own copy, found the way Node resolves a package; undefined when there is none. */
+    local: LocalCopy | undefined;
+};
+
+export type InstallCheckFn = (facts: InstallFacts) => DoctorCheck;
+
+/** A built-in word that something of the project hides: a command file, a topic folder or an alias (of `target`). */
+export type HiddenWord = { word: string; by: 'file' | 'folder' | 'alias'; target?: string };
+
+/** What the doctor found out about the project, read by edges: the checks decide from it. */
+export type DoctorFacts = {
+    running: RunningPackage;
+    local: LocalCopy | undefined;
+    /** Undefined when no project was found from the current folder. */
+    project: Project | undefined;
+    /** The commands folder: whether it is there, what discovery warned about, or why the settings could not be read. */
+    commands:
+        | {
+              dir: string;
+              exists: boolean;
+              warnings: readonly string[];
+              problem?: string;
+              /** Every alias with the id of its command, to see which one is called like a built-in word. */
+              aliases?: readonly (readonly [alias: string, id: string])[];
+          }
+        | undefined;
+    /** The built-in words a project command, topic or alias hides, and what hides each. */
+    hiddenWords: readonly HiddenWord[];
+    /** The state folder: whether it is there, the documents that cannot be read, or why it cannot be listed. */
+    state:
+        | {
+              dir: string;
+              exists: boolean;
+              unreadable: readonly { name: string; error: string }[];
+              problem?: string;
+          }
+        | undefined;
+};
+
+export type RunDoctorFn = (facts: DoctorFacts) => DoctorCheck[];
+
+/** What `art doctor --json` says when something failed: the error, the first fix as the hint, and every check. */
+export type DoctorFailure = { error: string; hint: string | undefined; checks: DoctorCheck[] };
+export type DoctorFailureFn = (checks: readonly DoctorCheck[]) => DoctorFailure | undefined;
+
+/** `art doctor [--quiet] [--json]`. Returns the exit code. */
+export type DoctorCommandFn = (
+    words: string[],
+    options: CliOptions,
+    cwd: string
+) => Promise<number>;
+
+/** What the skill says about the project besides its commands: the package's name and description. */
+export type SkillPackage = { name: string | undefined; description: string | undefined };
+
+/** The `SKILL.md` a manifest and a package give: short, fixed and never stale. */
+export type BuildSkillFn = (manifest: Manifest, pkg: SkillPackage) => string;
+
+/** What the words after `skill` ask for. */
+export type SkillWords = {
+    /** `--write <path>`: where to put the file; none prints it. */
+    write: string | undefined;
+    yes: boolean;
+    json: boolean;
+    help: boolean;
+    quiet: boolean;
+};
+
+export type ParseSkillWordsFn = (words: readonly string[]) => SkillWords;
+
+/** `art skill [--write <path>] [--yes] [--quiet] [--json]`. Returns the exit code. */
+export type SkillCommandFn = (words: string[], options: CliOptions, cwd: string) => Promise<number>;
+
+/** Reads the AGENTS.md that ships beside the running copy; undefined when it is not there. */
+export type ReadAgentsFn = () => { file: string; markdown: string } | undefined;
+
+export type ReadRunningPackageFn = () => RunningPackage;
+export type FindLocalCopyFn = (projectRoot: string) => LocalCopy | undefined;
+
+/** What the wanted range of a manifest is, if it names Artemis. */
+export type RangeOfFn = (manifest: Record<string, unknown>) => string | undefined;
+
+/** What `createExec` needs to know about the run it belongs to. */
+export type ExecRun = {
+    io: IO;
+    global: GlobalFlags;
+    log: LogSink | undefined;
+    /** The children this command started that have not ended yet: killed when its `run` ends. */
+    children: Set<ChildHandle>;
+    /** Where a skipped call adds itself under `--dry-run`. */
+    plan: string[];
+    /** The folder the run was given: where a child starts, and what a relative `cwd` is relative to. */
+    cwd?: string | undefined;
+};
+
+/** The `--log` file: an open file everything is copied into. */
+export type LogSink = {
+    /** The absolute path, as the envelope reports it. */
+    path: string;
+    write: (text: string) => void;
+    close: () => void;
+    /** Why the file could not be written (a full disk), once it failed: later text is dropped, the run goes on. */
+    failure: () => string | undefined;
+};
+
+export type ExecFn = (
+    command: string,
+    args?: readonly string[],
+    options?: ExecOptions
+) => Promise<ExecResult>;
+
+/** Which stream a piece of child output came from. */
+export type ChildStream = 'stdout' | 'stderr';
+
+/** What the spawn edge needs to start one child. Never a shell: `args` is an array. */
+export type SpawnRequest = {
+    command: string;
+    args: readonly string[];
+    cwd: string | undefined;
+    env: NodeJS.ProcessEnv | undefined;
+    /** Pipe stdout and stderr (stdin ignored), or inherit all three from the terminal. */
+    pipe: boolean;
+    timeoutMs: number | undefined;
+    /** How long a child gets after SIGTERM before SIGKILL. Default: `EXEC_KILL_GRACE_MS`. */
+    killGraceMs?: number;
+    /** Called with each chunk of output as it arrives (piped only). */
+    onData: (chunk: string, stream: ChildStream) => void;
+};
+
+/** How a child ended. */
+export type SpawnOutcome = {
+    code: number;
+    timedOut: boolean;
+    /** The executable could not be started (ENOENT). */
+    notFound: boolean;
+    /** The folder to run in does not exist: Node reports it with the same ENOENT as a missing program. */
+    cwdMissing: boolean;
+    /** The caller ended it (`stop`, when the run ended), as opposed to the timeout: not a failure. */
+    stopped: boolean;
+    /** Why it could not start, when the cause is neither a missing program nor a missing folder (permissions, say). */
+    startError: string | undefined;
+    /** The signal that ended it (an OOM kill, a crash), when it had no exit code. */
+    signal: string | undefined;
+};
+
+/** What a child's end is built from: the exit code, and why it did not run or how it was ended when that applies. */
+export type SpawnFinish = Pick<SpawnOutcome, 'code' | 'notFound' | 'cwdMissing'> & {
+    startError?: string | undefined;
+    signal?: string | undefined;
+};
+
+export type ChildHandle = {
+    done: Promise<SpawnOutcome>;
+    /** SIGTERM, then SIGKILL after the grace period; resolves when the child is gone. */
+    stop: () => Promise<void>;
+};
+
+export type SpawnChildFn = (request: SpawnRequest) => ChildHandle;
+
+/** How `ctx.exec` runs a child, decided from the flags of the run and the options of the call. */
+export type ExecMode = {
+    pipe: boolean;
+    /** Where piped output is shown: nowhere, split like the child's own streams, or all on stderr. */
+    echo: 'none' | 'split' | 'stderr';
+    /** Whether the last lines are kept for `tail`. */
+    keep: boolean;
+};
+
+export type ExecModeInput = { capture: boolean; quiet: boolean; json: boolean; log: boolean };
+export type PickExecModeFn = (input: ExecModeInput) => ExecMode;
+
+/** The last lines of a child's output, each cut: what a failed command's envelope carries as `tail`. */
+export type TailRing = {
+    push: (stream: ChildStream, chunk: string) => void;
+    /** Closes the lines still being written and returns the last ones. */
+    lines: () => string[];
+};
+
+export type CreateTailFn = (maxLines: number, maxChars: number) => TailRing;
+
+/** One line of the brief manifest: what an agent needs before it calls. `destructive` and `dryRun` only when true. */
+export type BriefCommand = {
+    id: string;
+    description: string;
+    destructive?: true;
+    dryRun?: true;
+};
+
+export type BriefTopic = { id: string; description: string };
+
+/** `help --json --brief`: ids and one-line descriptions, and how to get one command in full. */
+export type BriefManifest = {
+    bin: string;
+    topics: BriefTopic[];
+    commands: BriefCommand[];
+    /** Only on the shipped binary, as in the full manifest. Never marked destructive. */
+    builtins?: { id: string; description: string }[];
+    more: string;
+};
+
+/** The brief manifest of everything, or of one topic when `topicId` is given. */
+export type BriefManifestFn = (everything: Manifest, topicId?: string) => BriefManifest;
 
 export type DescribeBuiltinsFn = (bin: string, builtins: readonly Builtin[]) => ManifestCommand[];
 
@@ -488,6 +841,8 @@ export type RunOptions = {
     env?: NodeJS.ProcessEnv | undefined;
     /** Words the binary handles itself, listed by help. The shipped `art` passes `init` and `state`; a tool passes none. */
     builtins?: readonly Builtin[] | undefined;
+    /** The folder a relative `--log` path is resolved against. Default: the current folder of the process. */
+    cwd?: string | undefined;
 };
 
 export type RunCliFn = (argv: string[], options: RunOptions) => Promise<number>;
@@ -511,12 +866,22 @@ export type HostOptions = Pick<RunOptions, 'stdout' | 'stderr' | 'interactive' |
 /** What a run resolved from the host options and the process, before any command is looked at. */
 export type Environment = { io: IO; style: Style; canPrompt: boolean };
 
-export type World = Environment & { bin: string };
+export type World = Environment & { bin: string; cwd?: string | undefined };
 
 export type ResolveWorldFn = (options: HostOptions) => Environment;
 
 /** The id of the command a run is about, filled in as the command line is understood. */
 export type RunState = { commandId: string | undefined };
+
+/** What one run collects across the commands it invokes: the dry-run plan. */
+export type RunScope = {
+    plan: string[];
+    /** The `--log` file, once opened: every line a command and its children print is copied here. */
+    log?: LogSink | undefined;
+};
+
+/** What running a command gives back: its result, and the lines it suggested to run next. */
+export type Executed = { result: unknown; next: string[] };
 
 /** Everything the steps of one run share. */
 export type Session = World & {
@@ -524,6 +889,7 @@ export type Session = World & {
     wantsJson: boolean;
     state: RunState;
     builtins: readonly Builtin[] | undefined;
+    scope: RunScope;
 };
 
 /** What help prints as text, and what it prints under --json. */
@@ -536,6 +902,9 @@ export type ErrorReport = {
     usage: string | undefined;
     /** Only for a plain error, which means a bug. */
     stack: string | undefined;
+    /** The last lines of a failed child, when `ctx.exec` made this error. */
+    tail: readonly string[] | undefined;
+    showTail: boolean;
     exitCode: ExitCode;
 };
 
@@ -544,6 +913,8 @@ export type ReportContext = {
     style: Style;
     json: boolean;
     commandId: string | undefined;
+    /** The absolute path of the `--log` file, when one was opened. */
+    log?: string | undefined;
 };
 
 export type ReportErrorFn = (error: unknown, context: ReportContext) => number;
@@ -633,7 +1004,9 @@ export type CliOptions = HostOptions & {
 export type CliFn = (options?: CliOptions) => Promise<number>;
 
 /** Finds the settings for a folder, or throws a CommandError that says what to create or set. */
-export type SettingsForFn = (start: string, route: CliRoute) => CliSettings;
+/** What a folder's project says: the settings to run with, and the project they came from. */
+export type FoundSettings = { settings: CliSettings; project: Project };
+export type SettingsForFn = (start: string, route: CliRoute) => FoundSettings;
 
 /** The folder a `root` points at: itself when it is a folder, else the folder of the file. */
 export type FolderOfRootFn = (root: string | URL) => string;
@@ -704,6 +1077,8 @@ export type StateWords = {
     yes: boolean;
     json: boolean;
     help: boolean;
+    /** `--quiet`: hides the warnings of the word. */
+    quiet: boolean;
 };
 
 export type ParseStateWordsFn = (words: readonly string[]) => StateWords;
@@ -729,7 +1104,45 @@ export type PlanStateFn = (input: StateInput) => StatePlan;
 export type StateEdges = { lock: LockOptions };
 
 /** Refuses a flag typed before `state` that is not a global one (a UsageError). */
-export type AssertLeadingFlagsFn = (leading: readonly string[]) => void;
+/** What a built-in word prints when it succeeds: the envelope under `--json`, the text otherwise. */
+export type PrintResultFn = (
+    io: IO,
+    print: {
+        json: boolean;
+        command: string | null;
+        text: string;
+        result: unknown;
+        /** The envelope keys after `result`, already in their fixed order. */
+        extras?: Record<string, unknown>;
+    }
+) => void;
+
+/** The failure envelope as one line of JSON: `ok`, `command`, `error`, then `hint`, `log`, `tail` and `checks` when there are any. */
+export type FailureEnvelopeFn = (
+    command: string | null,
+    error: string,
+    keys?: {
+        hint?: string | undefined;
+        log?: string | undefined;
+        tail?: readonly string[] | undefined;
+        checks?: readonly DoctorCheck[] | undefined;
+    }
+) => string;
+
+/** The success envelope as one line of JSON: `ok`, `command`, `result`, then `extras` in the order given. */
+export type SuccessEnvelopeFn = (
+    command: string | null,
+    result: unknown,
+    extras?: Record<string, unknown>
+) => string;
+
+export type AssertLeadingFlagsFn = (leading: readonly string[], word: string) => void;
+
+/** A word the shipped binary runs itself: it gets the command line without the word, and the folder it runs in. */
+export type ShippedWord = {
+    word: string;
+    run: (words: string[], host: HostOptions, cwd: string) => number | Promise<number>;
+};
 
 /** `art state [<doc>] [--reset] [--yes] [--json]`. Returns the exit code. */
 export type StateCommandFn = (
@@ -753,3 +1166,11 @@ export type StateRun = {
 };
 
 export type ShadowsWordFn = (commandsDir: string, word: string) => boolean;
+/** What in the commands folder hides a word of the binary: a command file, a topic folder, or nothing. */
+export type ShadowKindFn = (commandsDir: string, word: string) => 'file' | 'folder' | undefined;
+export type IsFlagTokenFn = (token: string) => boolean;
+export type FlagWithoutCommandFn = (
+    flag: string,
+    bin: string | undefined,
+    subject?: string
+) => UsageError;
