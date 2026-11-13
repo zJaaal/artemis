@@ -1064,7 +1064,13 @@ export type RunState = {
  * resolved and its words are about to be parsed; `--help` takes it back. `tokens` are the words
  * after the command id, global flags still in them. `ran` is set when the command's `run` starts.
  */
-export type AuditDraft = { recordable: boolean; tokens: string[]; ran: boolean };
+export type AuditDraft = {
+    recordable: boolean;
+    tokens: string[];
+    ran: boolean;
+    /** What the parser read, once the words parsed: it knows `-fy` is `--yes`. A usage error has none, and the tokens stand in. */
+    global?: Pick<GlobalFlags, 'dryRun' | 'yes'>;
+};
 
 /** One line of the audit trail. `plan` only on a dry run, `error` only on a failure. */
 export type AuditLine = {

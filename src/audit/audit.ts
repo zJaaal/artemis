@@ -14,6 +14,7 @@ import type {
     StripGlobalFlagsFn
 } from '../models.js';
 import { isRecord } from '../utils/is-record.js';
+import { beforeTerminator } from '../utils/terminator.js';
 
 // Pure: the audit line of a run, and the lines of an audit file read back.
 
@@ -48,18 +49,12 @@ export const stripGlobalFlags: StripGlobalFlagsFn = (tokens) => {
     return kept;
 };
 
-/** The words before `--`: a flag typed after it is a plain argument. */
-const beforeTerminator = (tokens: readonly string[]): readonly string[] => {
-    const end = tokens.indexOf(TERMINATOR);
-
-    return end === -1 ? tokens : tokens.slice(0, end);
-};
-
 /** The audit line of a run: what was asked, whether the command ran, how it ended and how long it took. */
 export const buildAuditLine: BuildAuditLineFn = (facts) => {
     const { draft, plan, error } = facts;
     const flags = beforeTerminator(draft.tokens);
-    const dryRun = flags.includes(DRY_RUN_FLAG_TOKEN);
+    const dryRun = draft.global?.dryRun ?? flags.includes(DRY_RUN_FLAG_TOKEN);
+    const yes = draft.global?.yes ?? YES_FLAG_TOKENS.some((token) => flags.includes(token));
 
     return {
         time: new Date(facts.startedAt).toISOString(),
@@ -67,7 +62,7 @@ export const buildAuditLine: BuildAuditLineFn = (facts) => {
         argv: stripGlobalFlags(draft.tokens),
         ran: draft.ran,
         dryRun,
-        yes: YES_FLAG_TOKENS.some((token) => flags.includes(token)),
+        yes,
         exitCode: facts.exitCode,
         ms: facts.endedAt - facts.startedAt,
         ...(dryRun ? { plan: [...plan] } : {}),

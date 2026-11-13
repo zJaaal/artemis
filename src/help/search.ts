@@ -8,10 +8,10 @@ import {
     SEARCH_MIN_WORD_CHARS,
     SEARCH_PREFIX_MIN,
     SEARCH_STOP_WORDS,
-    SEARCH_WORD_SPLIT,
-    TERMINATOR
+    SEARCH_WORD_SPLIT
 } from '../constants.js';
 import { isFlagToken } from '../utils/flag-token.js';
+import { beforeTerminator } from '../utils/terminator.js';
 import { isWithin, topicPrefixes } from '../utils/topics.js';
 import type {
     ManifestCommand,
@@ -37,8 +37,7 @@ export const wordsOf: WordsOfFn = (text) =>
 
 /** What `--search` took from the words after `help`, and the words that are left (a topic, if any). */
 export const readSearch: ReadSearchFn = (tokens) => {
-    const end = tokens.indexOf(TERMINATOR);
-    const flagged = end === -1 ? tokens : tokens.slice(0, end);
+    const flagged = beforeTerminator(tokens);
 
     const at = flagged.findIndex(
         (token) => token === SEARCH_FLAG || token.startsWith(SEARCH_FLAG_PREFIX)

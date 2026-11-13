@@ -10,7 +10,7 @@ import {
     EXIT_CODE
 } from '../constants.js';
 import type { AuditEdges, AuditLine } from '../models.js';
-import { makeAuditProject } from '../test/project.js';
+import { commandSource, makeAuditProject, writeCommand } from '../test/project.js';
 import { createSink } from '../test/sink.js';
 import { createTempFolders } from '../test/temp.js';
 import { cli } from './index.js';
@@ -194,6 +194,44 @@ describe('the audit trail: one line per run of a project command', () => {
         await art(['greet', 'b', '--json'], root);
 
         expect(trailOf(root).map((line) => line.argv)).toEqual([['a'], ['b']]);
+    });
+});
+
+describe('the audit trail: flags the parser reads', () => {
+    const grouped = (): string => {
+        const root = projectRoot();
+
+        writeCommand(
+            path.join(root, 'commands'),
+            'ship',
+            commandSource("flags: { force: { type: 'boolean', short: 'f' } }")
+        );
+
+        return root;
+    };
+
+    test('a grouped short flag (-fy) is yes: true, as the run saw it', async () => {
+        const root = grouped();
+
+        await art(['ship', '-fy', '--json'], root);
+
+        expect(trailOf(root)[0]).toMatchObject({ yes: true, argv: ['-fy'] });
+    });
+
+    test('a grouped short flag does not turn yes on when it is not there (-f)', async () => {
+        const root = grouped();
+
+        await art(['ship', '-f', '--json'], root);
+
+        expect(trailOf(root)[0]).toMatchObject({ yes: false });
+    });
+
+    test('a usage error falls back to the words typed', async () => {
+        const root = grouped();
+
+        await art(['ship', '--bogus', '--yes', '--dry-run', '--json'], root);
+
+        expect(trailOf(root)[0]).toMatchObject({ ran: false, yes: true, dryRun: true });
     });
 });
 

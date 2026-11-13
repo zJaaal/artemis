@@ -612,6 +612,8 @@ async function dispatch(session: Session, argv: string[]): Promise<number> {
         usage(target.entry)
     );
 
+    session.state.audit.global = parsed.global;
+
     if (parsed.global.help) {
         // Reading the help of a command is not running it
         session.state.audit.recordable = false;
