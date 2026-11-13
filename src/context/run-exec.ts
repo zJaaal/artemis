@@ -9,18 +9,27 @@ import {
     EXEC_TAIL_LINES,
     ID_SEPARATOR
 } from '../constants.js';
-import { spawnChild } from '../edges/exec.js';
+import { spawnChild, spawnDetached } from '../edges/exec.js';
 import { CommandError, ExecError } from '../errors/errors.js';
 import type {
     ChildStream,
     ExecMode,
+    ExecDetachedOptions,
+    ExecDetachedResult,
     ExecFn,
     ExecOptions,
     ExecResult,
     ExecRun,
     SpawnOutcome
 } from '../models.js';
-import { createTail, pickExecMode, timeoutText } from './exec.js';
+import {
+    assertExecOptions,
+    createTail,
+    detachedPlannedLine,
+    isDetachedOptions,
+    pickExecMode,
+    timeoutText
+} from './exec.js';
 
 /** What a dry run adds to the plan for a call it does not start: the command line, and where it would run. */
 const plannedLine = (command: string, args: readonly string[], cwd: string | undefined): string => {
@@ -41,13 +50,10 @@ function echo(run: ExecRun, mode: ExecMode, chunk: string, stream: ChildStream):
 const failureHint = (run: ExecRun): string =>
     run.log ? `${EXEC_LOG_HINT_PREFIX} ${run.log.path}` : EXEC_NO_LOG_HINT;
 
-/** The error for a child that did not end well, with the last lines it printed. */
-export function failure(
-    run: ExecRun,
+/** The error for a child that never started: a missing folder, a program that cannot run or is not there. */
+export function startFailure(
     command: string,
-    outcome: SpawnOutcome,
-    options: ExecOptions,
-    tail: readonly string[],
+    outcome: Pick<SpawnOutcome, 'cwdMissing' | 'startError' | 'notFound'>,
     cwd: string | undefined
 ): CommandError | undefined {
     if (outcome.cwdMissing) {
@@ -65,6 +71,24 @@ export function failure(
     // A program that never started is a failure even when the run stopped it first
     if (outcome.notFound) {
         return new CommandError(`${command} was not found`, { hint: EXEC_NOT_FOUND_HINT });
+    }
+
+    return undefined;
+}
+
+/** The error for a child that did not end well, with the last lines it printed. */
+export function failure(
+    run: ExecRun,
+    command: string,
+    outcome: SpawnOutcome,
+    options: ExecOptions,
+    tail: readonly string[],
+    cwd: string | undefined
+): CommandError | undefined {
+    const notStarted = startFailure(command, outcome, cwd);
+
+    if (notStarted) {
+        return notStarted;
     }
 
     // A child Artemis stopped itself (the run ended without awaiting it) is not a failure
@@ -93,87 +117,159 @@ export function failure(
     return undefined;
 }
 
+/** The folder a child runs in, as spawn sees it: what a missing-folder error has to name. */
+const childCwd = (run: ExecRun, options: { cwd?: string | undefined }): string | undefined =>
+    run.cwd === undefined ? options.cwd : path.resolve(run.cwd, options.cwd ?? '');
+
+/** Under `--dry-run` a call that is not `readOnly` starts nothing: it adds itself to the plan. */
+const isSkipped = (run: ExecRun, readOnly: boolean): boolean => run.global.dryRun && !readOnly;
+
 /**
- * `ctx.exec`: runs a child and routes its output by the flags of the run. Under `--dry-run` a call
- * that is not `readOnly` starts nothing: it adds itself to the plan and says it was skipped.
+ * Starts a child that outlives the command (its own process group, its output appended to a file),
+ * and resolves to its pid once it has spawned. Artemis does not track it: it is not in `run.children`,
+ * so it is never killed when `run` ends.
  */
-const execute =
-    (run: ExecRun): ExecFn =>
-    async (
-        command: string,
-        args: readonly string[] = [],
-        options: ExecOptions = {}
-    ): Promise<ExecResult> => {
-        const readOnly = options.readOnly === true;
+async function startDetached(
+    run: ExecRun,
+    command: string,
+    args: readonly string[],
+    options: ExecDetachedOptions
+): Promise<ExecDetachedResult> {
+    if (isSkipped(run, false)) {
+        run.plan.push(detachedPlannedLine(command, args, options.logFile));
 
-        if (run.global.dryRun && !readOnly) {
-            run.plan.push(plannedLine(command, args, options.cwd));
+        return { pid: null, skipped: true };
+    }
 
-            return { code: 0, output: '', skipped: true };
+    const cwd = childCwd(run, options);
+
+    const outcome = await spawnDetached({
+        command,
+        args,
+        cwd,
+        env: options.env,
+        logFile: options.logFile
+    });
+
+    const error = startFailure(command, outcome, cwd);
+
+    if (error || outcome.pid === undefined) {
+        throw (
+            error ?? new CommandError(`${command} could not be started`, { hint: EXEC_START_HINT })
+        );
+    }
+
+    return { pid: outcome.pid, skipped: false };
+}
+
+/** Runs a child, waits for it and routes its output by the flags of the run. */
+async function runChild(
+    run: ExecRun,
+    command: string,
+    args: readonly string[],
+    options: ExecOptions
+): Promise<ExecResult> {
+    const readOnly = options.readOnly === true;
+
+    if (isSkipped(run, readOnly)) {
+        run.plan.push(plannedLine(command, args, options.cwd));
+
+        return { code: 0, output: '', skipped: true };
+    }
+
+    const mode = pickExecMode({
+        capture: options.capture === true || readOnly,
+        quiet: run.global.quiet,
+        json: run.global.json,
+        log: run.log !== undefined
+    });
+
+    const cwd = childCwd(run, options);
+    const tail = createTail(EXEC_TAIL_LINES, EXEC_TAIL_LINE_CHARS);
+    // Only a caller that asked for the output gets it: a dev server under --log would grow this for hours
+    const collect = options.capture === true || readOnly;
+    let output = '';
+
+    const child = spawnChild({
+        command,
+        args,
+        cwd,
+        env: options.env,
+        pipe: mode.pipe,
+        timeoutMs: options.timeoutMs,
+        onData: (chunk, stream) => {
+            if (collect) {
+                output += chunk;
+            }
+
+            echo(run, mode, chunk, stream);
+            run.log?.write(chunk);
+
+            if (mode.keep) {
+                tail.push(stream, chunk);
+            }
+        }
+    });
+
+    run.children.add(child);
+
+    try {
+        const outcome = await child.done;
+        const error = failure(run, command, outcome, options, tail.lines(), cwd);
+
+        if (error) {
+            throw error;
         }
 
-        const mode = pickExecMode({
-            capture: options.capture === true || readOnly,
-            quiet: run.global.quiet,
-            json: run.global.json,
-            log: run.log !== undefined
-        });
+        return { code: outcome.code, output, skipped: false };
+    } finally {
+        run.children.delete(child);
+    }
+}
 
-        // The folder the child runs in, as spawn sees it: what a missing-folder error has to name
-        const cwd = run.cwd === undefined ? options.cwd : path.resolve(run.cwd, options.cwd ?? '');
-        const tail = createTail(EXEC_TAIL_LINES, EXEC_TAIL_LINE_CHARS);
-        // Only a caller that asked for the output gets it: a dev server under --log would grow this for hours
-        const collect = options.capture === true || readOnly;
-        let output = '';
+/** `ctx.exec` for any options: a bad call is a `TypeError` before anything else, a dry run included. */
+async function execute(
+    run: ExecRun,
+    command: string,
+    args: readonly string[],
+    options: ExecOptions | ExecDetachedOptions
+): Promise<ExecResult | ExecDetachedResult> {
+    assertExecOptions(options);
 
-        const child = spawnChild({
-            command,
-            args,
-            cwd,
-            env: options.env,
-            pipe: mode.pipe,
-            timeoutMs: options.timeoutMs,
-            onData: (chunk, stream) => {
-                if (collect) {
-                    output += chunk;
-                }
+    if (isDetachedOptions(options)) {
+        return startDetached(run, command, args, options);
+    }
 
-                echo(run, mode, chunk, stream);
-                run.log?.write(chunk);
-
-                if (mode.keep) {
-                    tail.push(stream, chunk);
-                }
-            }
-        });
-
-        run.children.add(child);
-
-        try {
-            const outcome = await child.done;
-            const error = failure(run, command, outcome, options, tail.lines(), cwd);
-
-            if (error) {
-                throw error;
-            }
-
-            return { code: outcome.code, output, skipped: false };
-        } finally {
-            run.children.delete(child);
-        }
-    };
+    return runChild(run, command, args, options);
+}
 
 /**
  * `ctx.exec`. A call nobody awaits that fails on its own must not take the process down with an
  * unhandled rejection: whoever awaits still gets the error, and a run that does not look away
  * from the child is told by `run` ending, which stops it.
  */
-export const createExec =
-    (run: ExecRun): ExecFn =>
-    (command, args, options) => {
-        const result = execute(run)(command, args, options);
+export const createExec = (run: ExecRun): ExecFn => {
+    function exec(
+        command: string,
+        args: readonly string[] | undefined,
+        options: ExecDetachedOptions
+    ): Promise<ExecDetachedResult>;
+    function exec(
+        command: string,
+        args?: readonly string[],
+        options?: ExecOptions
+    ): Promise<ExecResult>;
+    function exec(
+        command: string,
+        args: readonly string[] = [],
+        options: ExecOptions | ExecDetachedOptions = {}
+    ): Promise<ExecResult | ExecDetachedResult> {
+        const result = execute(run, command, args, options);
 
         result.catch(() => undefined);
 
         return result;
-    };
+    }
+
+    return exec;
+};

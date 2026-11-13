@@ -583,6 +583,20 @@ export type ExecOptions = {
     timeoutMs?: number;
 };
 
+/** The options of a child meant to outlive the command: nothing else (no `capture`, `timeoutMs`...) goes with `detached`. */
+export type ExecDetachedOptions = {
+    cwd?: string;
+    /** Default: the process environment. */
+    env?: NodeJS.ProcessEnv;
+    /** The child outlives the command: it is never killed when `run` ends and never awaited. */
+    detached: true;
+    /** Where its stdout and stderr are appended, relative to its folder. Required, never empty. */
+    logFile: string;
+};
+
+/** `pid` is the child's; `null` and `skipped` under `--dry-run`, where nothing started. */
+export type ExecDetachedResult = { pid: number | null; skipped: boolean };
+
 export type ExecResult = {
     /** 0 when skipped under `--dry-run`. */
     code: number;
@@ -753,11 +767,45 @@ export type LogSink = {
     failure: () => string | undefined;
 };
 
-export type ExecFn = (
+/**
+ * `ctx.exec`. With `{ detached: true, logFile }` it starts a child that outlives the command and
+ * resolves to its pid; with anything else it runs a child and waits for it.
+ */
+export type ExecFn = {
+    (
+        command: string,
+        args: readonly string[] | undefined,
+        options: ExecDetachedOptions
+    ): Promise<ExecDetachedResult>;
+    (command: string, args?: readonly string[], options?: ExecOptions): Promise<ExecResult>;
+};
+
+/** What the edge needs to start a child that outlives the command, with its output appended to a file. */
+export type SpawnDetachedRequest = {
+    command: string;
+    args: readonly string[];
+    cwd: string | undefined;
+    env: NodeJS.ProcessEnv | undefined;
+    /** Where its stdout and stderr go (appended), relative to `cwd`; its folders are created. */
+    logFile: string;
+};
+
+/** How starting a detached child went: its pid, or why it did not start. */
+export type DetachedOutcome = Pick<SpawnOutcome, 'notFound' | 'cwdMissing' | 'startError'> & {
+    pid: number | undefined;
+};
+
+export type IsDetachedOptionsFn = (
+    options: ExecOptions | ExecDetachedOptions
+) => options is ExecDetachedOptions;
+export type AssertExecOptionsFn = (options: ExecOptions | ExecDetachedOptions) => void;
+export type DetachedPlannedLineFn = (
     command: string,
-    args?: readonly string[],
-    options?: ExecOptions
-) => Promise<ExecResult>;
+    args: readonly string[],
+    logFile: string
+) => string;
+
+export type SpawnDetachedFn = (request: SpawnDetachedRequest) => Promise<DetachedOutcome>;
 
 /** Which stream a piece of child output came from. */
 export type ChildStream = 'stdout' | 'stderr';

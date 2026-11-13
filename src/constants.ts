@@ -273,6 +273,14 @@ export const URL_LIKE = /^(file:|[a-z][a-z0-9+.-]*:\/\/)/i;
 
 /** How `ctx.exec` starts a child: stdin ignored and both output streams piped, or everything inherited. */
 export const EXEC_STDIO_PIPED: StdioOptions = ['ignore', 'pipe', 'pipe'];
+/** A detached child: no stdin; stdout and stderr are the log file, whose descriptor is filled in at spawn. */
+export const EXEC_DETACHED_STDIN = 'ignore' as const;
+export const EXEC_DETACHED_LOG_MODE = 'a';
+/** The keys a detached call may have: anything else is a `TypeError`. */
+export const EXEC_DETACHED_KEYS: readonly string[] = ['cwd', 'env', 'detached', 'logFile'];
+export const EXEC_DETACHED_NEEDS_LOGFILE =
+    'ctx.exec: detached: true needs a logFile (a path that is not empty) for the output of the child';
+export const EXEC_LOGFILE_WITHOUT_DETACHED = 'ctx.exec: logFile only goes with detached: true';
 export const EXEC_STDIO_INHERITED: StdioOptions = 'inherit';
 export const EXEC_OUTPUT_ENCODING = 'utf8';
 

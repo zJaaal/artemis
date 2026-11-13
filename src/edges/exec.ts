@@ -1,20 +1,26 @@
 import { type ChildProcess, spawn } from 'node:child_process';
 import fs from 'node:fs';
 import { Socket } from 'node:net';
+import path from 'node:path';
 
 import {
     ERROR_CODE,
+    EXEC_DETACHED_LOG_MODE,
+    EXEC_DETACHED_STDIN,
     EXEC_DRAIN_MS,
     EXEC_KILL_GRACE_MS,
     EXEC_OUTPUT_ENCODING,
     EXEC_STDIO_INHERITED,
     EXEC_STDIO_PIPED,
-    EXIT_CODE
+    EXIT_CODE,
+    LOG_FILE_HINT
 } from '../constants.js';
+import { CommandError } from '../errors/errors.js';
 import type {
     ChildHandle,
     ChildStream,
     SpawnChildFn,
+    SpawnDetachedFn,
     SpawnFinish,
     SpawnOutcome
 } from '../models.js';
@@ -172,4 +178,73 @@ export const spawnChild: SpawnChildFn = (request) => {
     }
 
     return { done, stop };
+};
+
+/** The descriptor of the log file a detached child writes to: opened for append, folders created first. */
+function openDetachedLog(logFile: string, cwd: string | undefined): number {
+    const target = path.resolve(cwd ?? '', logFile);
+
+    try {
+        fs.mkdirSync(path.dirname(target), { recursive: true });
+
+        return fs.openSync(target, EXEC_DETACHED_LOG_MODE);
+    } catch (error) {
+        throw new CommandError(`Cannot open the log file ${target}: ${messageOf(error)}`, {
+            hint: LOG_FILE_HINT
+        });
+    }
+}
+
+const NOT_STARTED = { pid: undefined, notFound: false, cwdMissing: false } as const;
+
+/**
+ * Starts a child that outlives the call: its own process group, no stdin, stdout and stderr appended
+ * to a file, and the parent lets go of it (`unref`), so Artemis can exit while it runs. It resolves
+ * once the child has spawned (with its pid) or could not start. A folder that does not exist fails
+ * before any folder of the log is created.
+ */
+export const spawnDetached: SpawnDetachedFn = (request) => {
+    if (request.cwd !== undefined && !fs.existsSync(request.cwd)) {
+        return Promise.resolve({ ...NOT_STARTED, cwdMissing: true, startError: undefined });
+    }
+
+    const descriptor = openDetachedLog(request.logFile, request.cwd);
+
+    return new Promise((resolve) => {
+        const fail = (startError: string | undefined, notFound: boolean): void => {
+            fs.closeSync(descriptor);
+            resolve({ ...NOT_STARTED, notFound, startError });
+        };
+
+        try {
+            const child = spawn(request.command, [...request.args], {
+                cwd: request.cwd,
+                env: request.env,
+                shell: false,
+                detached: true,
+                windowsHide: true,
+                stdio: [EXEC_DETACHED_STDIN, descriptor, descriptor]
+            });
+
+            // After the spawn, an 'error' (a signal that cannot be delivered) is nobody's to handle: the
+            // child is on its own, and an unhandled 'error' event would take the process down
+            child.on('error', (error) => {
+                if (child.pid === undefined) {
+                    fail(
+                        codeOf(error) === ERROR_CODE.MISSING ? undefined : messageOf(error),
+                        codeOf(error) === ERROR_CODE.MISSING
+                    );
+                }
+            });
+
+            child.once('spawn', () => {
+                child.unref();
+                fs.closeSync(descriptor);
+                resolve({ ...NOT_STARTED, pid: child.pid, startError: undefined });
+            });
+        } catch (error) {
+            // `spawn` throws at once for a few errors (a cwd that is a file, a null byte in an argument)
+            fail(messageOf(error), false);
+        }
+    });
 };

@@ -41,6 +41,18 @@ export default defineCommand({
     }
 });
 `,
+    // Starts a child that outlives it: the check below finds it alive after the binary has exited.
+    'background.js': `import { defineCommand } from '@zjaaal/artemis';
+
+export default defineCommand({
+    description: 'Starts a child in the background',
+    run: ({ ctx }) =>
+        ctx.exec(process.execPath, ['-e', 'setInterval(() => {}, 1000)'], {
+            detached: true,
+            logFile: 'background.log'
+        })
+});
+`,
     'wrong.js': `import { UsageError, defineCommand } from '@zjaaal/artemis';
 
 export default defineCommand({
@@ -125,6 +137,18 @@ try {
     );
 
     console.log('ok   the installed art and artemis run the commands of the project they are in');
+
+    // A detached child is still running after `art` has exited, and its output went to its log file.
+    const background = json(execute(art, ['background', '--json'], project)).result;
+
+    try {
+        process.kill(background.pid, 0);
+        console.log('ok   a detached child is still running after art has exited');
+    } finally {
+        process.kill(-background.pid, 'SIGKILL');
+    }
+
+    assert.ok(fs.existsSync(path.join(project, 'background.log')), 'the log file of the child');
 
     const framework = json(execute(art, ['where', '--json'], project)).result.framework;
 
@@ -338,12 +362,19 @@ export default defineCommand({
 
     assert.deepEqual(
         wipeEntry,
-        { id: 'wipe', description: 'Delete the data', destructive: true, dryRun: true },
+        {
+            id: 'wipe',
+            description: 'Delete the data',
+            usage: 'wipe',
+            destructive: true,
+            dryRun: true
+        },
         'the brief manifest marks what an agent must not miss'
     );
 
     assert.equal(brief.more, 'art help <command> --json');
-    assert.equal('globalFlags' in brief, false, 'and has no global flags');
+    assert.equal(brief.globalFlags, '--help --json --yes --dry-run --quiet --log <file>');
+    assert.equal(brief.search, 'art help --search <words> --json');
     console.log('ok   help --json --brief lists ids and descriptions, with the two markers');
 
     const refusedWipe = execute(art, ['wipe', '--json'], agentic);
@@ -413,14 +444,15 @@ export default defineCommand({
 
     // The packed AGENTS.md, from a project with no local copy: it must name nothing the package does not ship.
     const agents = json(execute(art, ['help', '--agents', '--json'], agentic)).result;
+    const authoring = json(execute(art, ['help', '--authoring', '--json'], agentic)).result;
+    const shipped = fs.readFileSync('AGENTS.md', 'utf8');
+    const calling = agents.markdown.split('\n\nTo write a command')[0];
 
-    assert.equal(
-        agents.markdown,
-        fs.readFileSync('AGENTS.md', 'utf8'),
-        'help --agents prints the packed AGENTS.md'
-    );
+    assert.ok(shipped.includes(calling), 'help --agents prints a section of the packed AGENTS.md');
+    assert.ok(shipped.includes(authoring.markdown.split('\n\n## Running')[0]));
+    assert.ok(Buffer.byteLength(agents.markdown) < 5 * 1024, 'and stays under 5 KB');
 
-    const outside = agents.markdown
+    const outside = `${agents.markdown}\n${authoring.markdown}`
         .split('\n')
         .filter((line) => /docs\/|specs\/|CODE_STANDARDS|pnpm run/.test(line));
 
