@@ -3,6 +3,8 @@ import path from 'node:path';
 
 import { afterEach, describe, expect, test } from 'vitest';
 
+import { FOLDER_PROBLEM } from '../constants.js';
+
 import type { ChildStream, SpawnRequest } from '../models.js';
 import { NO_EXECUTE_MODE, ROOT_UID, UNREADABLE_MODE } from '../test/constants.js';
 import { withMode } from '../test/permissions.js';
@@ -76,7 +78,7 @@ describe('spawnChild: how a child ends', () => {
             cwd: path.join(folders.make('artemis-exec-'), 'typo')
         });
 
-        expect(outcome).toMatchObject({ notFound: false, cwdProblem: 'missing' });
+        expect(outcome).toMatchObject({ notFound: false, cwdProblem: FOLDER_PROBLEM.MISSING });
     });
 
     test('a cwd that is a file is not-a-folder, not a start error or a thrown exception', async () => {
@@ -86,7 +88,25 @@ describe('spawnChild: how a child ends', () => {
 
         const { outcome } = await runNode('process.exit(0)', { cwd: file });
 
-        expect(outcome).toMatchObject({ cwdProblem: 'not-a-folder', startError: undefined });
+        expect(outcome).toMatchObject({
+            cwdProblem: FOLDER_PROBLEM.NOT_A_FOLDER,
+            startError: undefined
+        });
+    });
+
+    test("a cwd that is a symlink loop is a start error in Node's own words, not a permission problem", async () => {
+        const root = folders.make('artemis-exec-');
+        const first = path.join(root, 'a');
+
+        fs.symlinkSync(path.join(root, 'b'), first);
+        fs.symlinkSync(first, path.join(root, 'b'));
+
+        const { outcome } = await runNode('process.exit(0)', { cwd: first });
+
+        expect(outcome).toMatchObject({
+            cwdProblem: undefined,
+            startError: expect.stringMatching(/ELOOP/)
+        });
     });
 
     test('a cwd under a file is not-a-folder too', async () => {
@@ -96,7 +116,7 @@ describe('spawnChild: how a child ends', () => {
 
         const { outcome } = await runNode('process.exit(0)', { cwd: path.join(file, 'sub') });
 
-        expect(outcome).toMatchObject({ cwdProblem: 'not-a-folder' });
+        expect(outcome).toMatchObject({ cwdProblem: FOLDER_PROBLEM.NOT_A_FOLDER });
     });
 
     test.skipIf(isRoot)(
@@ -110,7 +130,7 @@ describe('spawnChild: how a child ends', () => {
                 runNode('process.exit(0)', { cwd: path.join(locked, 'sub') })
             );
 
-            expect(outcome).toMatchObject({ cwdProblem: 'no-access' });
+            expect(outcome).toMatchObject({ cwdProblem: FOLDER_PROBLEM.NO_ACCESS });
         }
     );
 
@@ -123,7 +143,7 @@ describe('spawnChild: how a child ends', () => {
                 runNode('process.exit(0)', { cwd: folder })
             );
 
-            expect(outcome).toMatchObject({ cwdProblem: 'no-access' });
+            expect(outcome).toMatchObject({ cwdProblem: FOLDER_PROBLEM.NO_ACCESS });
         }
     );
 

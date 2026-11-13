@@ -259,6 +259,35 @@ describe('ctx.exec: a program that cannot be started', () => {
 });
 
 describe('ctx.exec: a folder that does not exist', () => {
+    test('is its own error naming the folder, not "exited with code 1"', async () => {
+        const cwd = path.join(folders.make('artemis-exec-cwd-'), 'typo');
+        const run = await art(['exec', 'process.exit(0)', '--cwd', cwd, '--json']);
+
+        expect(envelope(run)).toMatchObject({
+            ok: false,
+            error: `The folder ${cwd} does not exist`
+        });
+    });
+
+    test('names the resolved folder, not the relative one typed', async () => {
+        const root = folders.make('artemis-exec-cwd-');
+
+        const run = await art(['exec', 'process.exit(0)', '--cwd', 'typo', '--json'], {
+            cwd: root
+        });
+
+        expect(envelope(run).error).toBe(`The folder ${path.join(root, 'typo')} does not exist`);
+    });
+
+    test('fails even with reject: false, where a plain exit code is returned', async () => {
+        const cwd = path.join(folders.make('artemis-exec-cwd-'), 'typo');
+        const run = await art(['exec', 'process.exit(0)', '--cwd', cwd, '--no-reject', '--json']);
+
+        expect(envelope(run).ok).toBe(false);
+    });
+});
+
+describe('ctx.exec: a cwd that is not a folder, or cannot be entered', () => {
     test('a cwd that is a file says so, naming it, with a hint', async () => {
         const cwd = path.join(folders.make('artemis-exec-cwd-'), 'plain.txt');
 
@@ -289,33 +318,6 @@ describe('ctx.exec: a folder that does not exist', () => {
             });
         }
     );
-
-    test('is its own error naming the folder, not "exited with code 1"', async () => {
-        const cwd = path.join(folders.make('artemis-exec-cwd-'), 'typo');
-        const run = await art(['exec', 'process.exit(0)', '--cwd', cwd, '--json']);
-
-        expect(envelope(run)).toMatchObject({
-            ok: false,
-            error: `The folder ${cwd} does not exist`
-        });
-    });
-
-    test('names the resolved folder, not the relative one typed', async () => {
-        const root = folders.make('artemis-exec-cwd-');
-
-        const run = await art(['exec', 'process.exit(0)', '--cwd', 'typo', '--json'], {
-            cwd: root
-        });
-
-        expect(envelope(run).error).toBe(`The folder ${path.join(root, 'typo')} does not exist`);
-    });
-
-    test('fails even with reject: false, where a plain exit code is returned', async () => {
-        const cwd = path.join(folders.make('artemis-exec-cwd-'), 'typo');
-        const run = await art(['exec', 'process.exit(0)', '--cwd', cwd, '--no-reject', '--json']);
-
-        expect(envelope(run).ok).toBe(false);
-    });
 });
 
 describe('ctx.exec under --dry-run', () => {

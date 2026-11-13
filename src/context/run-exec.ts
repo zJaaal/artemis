@@ -71,7 +71,7 @@ function folderError(command: string, problem: FolderProblem, cwd: string): Comm
     }
 }
 
-/** The error for a child that never started: a missing folder, a program that cannot run or is not there. */
+/** The error for a child that never started: a folder it cannot run in (missing, not a folder, no access), a program that cannot run, or one that is not there. */
 export function startFailure(
     command: string,
     outcome: Pick<SpawnOutcome, 'cwdProblem' | 'startError' | 'notFound'>,

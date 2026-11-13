@@ -901,11 +901,11 @@ export type SpawnOutcome = {
     timedOut: boolean;
     /** The executable could not be started (ENOENT). */
     notFound: boolean;
-    /** The folder to run in does not exist: Node reports it with the same ENOENT as a missing program. */
+    /** Why the folder to run in cannot be used: it is missing (Node reports that with the same ENOENT as a missing program), it is not a folder, or this user cannot enter it. */
     cwdProblem: FolderProblem | undefined;
     /** The caller ended it (`stop`, when the run ended), as opposed to the timeout: not a failure. */
     stopped: boolean;
-    /** Why it could not start, when the cause is neither a missing program nor a missing folder (permissions, say). */
+    /** Why it could not start, when the cause is neither a missing program nor a folder problem (permission to run the program, say). */
     startError: string | undefined;
     /** The signal that ended it (an OOM kill, a crash), when it had no exit code. */
     signal: string | undefined;

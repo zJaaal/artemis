@@ -5,6 +5,7 @@ import path from 'node:path';
 import {
     ERROR_CODE,
     FOLDER_PROBLEM,
+    NO_ACCESS_CODES,
     JSON_EXTENSION,
     MANIFEST_FILE,
     TEMP_SUFFIX
@@ -205,9 +206,10 @@ export const readManifest: ReadManifestFn = (dir) => {
 };
 
 /**
- * Why a child cannot run in a folder, or undefined when it can. Whatever the disk says is a problem
- * of one of three kinds, never a raw error: the folder is not there, it is not a folder (a file, or
- * a parent that is one), or this user cannot enter it (no permission on it or on a parent).
+ * Why a child cannot run in a folder, or undefined when it can (or when the disk says something
+ * else, which the spawn then reports in its own words). Three kinds: the folder is not there, it is
+ * not a folder (a file, or a parent that is one), or this user cannot enter it (EACCES or EPERM, on
+ * it or on a parent).
  */
 export const folderProblem: FolderProblemFn = (folder) => {
     try {
@@ -225,9 +227,13 @@ export const folderProblem: FolderProblemFn = (folder) => {
             return FOLDER_PROBLEM.MISSING;
         }
 
-        return code === ERROR_CODE.NOT_A_DIRECTORY
-            ? FOLDER_PROBLEM.NOT_A_FOLDER
-            : FOLDER_PROBLEM.NO_ACCESS;
+        if (code === ERROR_CODE.NOT_A_DIRECTORY) {
+            return FOLDER_PROBLEM.NOT_A_FOLDER;
+        }
+
+        // Only a permission error is "no access": anything else (a symlink loop, a name too long) is
+        // not this check's to explain, so the spawn goes ahead and Node's own message is the error
+        return NO_ACCESS_CODES.includes(code ?? '') ? FOLDER_PROBLEM.NO_ACCESS : undefined;
     }
 };
 

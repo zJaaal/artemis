@@ -238,9 +238,13 @@ export const spawnDetached: SpawnDetachedFn = (request) => {
     const descriptor = openDetachedLog(request.logFile, request.cwd);
 
     return new Promise((resolve) => {
-        const fail = (startError: string | undefined, notFound: boolean): void => {
+        const fail = (
+            startError: string | undefined,
+            notFound: boolean,
+            cwdProblem?: FolderProblem
+        ): void => {
             fs.closeSync(descriptor);
-            resolve({ ...DETACHED_NOT_STARTED, notFound, startError });
+            resolve({ ...DETACHED_NOT_STARTED, notFound, cwdProblem, startError });
         };
 
         try {
@@ -257,9 +261,17 @@ export const spawnDetached: SpawnDetachedFn = (request) => {
             // child is on its own, and an unhandled 'error' event would take the process down
             child.on('error', (error) => {
                 if (child.pid === undefined) {
+                    // The folder may have gone between the check and the spawn: say so as the check would
+                    const cwdProblem =
+                        request.cwd === undefined ? undefined : folderProblem(request.cwd);
+
+                    const notFound =
+                        codeOf(error) === ERROR_CODE.MISSING && cwdProblem === undefined;
+
                     fail(
-                        codeOf(error) === ERROR_CODE.MISSING ? undefined : messageOf(error),
-                        codeOf(error) === ERROR_CODE.MISSING
+                        notFound || cwdProblem !== undefined ? undefined : messageOf(error),
+                        notFound,
+                        cwdProblem
                     );
                 }
             });

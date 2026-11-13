@@ -3,6 +3,8 @@ import path from 'node:path';
 
 import { afterEach, describe, expect, test } from 'vitest';
 
+import { FOLDER_PROBLEM } from '../constants.js';
+
 import { CommandError } from '../errors/errors.js';
 import { NO_EXECUTE_MODE, ROOT_UID, UNREADABLE_MODE } from '../test/constants.js';
 import { withMode } from '../test/permissions.js';
@@ -146,7 +148,7 @@ describe('spawnDetached', () => {
         const outcome = await start(SILENT_JOB, 'a.log', path.join(root, 'typo'));
 
         expect([outcome.cwdProblem, fs.existsSync(path.join(root, 'typo'))]).toEqual([
-            'missing',
+            FOLDER_PROBLEM.MISSING,
             false
         ]);
     });
@@ -159,7 +161,7 @@ describe('spawnDetached', () => {
 
         expect(await start(SILENT_JOB, 'a.log', file)).toMatchObject({
             pid: undefined,
-            cwdProblem: 'not-a-folder'
+            cwdProblem: FOLDER_PROBLEM.NOT_A_FOLDER
         });
     });
 
@@ -174,7 +176,7 @@ describe('spawnDetached', () => {
                 start(SILENT_JOB, 'a.log', path.join(locked, 'sub'))
             );
 
-            expect(outcome).toMatchObject({ pid: undefined, cwdProblem: 'no-access' });
+            expect(outcome).toMatchObject({ pid: undefined, cwdProblem: FOLDER_PROBLEM.NO_ACCESS });
         }
     );
 
@@ -188,7 +190,7 @@ describe('spawnDetached', () => {
             );
 
             expect([outcome.cwdProblem, fs.existsSync(path.join(folder, 'logs'))]).toEqual([
-                'no-access',
+                FOLDER_PROBLEM.NO_ACCESS,
                 false
             ]);
         }

@@ -270,7 +270,7 @@ describe('pickExecMode: the first row that applies wins', () => {
     });
 });
 
-describe('createTail: progress that rewrites its line', () => {
+describe('createOutputKeeper: progress that rewrites its line', () => {
     test('keeps only the last state of a line rewritten with carriage returns', () => {
         const tail = tailKeeper(EXEC_TAIL_LINES, EXEC_TAIL_LINE_CHARS);
 
@@ -307,7 +307,7 @@ describe('createTail: progress that rewrites its line', () => {
     });
 });
 
-describe('createTail', () => {
+describe('createOutputKeeper: the tail', () => {
     test('keeps whole lines of one stream', () => {
         const tail = tailKeeper(EXEC_TAIL_LINES, EXEC_TAIL_LINE_CHARS);
 

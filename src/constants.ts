@@ -277,9 +277,16 @@ export const ERROR_CODE = {
     MISSING: 'ENOENT',
     NOT_A_DIRECTORY: 'ENOTDIR',
     PERMISSION_DENIED: 'EPERM',
+    ACCESS_DENIED: 'EACCES',
     MODULE_NOT_FOUND: 'ERR_MODULE_NOT_FOUND',
     ABORTED: 'ABORT_ERR'
 } as const;
+
+/** The errors that mean this user may not enter a folder. */
+export const NO_ACCESS_CODES: readonly string[] = [
+    ERROR_CODE.ACCESS_DENIED,
+    ERROR_CODE.PERMISSION_DENIED
+];
 
 /** The package a command file imports the framework from. */
 export const PACKAGE_NAME = '@zjaaal/artemis';

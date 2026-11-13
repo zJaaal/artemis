@@ -3,6 +3,8 @@ import path from 'node:path';
 
 import { afterEach, describe, expect, test } from 'vitest';
 
+import { FOLDER_PROBLEM } from '../constants.js';
+
 import { NO_EXECUTE_MODE, ROOT_UID, UNREADABLE_MODE } from '../test/constants.js';
 import { withMode } from '../test/permissions.js';
 import { createTempFolders } from '../test/temp.js';
@@ -403,7 +405,9 @@ describe('folderProblem', () => {
     });
 
     test('a folder that is not there is missing', () => {
-        expect(folderProblem(path.join(folders.make('artemis-files-'), 'typo'))).toBe('missing');
+        expect(folderProblem(path.join(folders.make('artemis-files-'), 'typo'))).toBe(
+            FOLDER_PROBLEM.MISSING
+        );
     });
 
     test('a file is not a folder', () => {
@@ -411,7 +415,7 @@ describe('folderProblem', () => {
 
         fs.writeFileSync(file, 'x');
 
-        expect(folderProblem(file)).toBe('not-a-folder');
+        expect(folderProblem(file)).toBe(FOLDER_PROBLEM.NOT_A_FOLDER);
     });
 
     test('a path under a file is not a folder', () => {
@@ -419,14 +423,24 @@ describe('folderProblem', () => {
 
         fs.writeFileSync(file, 'x');
 
-        expect(folderProblem(path.join(file, 'sub'))).toBe('not-a-folder');
+        expect(folderProblem(path.join(file, 'sub'))).toBe(FOLDER_PROBLEM.NOT_A_FOLDER);
+    });
+
+    test('a symlink loop is not a permission problem: it has no answer here', () => {
+        const root = folders.make('artemis-files-');
+        const first = path.join(root, 'a');
+
+        fs.symlinkSync(path.join(root, 'b'), first);
+        fs.symlinkSync(first, path.join(root, 'b'));
+
+        expect(folderProblem(first)).toBeUndefined();
     });
 
     test.skipIf(isRoot)('a folder with no execute bit is no-access', async () => {
         const folder = folders.make('artemis-files-');
 
         expect(await withMode(folder, NO_EXECUTE_MODE, () => folderProblem(folder))).toBe(
-            'no-access'
+            FOLDER_PROBLEM.NO_ACCESS
         );
     });
 
@@ -437,6 +451,6 @@ describe('folderProblem', () => {
 
         expect(
             await withMode(locked, UNREADABLE_MODE, () => folderProblem(path.join(locked, 'sub')))
-        ).toBe('no-access');
+        ).toBe(FOLDER_PROBLEM.NO_ACCESS);
     });
 });
