@@ -362,14 +362,22 @@ describe('ctx.exec: a program that was not found and was stopped by the run', ()
     };
 
     test('is still "was not found": the stop does not turn it into a success', () => {
-        expect(failure(run, 'no-such-binary', outcome, {}, [], undefined)?.message).toBe(
-            'no-such-binary was not found'
-        );
+        expect(
+            failure(run, 'no-such-binary', outcome, {}, { tail: [], errorLines: [] }, undefined)
+                ?.message
+        ).toBe('no-such-binary was not found');
     });
 
     test('a child that really started and was stopped is not a failure', () => {
         expect(
-            failure(run, 'sleep', { ...outcome, notFound: false }, {}, [], undefined)
+            failure(
+                run,
+                'sleep',
+                { ...outcome, notFound: false },
+                {},
+                { tail: [], errorLines: [] },
+                undefined
+            )
         ).toBeUndefined();
     });
 });

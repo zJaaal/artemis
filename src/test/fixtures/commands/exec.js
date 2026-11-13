@@ -10,7 +10,9 @@ export default defineCommand({
         'read-only': { type: 'boolean' },
         'no-reject': { type: 'boolean' },
         timeout: { type: 'string' },
-        cwd: { type: 'string' }
+        cwd: { type: 'string' },
+        pattern: { type: 'string', description: 'errorPattern, as a RegExp source' },
+        'pattern-flags': { type: 'string', description: 'flags of the errorPattern' }
     },
     async run({ args, flags, ctx }) {
         const command = flags.command ?? process.execPath;
@@ -21,7 +23,10 @@ export default defineCommand({
             readOnly: flags['read-only'],
             reject: flags['no-reject'] ? false : undefined,
             timeoutMs: flags.timeout ? Number(flags.timeout) : undefined,
-            cwd: flags.cwd
+            cwd: flags.cwd,
+            errorPattern: flags.pattern
+                ? new RegExp(flags.pattern, flags['pattern-flags'])
+                : undefined
         });
     }
 });

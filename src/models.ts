@@ -308,8 +308,14 @@ export type ExecErrorOptions = CommandErrorOptions & {
     tail: readonly string[];
     /** True when the child's output was hidden (`--quiet`, `capture`) and the run is not `--json`. */
     showTail: boolean;
+    /** The lines of its output that matched `errorPattern`; left out when none did. */
+    errorLines?: readonly string[] | undefined;
 };
-export type ExecErrorShape = CommandErrorShape & { tail: readonly string[]; showTail: boolean };
+export type ExecErrorShape = CommandErrorShape & {
+    tail: readonly string[];
+    showTail: boolean;
+    errorLines?: readonly string[] | undefined;
+};
 export type IsExecErrorFn = (value: unknown) => value is ExecErrorShape;
 
 export type UsageErrorOptions = {
@@ -581,6 +587,8 @@ export type ExecOptions = {
     reject?: boolean;
     /** Kills the child (SIGTERM, then SIGKILL after the grace period) and throws. Default: none. */
     timeoutMs?: number;
+    /** A failed child keeps the lines of its output that match, next to its `tail`. It makes the call piped. No `g` or `y` flag. */
+    errorPattern?: RegExp;
 };
 
 /** The options of a child meant to outlive the command: nothing else (no `capture`, `timeoutMs`...) goes with `detached`. */
@@ -604,6 +612,8 @@ export type ExecResult = {
     output: string;
     /** True under `--dry-run` for a call without `readOnly`: nothing ran. */
     skipped: boolean;
+    /** With `errorPattern` and `reject: false`: the lines that matched, when the child failed and any did. */
+    errorLines?: string[];
 };
 
 /** Opens the `--log` file, truncated. `cwd` is what a relative path is relative to. */
@@ -864,7 +874,14 @@ export type ExecMode = {
     keep: boolean;
 };
 
-export type ExecModeInput = { capture: boolean; quiet: boolean; json: boolean; log: boolean };
+export type ExecModeInput = {
+    capture: boolean;
+    quiet: boolean;
+    json: boolean;
+    log: boolean;
+    /** The call has an `errorPattern`, so its output has to be read. */
+    errorPattern: boolean;
+};
 export type PickExecModeFn = (input: ExecModeInput) => ExecMode;
 
 /** The last lines of a child's output, each cut: what a failed command's envelope carries as `tail`. */
@@ -874,7 +891,18 @@ export type TailRing = {
     lines: () => string[];
 };
 
-export type CreateTailFn = (maxLines: number, maxChars: number) => TailRing;
+/** Called with each cleaned line a child printed (CR handled, blank lines dropped), before it is cut. */
+export type LineListener = (line: string) => void;
+
+export type CreateTailFn = (maxLines: number, maxChars: number, onLine?: LineListener) => TailRing;
+
+/** The first lines of a child's output that match a pattern, each cut. */
+export type ErrorLineCollector = { add: LineListener; lines: () => string[] };
+export type CreateErrorLinesFn = (
+    pattern: RegExp,
+    maxLines: number,
+    maxChars: number
+) => ErrorLineCollector;
 
 /** One line of the brief manifest: what an agent needs before it calls. `destructive` and `dryRun` only when true. */
 export type BriefCommand = {
@@ -1004,6 +1032,8 @@ export type ErrorReport = {
     stack: string | undefined;
     /** The last lines of a failed child, when `ctx.exec` made this error. */
     tail: readonly string[] | undefined;
+    /** The lines of a failed child that matched its `errorPattern`. */
+    errorLines: readonly string[] | undefined;
     showTail: boolean;
     exitCode: ExitCode;
 };
@@ -1227,6 +1257,7 @@ export type FailureEnvelopeFn = (
         hint?: string | undefined;
         log?: string | undefined;
         tail?: readonly string[] | undefined;
+        errorLines?: readonly string[] | undefined;
         checks?: readonly DoctorCheck[] | undefined;
     }
 ) => string;

@@ -130,6 +130,14 @@ export const NEXT_PREFIX = 'Next:';
 /** `ctx.exec`: how much of a failed child is kept, and how long a child gets to stop after SIGTERM. */
 export const EXEC_TAIL_LINES = 40;
 export const EXEC_TAIL_LINE_CHARS = 500;
+/** How many lines matching `errorPattern` a failed child keeps: the first ones. */
+export const EXEC_ERROR_LINES = 20;
+export const EXEC_PATTERN_STATEFUL_FLAGS = ['g', 'y'] as const;
+export const EXEC_PATTERN_STATEFUL =
+    'ctx.exec: errorPattern cannot have the g or y flag, they make test() remember where it was';
+/** What a child shown to a terminal becomes when its output has to be read: piped, and still shown stream by stream. */
+export const EXEC_PIPED_SHOWN: ExecMode = { pipe: true, echo: 'split', keep: true };
+export const ERROR_LINES_HEADING = 'Error lines';
 export const EXEC_START_HINT = 'Check that it is an executable this user may run.';
 export const EXEC_KILL_GRACE_MS = 5000;
 /** After a child exits, how long its output pipes get to drain before they are cut (a grandchild may hold them open). */

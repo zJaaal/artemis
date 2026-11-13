@@ -61,11 +61,15 @@ export class ExecError extends CommandError {
     /** Whether a person has to be shown them under the error (the child's output was hidden). */
     readonly showTail: boolean;
 
-    constructor(message: string, { tail, showTail, ...options }: ExecErrorOptions) {
+    /** The lines of its output that matched `errorPattern`, when any did. */
+    readonly errorLines: readonly string[] | undefined;
+
+    constructor(message: string, { tail, showTail, errorLines, ...options }: ExecErrorOptions) {
         super(message, options);
         this.name = 'ExecError';
         this.tail = tail;
         this.showTail = showTail;
+        this.errorLines = errorLines;
         Object.defineProperty(this, EXEC_ERROR_TAG, { value: true });
     }
 }

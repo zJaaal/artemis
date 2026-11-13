@@ -1,4 +1,5 @@
 import {
+    ERROR_LINES_HEADING,
     EXIT_CODE,
     FAILURE_CODES,
     GLOBAL_FLAGS_TEXT,
@@ -41,6 +42,7 @@ function describeError(error: unknown): ErrorReport {
         usageHint,
         stack: !isExpected && error instanceof Error ? error.stack : undefined,
         tail: isExecError(error) && error.tail.length ? error.tail : undefined,
+        errorLines: isExecError(error) && error.errorLines?.length ? error.errorLines : undefined,
         showTail: isExecError(error) && error.showTail,
         exitCode: isExpected ? failureCodeOf(error.exitCode) : EXIT_CODE.FAILED
     };
@@ -64,6 +66,7 @@ export const failureEnvelope: FailureEnvelopeFn = (command, error, keys = {}) =>
         ...(keys.hint ? { hint: keys.hint } : {}),
         ...(keys.log === undefined ? {} : { log: keys.log }),
         ...(keys.tail ? { tail: keys.tail } : {}),
+        ...(keys.errorLines ? { errorLines: keys.errorLines } : {}),
         ...(keys.checks ? { checks: keys.checks } : {})
     });
 
@@ -72,7 +75,8 @@ const toJson = (report: ErrorReport, { commandId, log }: ReportContext): string 
     failureEnvelope(commandId ?? null, report.message, {
         hint: report.hint,
         log,
-        tail: report.tail
+        tail: report.tail,
+        errorLines: report.errorLines
     });
 
 function toText(report: ErrorReport, { style, bin }: ReportContext): string {
@@ -80,6 +84,14 @@ function toText(report: ErrorReport, { style, bin }: ReportContext): string {
 
     if (report.hint) {
         lines.push(`${style.yellow('Hint:')} ${report.hint}`);
+    }
+
+    if (report.errorLines && report.showTail) {
+        lines.push(
+            '',
+            style.bold(ERROR_LINES_HEADING),
+            ...report.errorLines.map((line) => style.dim(line))
+        );
     }
 
     if (report.tail && report.showTail) {

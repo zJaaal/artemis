@@ -4,6 +4,9 @@ import {
     EXEC_DETACHED_NEEDS_LOGFILE,
     EXEC_LOGFILE_WITHOUT_DETACHED,
     EXEC_PIPED_HIDDEN,
+    EXEC_PIPED_SHOWN,
+    EXEC_PATTERN_STATEFUL,
+    EXEC_PATTERN_STATEFUL_FLAGS,
     ID_SEPARATOR,
     LINE_END,
     MS_PER_SECOND
@@ -11,9 +14,11 @@ import {
 import type {
     AssertExecOptionsFn,
     ChildStream,
+    CreateErrorLinesFn,
     CreateTailFn,
     DetachedPlannedLineFn,
     ExecDetachedOptions,
+    ExecOptions,
     IsDetachedOptionsFn,
     PickExecModeFn
 } from '../models.js';
@@ -23,7 +28,7 @@ import type {
  * something needs the bytes, because a child that inherits the terminal keeps its colors and progress
  * bars. `--log` is not a mode of its own: it is a copy of every piped row.
  */
-export const pickExecMode: PickExecModeFn = ({ capture, quiet, json, log }) => {
+export const pickExecMode: PickExecModeFn = ({ capture, quiet, json, log, errorPattern }) => {
     if (capture || quiet) {
         return EXEC_PIPED_HIDDEN;
     }
@@ -33,9 +38,9 @@ export const pickExecMode: PickExecModeFn = ({ capture, quiet, json, log }) => {
         return { pipe: true, echo: 'stderr', keep: true };
     }
 
-    return log
-        ? { pipe: true, echo: 'split', keep: true }
-        : { pipe: false, echo: 'none', keep: false };
+    // A child shown to the terminal is not read at all: `errorPattern` needs its lines, so it is piped
+    // and shown stream by stream instead
+    return log || errorPattern ? EXEC_PIPED_SHOWN : { pipe: false, echo: 'none', keep: false };
 };
 
 /**
@@ -43,7 +48,7 @@ export const pickExecMode: PickExecModeFn = ({ capture, quiet, json, log }) => {
  * stream, so a half-written line of one stream never glues onto the other. Blank lines are not kept:
  * the tail is for reading why a child failed, and they cost tokens.
  */
-export const createTail: CreateTailFn = (maxLines, maxChars) => {
+export const createTail: CreateTailFn = (maxLines, maxChars, onLine) => {
     const kept: string[] = [];
     const open: Record<ChildStream, string> = { stdout: '', stderr: '' };
 
@@ -58,6 +63,7 @@ export const createTail: CreateTailFn = (maxLines, maxChars) => {
             return;
         }
 
+        onLine?.(clean);
         kept.push(clean.slice(0, maxChars));
 
         if (kept.length > maxLines) {
@@ -89,12 +95,35 @@ export const createTail: CreateTailFn = (maxLines, maxChars) => {
     };
 };
 
+/**
+ * Collects the first `maxLines` lines that match a pattern, each cut at `maxChars`. It sees every
+ * line of the output as it streams, so a line far above the last 40 is found too. The pattern is
+ * not stateful (no `g` or `y` flag), so `test` gives the same answer for the same line.
+ */
+export const createErrorLines: CreateErrorLinesFn = (pattern, maxLines, maxChars) => {
+    const kept: string[] = [];
+
+    return {
+        add: (line) => {
+            if (kept.length < maxLines && pattern.test(line)) {
+                kept.push(line.slice(0, maxChars));
+            }
+        },
+        lines: () => [...kept]
+    };
+};
+
 /** How long a timeout was, as a person writes it: 1500 ms is "1.5 s", 30000 ms is "30 s". */
 export const timeoutText = (timeoutMs: number): string => `${timeoutMs / MS_PER_SECOND} s`;
 
 /** Whether the options are those of a detached call (`detached: true`). */
 export const isDetachedOptions: IsDetachedOptionsFn = (options): options is ExecDetachedOptions =>
     'detached' in options && options.detached === true;
+
+/** Whether the options carry an `errorPattern` with the `g` or `y` flag. */
+const hasStatefulPattern = (options: ExecOptions): boolean =>
+    options.errorPattern !== undefined &&
+    EXEC_PATTERN_STATEFUL_FLAGS.some((flag) => options.errorPattern?.flags.includes(flag));
 
 /** The options a call has, whatever their value: a key set to `undefined` is the same as no key. */
 const setKeys = (options: object): string[] =>
@@ -111,6 +140,10 @@ export const assertExecOptions: AssertExecOptionsFn = (options) => {
     if (!isDetachedOptions(options)) {
         if (keys.includes('logFile')) {
             throw new TypeError(EXEC_LOGFILE_WITHOUT_DETACHED);
+        }
+
+        if (hasStatefulPattern(options)) {
+            throw new TypeError(EXEC_PATTERN_STATEFUL);
         }
 
         return;

@@ -2,6 +2,7 @@ import path from 'node:path';
 
 import {
     EXEC_LOG_HINT_PREFIX,
+    EXEC_ERROR_LINES,
     EXEC_NO_LOG_HINT,
     EXEC_NOT_FOUND_HINT,
     EXEC_START_HINT,
@@ -24,6 +25,7 @@ import type {
 } from '../models.js';
 import {
     assertExecOptions,
+    createErrorLines,
     createTail,
     detachedPlannedLine,
     isDetachedOptions,
@@ -82,9 +84,10 @@ export function failure(
     command: string,
     outcome: SpawnOutcome,
     options: ExecOptions,
-    tail: readonly string[],
+    lines: { tail: readonly string[]; errorLines: readonly string[] },
     cwd: string | undefined
 ): CommandError | undefined {
+    const { tail, errorLines } = lines;
     const notStarted = startFailure(command, outcome, cwd);
 
     if (notStarted) {
@@ -97,7 +100,13 @@ export function failure(
     }
 
     const hidden = run.global.quiet || options.capture === true || options.readOnly === true;
-    const base = { hint: failureHint(run), tail, showTail: hidden && !run.global.json };
+
+    const base = {
+        hint: failureHint(run),
+        tail,
+        showTail: hidden && !run.global.json,
+        ...(errorLines.length ? { errorLines } : {})
+    };
 
     if (outcome.timedOut) {
         const seconds = timeoutText(options.timeoutMs ?? 0);
@@ -181,11 +190,18 @@ async function runChild(
         capture: options.capture === true || readOnly,
         quiet: run.global.quiet,
         json: run.global.json,
-        log: run.log !== undefined
+        log: run.log !== undefined,
+        errorPattern: options.errorPattern !== undefined
     });
 
     const cwd = childCwd(run, options);
-    const tail = createTail(EXEC_TAIL_LINES, EXEC_TAIL_LINE_CHARS);
+
+    const matcher =
+        options.errorPattern === undefined
+            ? undefined
+            : createErrorLines(options.errorPattern, EXEC_ERROR_LINES, EXEC_TAIL_LINE_CHARS);
+
+    const tail = createTail(EXEC_TAIL_LINES, EXEC_TAIL_LINE_CHARS, matcher?.add);
     // Only a caller that asked for the output gets it: a dev server under --log would grow this for hours
     const collect = options.capture === true || readOnly;
     let output = '';
@@ -215,13 +231,27 @@ async function runChild(
 
     try {
         const outcome = await child.done;
-        const error = failure(run, command, outcome, options, tail.lines(), cwd);
+        const errorLines = outcome.code === 0 ? [] : (matcher?.lines() ?? []);
+
+        const error = failure(
+            run,
+            command,
+            outcome,
+            options,
+            { tail: tail.lines(), errorLines },
+            cwd
+        );
 
         if (error) {
             throw error;
         }
 
-        return { code: outcome.code, output, skipped: false };
+        return {
+            code: outcome.code,
+            output,
+            skipped: false,
+            ...(errorLines.length ? { errorLines } : {})
+        };
     } finally {
         run.children.delete(child);
     }

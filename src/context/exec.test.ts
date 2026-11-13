@@ -1,9 +1,94 @@
 import { describe, expect, test } from 'vitest';
 
 import { EXEC_TAIL_LINE_CHARS, EXEC_TAIL_LINES } from '../constants.js';
-import { createTail, pickExecMode, timeoutText } from './exec.js';
+import { createErrorLines, createTail, pickExecMode, timeoutText } from './exec.js';
 
-const noFlags = { capture: false, quiet: false, json: false, log: false };
+const noFlags = { capture: false, quiet: false, json: false, log: false, errorPattern: false };
+
+describe('pickExecMode: an errorPattern', () => {
+    test('makes a child that would inherit the terminal piped and shown stream by stream', () => {
+        expect(pickExecMode({ ...noFlags, errorPattern: true })).toEqual({
+            pipe: true,
+            echo: 'split',
+            keep: true
+        });
+    });
+
+    test('does not change what --quiet shows', () => {
+        expect(pickExecMode({ ...noFlags, quiet: true, errorPattern: true })).toEqual(
+            pickExecMode({ ...noFlags, quiet: true })
+        );
+    });
+
+    test('does not change what --json shows', () => {
+        expect(pickExecMode({ ...noFlags, json: true, errorPattern: true })).toEqual(
+            pickExecMode({ ...noFlags, json: true })
+        );
+    });
+});
+
+describe('createErrorLines', () => {
+    test('keeps the lines that match, in order', () => {
+        const found = createErrorLines(/error/, 20, 500);
+
+        ['ok', 'error: one', 'fine', 'error: two'].forEach(found.add);
+
+        expect(found.lines()).toEqual(['error: one', 'error: two']);
+    });
+
+    test('keeps only the first maxLines matches', () => {
+        const found = createErrorLines(/x/, 2, 500);
+
+        ['x1', 'x2', 'x3'].forEach(found.add);
+
+        expect(found.lines()).toEqual(['x1', 'x2']);
+    });
+
+    test('cuts each line at maxChars', () => {
+        const found = createErrorLines(/x/, 2, 5);
+
+        found.add('xxxxxxxxxx');
+
+        expect(found.lines()).toEqual(['xxxxx']);
+    });
+
+    test('has nothing when nothing matches', () => {
+        const found = createErrorLines(/x/, 2, 5);
+
+        found.add('abc');
+
+        expect(found.lines()).toEqual([]);
+    });
+});
+
+describe('createTail: the line listener', () => {
+    test('hears every cleaned line, also the ones the tail no longer keeps', () => {
+        const heard: string[] = [];
+        const tail = createTail(1, 500, (line) => heard.push(line));
+
+        tail.push('stdout', 'one\ntwo\nthree\n');
+
+        expect(heard).toEqual(['one', 'two', 'three']);
+    });
+
+    test('hears a line before it is cut', () => {
+        const heard: string[] = [];
+        const tail = createTail(5, 3, (line) => heard.push(line));
+
+        tail.push('stdout', 'abcdef\n');
+
+        expect(heard).toEqual(['abcdef']);
+    });
+
+    test('does not hear blank lines', () => {
+        const heard: string[] = [];
+        const tail = createTail(5, 500, (line) => heard.push(line));
+
+        tail.push('stdout', '\n  \nx\n');
+
+        expect(heard).toEqual(['x']);
+    });
+});
 
 describe('pickExecMode: one test per row of the table', () => {
     test('capture pipes into the output and shows nothing', () => {
@@ -45,9 +130,9 @@ describe('pickExecMode: one test per row of the table', () => {
 
 describe('pickExecMode: the first row that applies wins', () => {
     test('capture beats --json and --quiet', () => {
-        expect(pickExecMode({ capture: true, quiet: true, json: true, log: true }).echo).toBe(
-            'none'
-        );
+        expect(
+            pickExecMode({ ...noFlags, capture: true, quiet: true, json: true, log: true }).echo
+        ).toBe('none');
     });
 
     test('--quiet beats --json', () => {
