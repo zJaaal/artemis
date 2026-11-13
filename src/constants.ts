@@ -59,6 +59,15 @@ export const GLOBAL_FLAG_TOKENS: readonly string[] = Object.entries(GLOBAL_FLAGS
     ([name, flag]) => [`--${name}`, ...('short' in flag ? [`-${flag.short}`] : [])]
 );
 
+/** Why a child cannot run in a folder: it is not there, it is not a folder, or this user cannot enter it. */
+export const FOLDER_PROBLEM = {
+    MISSING: 'missing',
+    NOT_A_FOLDER: 'not-a-folder',
+    NO_ACCESS: 'no-access'
+} as const;
+export const EXEC_FOLDER_ACCESS_HINT = "Check the folder's permissions, or pass another cwd.";
+export const EXEC_NOT_A_FOLDER_HINT = 'Pass a folder as cwd.';
+
 /** The kind `parseArgs` gives the tokens that are options. */
 export const OPTION_TOKEN = 'option';
 export const RESERVED_SHORTS: readonly string[] = Object.values(GLOBAL_FLAGS).flatMap((flag) =>
@@ -266,6 +275,7 @@ export const TEMP_SUFFIX = '.tmp';
 export const ERROR_CODE = {
     EXISTS: 'EEXIST',
     MISSING: 'ENOENT',
+    NOT_A_DIRECTORY: 'ENOTDIR',
     PERMISSION_DENIED: 'EPERM',
     MODULE_NOT_FOUND: 'ERR_MODULE_NOT_FOUND',
     ABORTED: 'ABORT_ERR'
@@ -297,8 +307,12 @@ export const URL_LIKE = /^(file:|[a-z][a-z0-9+.-]*:\/\/)/i;
 
 /** How `ctx.exec` starts a child: stdin ignored and both output streams piped, or everything inherited. */
 export const EXEC_STDIO_PIPED: StdioOptions = ['ignore', 'pipe', 'pipe'];
-/** What a detached call that never started has in common: no pid, and neither a missing program nor a missing folder until said. */
-export const DETACHED_NOT_STARTED = { pid: undefined, notFound: false, cwdMissing: false } as const;
+/** What a detached call that never started has in common: no pid, and neither a missing program nor a folder problem until said. */
+export const DETACHED_NOT_STARTED = {
+    pid: undefined,
+    notFound: false,
+    cwdProblem: undefined
+} as const;
 /** A detached child: no stdin; stdout and stderr are the log file, whose descriptor is filled in at spawn. */
 export const EXEC_DETACHED_STDIN = 'ignore' as const;
 export const EXEC_DETACHED_LOG_MODE = 'a';

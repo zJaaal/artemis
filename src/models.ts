@@ -3,7 +3,7 @@ import type { ParseArgsConfig } from 'node:util';
 
 import type { AbstractPromptOptions } from '@topcli/prompts';
 
-import type { EXIT_CODE, STYLE_CODES } from './constants.js';
+import type { EXIT_CODE, FOLDER_PROBLEM, STYLE_CODES } from './constants.js';
 import type { LockOptions } from './kits/store/models.js';
 import type { CommandError, UsageError } from './errors/errors.js';
 
@@ -437,6 +437,10 @@ export type WalkContext = { registry: Registry; root: string };
 export type ListDirectoryFn = (dir: string) => DirectoryEntry[];
 export type PathExistsFn = (path: string) => boolean;
 export type IsFolderFn = (path: string) => boolean;
+
+export type FolderProblem = (typeof FOLDER_PROBLEM)[keyof typeof FOLDER_PROBLEM];
+/** Why a child cannot run in a folder, or undefined when it can: it is a folder this user can enter. */
+export type FolderProblemFn = (folder: string) => FolderProblem | undefined;
 export type MakeDirectoryFn = (dir: string) => void;
 export type ReadTextIfExistsFn = (file: string) => string | undefined;
 /** Creates the file only if it does not exist yet; false means someone else has it. */
@@ -857,7 +861,7 @@ export type SpawnDetachedRequest = {
 };
 
 /** How starting a detached child went: its pid, or why it did not start. */
-export type DetachedOutcome = Pick<SpawnOutcome, 'notFound' | 'cwdMissing' | 'startError'> & {
+export type DetachedOutcome = Pick<SpawnOutcome, 'notFound' | 'cwdProblem' | 'startError'> & {
     pid: number | undefined;
 };
 
@@ -898,7 +902,7 @@ export type SpawnOutcome = {
     /** The executable could not be started (ENOENT). */
     notFound: boolean;
     /** The folder to run in does not exist: Node reports it with the same ENOENT as a missing program. */
-    cwdMissing: boolean;
+    cwdProblem: FolderProblem | undefined;
     /** The caller ended it (`stop`, when the run ended), as opposed to the timeout: not a failure. */
     stopped: boolean;
     /** Why it could not start, when the cause is neither a missing program nor a missing folder (permissions, say). */
@@ -908,7 +912,7 @@ export type SpawnOutcome = {
 };
 
 /** What a child's end is built from: the exit code, and why it did not run or how it was ended when that applies. */
-export type SpawnFinish = Pick<SpawnOutcome, 'code' | 'notFound' | 'cwdMissing'> & {
+export type SpawnFinish = Pick<SpawnOutcome, 'code' | 'notFound' | 'cwdProblem'> & {
     startError?: string | undefined;
     signal?: string | undefined;
 };

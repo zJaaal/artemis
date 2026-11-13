@@ -4,7 +4,8 @@ import path from 'node:path';
 import { afterEach, describe, expect, test } from 'vitest';
 
 import { CommandError } from '../errors/errors.js';
-import { OWNER_MODE, ROOT_UID, UNREADABLE_MODE } from '../test/constants.js';
+import { NO_EXECUTE_MODE, ROOT_UID, UNREADABLE_MODE } from '../test/constants.js';
+import { withMode } from '../test/permissions.js';
 import { createTempFolders } from '../test/temp.js';
 import { spawnDetached } from './exec.js';
 
@@ -144,10 +145,13 @@ describe('spawnDetached', () => {
         const root = folders.make('artemis-det-');
         const outcome = await start(SILENT_JOB, 'a.log', path.join(root, 'typo'));
 
-        expect([outcome.cwdMissing, fs.existsSync(path.join(root, 'typo'))]).toEqual([true, false]);
+        expect([outcome.cwdProblem, fs.existsSync(path.join(root, 'typo'))]).toEqual([
+            'missing',
+            false
+        ]);
     });
 
-    test('a folder that is a file is reported as a missing folder, not as a log problem', async () => {
+    test('a folder that is a file is not-a-folder, not a log problem', async () => {
         const root = folders.make('artemis-det-');
         const file = path.join(root, 'plain.txt');
 
@@ -155,23 +159,38 @@ describe('spawnDetached', () => {
 
         expect(await start(SILENT_JOB, 'a.log', file)).toMatchObject({
             pid: undefined,
-            cwdMissing: true
+            cwdProblem: 'not-a-folder'
         });
     });
 
     test.skipIf(isRoot)(
-        'a folder inside one that cannot be read is a missing folder, not a raw error',
+        'a folder under one that cannot be read is no-access, not a raw error',
         async () => {
             const locked = path.join(folders.make('artemis-det-'), 'locked');
 
             fs.mkdirSync(path.join(locked, 'sub'), { recursive: true });
-            fs.chmodSync(locked, UNREADABLE_MODE);
 
-            const outcome = await start(SILENT_JOB, 'a.log', path.join(locked, 'sub'));
+            const outcome = await withMode(locked, UNREADABLE_MODE, () =>
+                start(SILENT_JOB, 'a.log', path.join(locked, 'sub'))
+            );
 
-            fs.chmodSync(locked, OWNER_MODE);
+            expect(outcome).toMatchObject({ pid: undefined, cwdProblem: 'no-access' });
+        }
+    );
 
-            expect(outcome).toMatchObject({ pid: undefined, cwdMissing: true });
+    test.skipIf(isRoot)(
+        'a folder with no execute bit is no-access, and no log folder is made',
+        async () => {
+            const folder = folders.make('artemis-det-');
+
+            const outcome = await withMode(folder, NO_EXECUTE_MODE, () =>
+                start(SILENT_JOB, 'logs/a.log', folder)
+            );
+
+            expect([outcome.cwdProblem, fs.existsSync(path.join(folder, 'logs'))]).toEqual([
+                'no-access',
+                false
+            ]);
         }
     );
 

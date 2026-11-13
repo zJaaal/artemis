@@ -3,10 +3,13 @@ import path from 'node:path';
 
 import { afterEach, describe, expect, test } from 'vitest';
 
+import { NO_EXECUTE_MODE, ROOT_UID, UNREADABLE_MODE } from '../test/constants.js';
+import { withMode } from '../test/permissions.js';
 import { createTempFolders } from '../test/temp.js';
 import { thrownBy } from '../test/thrown.js';
 import {
     createExclusive,
+    folderProblem,
     isFolder,
     listDirectory,
     makeDirectory,
@@ -389,5 +392,51 @@ describe('listJsonFiles', () => {
         const dir = path.join(folders.make('artemis-files-'), 'missing');
 
         expect(listJsonFiles(dir)).toEqual([]);
+    });
+});
+
+describe('folderProblem', () => {
+    const isRoot = process.getuid?.() === ROOT_UID;
+
+    test('a folder this user can enter has no problem', () => {
+        expect(folderProblem(folders.make('artemis-files-'))).toBeUndefined();
+    });
+
+    test('a folder that is not there is missing', () => {
+        expect(folderProblem(path.join(folders.make('artemis-files-'), 'typo'))).toBe('missing');
+    });
+
+    test('a file is not a folder', () => {
+        const file = path.join(folders.make('artemis-files-'), 'plain.txt');
+
+        fs.writeFileSync(file, 'x');
+
+        expect(folderProblem(file)).toBe('not-a-folder');
+    });
+
+    test('a path under a file is not a folder', () => {
+        const file = path.join(folders.make('artemis-files-'), 'plain.txt');
+
+        fs.writeFileSync(file, 'x');
+
+        expect(folderProblem(path.join(file, 'sub'))).toBe('not-a-folder');
+    });
+
+    test.skipIf(isRoot)('a folder with no execute bit is no-access', async () => {
+        const folder = folders.make('artemis-files-');
+
+        expect(await withMode(folder, NO_EXECUTE_MODE, () => folderProblem(folder))).toBe(
+            'no-access'
+        );
+    });
+
+    test.skipIf(isRoot)('a folder under one with mode 0 is no-access', async () => {
+        const locked = path.join(folders.make('artemis-files-'), 'locked');
+
+        fs.mkdirSync(path.join(locked, 'sub'), { recursive: true });
+
+        expect(
+            await withMode(locked, UNREADABLE_MODE, () => folderProblem(path.join(locked, 'sub')))
+        ).toBe('no-access');
     });
 });

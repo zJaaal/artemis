@@ -17,8 +17,10 @@ import {
     LOG_FILE_HINT
 } from '../constants.js';
 import { CommandError } from '../errors/errors.js';
+import { folderProblem } from './files.js';
 import type {
     ChildHandle,
+    FolderProblem,
     ChildStream,
     SpawnChildFn,
     SpawnDetachedFn,
@@ -32,27 +34,13 @@ import { messageOf } from '../utils/error-message.js';
 // `args` is interpreted, and it never lets the child it started outlive the call that asked for it (a grandchild the child started is
 // its own business: only the direct child is signalled).
 
-/**
- * Whether a child can run in this folder: it is there and is a folder. Any failure to find out (it
- * is a file, a parent that cannot be read) is a no, so the caller reports the folder and never a
- * raw error with no hint.
- */
-const canRunIn = (cwd: string): boolean => {
-    try {
-        return fs.statSync(cwd).isDirectory();
-    } catch {
-        // cannotRunInIt: ENOENT, ENOTDIR and EACCES all mean there is no folder to run in
-        return false;
-    }
-};
-
 /** The handle of a child that never started: it is already over, and there is nothing to stop. */
 const notStarted = (error: unknown): ChildHandle => ({
     done: Promise.resolve<SpawnOutcome>({
         code: EXIT_CODE.FAILED,
         timedOut: false,
         notFound: false,
-        cwdMissing: false,
+        cwdProblem: undefined,
         stopped: false,
         startError: messageOf(error),
         signal: undefined
@@ -60,13 +48,13 @@ const notStarted = (error: unknown): ChildHandle => ({
     stop: () => Promise.resolve()
 });
 
-/** The handle of a child whose folder is not there (or is a file): the caller names the folder. */
-const noFolder = (): ChildHandle => ({
+/** The handle of a child that cannot run in its folder: the caller says why, naming the folder. */
+const noFolder = (cwdProblem: FolderProblem): ChildHandle => ({
     done: Promise.resolve<SpawnOutcome>({
         code: EXIT_CODE.FAILED,
         timedOut: false,
         notFound: false,
-        cwdMissing: true,
+        cwdProblem,
         stopped: false,
         startError: undefined,
         signal: undefined
@@ -76,8 +64,10 @@ const noFolder = (): ChildHandle => ({
 
 /** Starts a child. `done` resolves when it has ended; `stop` ends it politely, then for good. */
 export const spawnChild: SpawnChildFn = (request) => {
-    if (request.cwd !== undefined && !canRunIn(request.cwd)) {
-        return noFolder();
+    const problem = request.cwd === undefined ? undefined : folderProblem(request.cwd);
+
+    if (problem !== undefined) {
+        return noFolder(problem);
     }
 
     let child: ChildProcess;
@@ -124,14 +114,14 @@ export const spawnChild: SpawnChildFn = (request) => {
                 return;
             }
 
-            const cwdMissing = request.cwd !== undefined && !fs.existsSync(request.cwd);
-            const notFound = codeOf(error) === ERROR_CODE.MISSING && !cwdMissing;
+            const cwdProblem = request.cwd === undefined ? undefined : folderProblem(request.cwd);
+            const notFound = codeOf(error) === ERROR_CODE.MISSING && cwdProblem === undefined;
 
             finish({
                 code: EXIT_CODE.FAILED,
                 notFound,
-                cwdMissing,
-                startError: notFound || cwdMissing ? undefined : messageOf(error)
+                cwdProblem,
+                startError: notFound || cwdProblem !== undefined ? undefined : messageOf(error)
             });
         });
 
@@ -140,7 +130,7 @@ export const spawnChild: SpawnChildFn = (request) => {
             finish({
                 code: code ?? EXIT_CODE.FAILED,
                 notFound: false,
-                cwdMissing: false,
+                cwdProblem: undefined,
                 signal: signal ?? undefined
             })
         );
@@ -168,7 +158,7 @@ export const spawnChild: SpawnChildFn = (request) => {
                 finish({
                     code: code ?? EXIT_CODE.FAILED,
                     notFound: false,
-                    cwdMissing: false,
+                    cwdProblem: undefined,
                     signal: signal ?? undefined
                 });
             }, EXEC_DRAIN_MS);
@@ -231,15 +221,16 @@ function openDetachedLog(logFile: string, cwd: string | undefined): number {
 /**
  * Starts a child that outlives the call: its own process group, no stdin, stdout and stderr appended
  * to a file, and the parent lets go of it (`unref`), so Artemis can exit while it runs. It resolves
- * once the child has spawned (with its pid) or could not start. A folder that does not exist (or is a file) fails
+ * once the child has spawned (with its pid) or could not start. A folder that cannot be run in (missing, not a folder, no access) fails
  * before any folder of the log is created.
  */
 export const spawnDetached: SpawnDetachedFn = (request) => {
-    // A folder that is not there, or is a file: either way there is no folder to run in
-    if (request.cwd !== undefined && !canRunIn(request.cwd)) {
+    const problem = request.cwd === undefined ? undefined : folderProblem(request.cwd);
+
+    if (problem !== undefined) {
         return Promise.resolve({
             ...DETACHED_NOT_STARTED,
-            cwdMissing: true,
+            cwdProblem: problem,
             startError: undefined
         });
     }

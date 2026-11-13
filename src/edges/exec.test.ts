@@ -4,7 +4,8 @@ import path from 'node:path';
 import { afterEach, describe, expect, test } from 'vitest';
 
 import type { ChildStream, SpawnRequest } from '../models.js';
-import { OWNER_MODE, ROOT_UID, UNREADABLE_MODE } from '../test/constants.js';
+import { NO_EXECUTE_MODE, ROOT_UID, UNREADABLE_MODE } from '../test/constants.js';
+import { withMode } from '../test/permissions.js';
 import { createTempFolders } from '../test/temp.js';
 import { spawnChild } from './exec.js';
 
@@ -75,32 +76,54 @@ describe('spawnChild: how a child ends', () => {
             cwd: path.join(folders.make('artemis-exec-'), 'typo')
         });
 
-        expect(outcome).toMatchObject({ notFound: false, cwdMissing: true });
+        expect(outcome).toMatchObject({ notFound: false, cwdProblem: 'missing' });
     });
 
-    test('a cwd that is a file is a missing folder, not a start error or a thrown exception', async () => {
+    test('a cwd that is a file is not-a-folder, not a start error or a thrown exception', async () => {
         const file = path.join(folders.make('artemis-exec-'), 'plain.txt');
 
         fs.writeFileSync(file, 'x');
 
         const { outcome } = await runNode('process.exit(0)', { cwd: file });
 
-        expect(outcome).toMatchObject({ cwdMissing: true, startError: undefined });
+        expect(outcome).toMatchObject({ cwdProblem: 'not-a-folder', startError: undefined });
+    });
+
+    test('a cwd under a file is not-a-folder too', async () => {
+        const file = path.join(folders.make('artemis-exec-'), 'plain.txt');
+
+        fs.writeFileSync(file, 'x');
+
+        const { outcome } = await runNode('process.exit(0)', { cwd: path.join(file, 'sub') });
+
+        expect(outcome).toMatchObject({ cwdProblem: 'not-a-folder' });
     });
 
     test.skipIf(isRoot)(
-        'a cwd inside a folder that cannot be read is a missing folder, not a raw error',
+        'a folder under one that cannot be read is no-access, not a raw error',
         async () => {
             const locked = path.join(folders.make('artemis-exec-'), 'locked');
 
             fs.mkdirSync(path.join(locked, 'sub'), { recursive: true });
-            fs.chmodSync(locked, UNREADABLE_MODE);
 
-            const { outcome } = await runNode('process.exit(0)', { cwd: path.join(locked, 'sub') });
+            const { outcome } = await withMode(locked, UNREADABLE_MODE, () =>
+                runNode('process.exit(0)', { cwd: path.join(locked, 'sub') })
+            );
 
-            fs.chmodSync(locked, OWNER_MODE);
+            expect(outcome).toMatchObject({ cwdProblem: 'no-access' });
+        }
+    );
 
-            expect(outcome).toMatchObject({ cwdMissing: true });
+    test.skipIf(isRoot)(
+        'a folder this user cannot enter (no execute bit) is no-access',
+        async () => {
+            const folder = folders.make('artemis-exec-');
+
+            const { outcome } = await withMode(folder, NO_EXECUTE_MODE, () =>
+                runNode('process.exit(0)', { cwd: folder })
+            );
+
+            expect(outcome).toMatchObject({ cwdProblem: 'no-access' });
         }
     );
 

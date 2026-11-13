@@ -3,6 +3,9 @@ import path from 'node:path';
 import {
     EXEC_LOG_HINT_PREFIX,
     EXEC_ERROR_LINES,
+    EXEC_FOLDER_ACCESS_HINT,
+    EXEC_NOT_A_FOLDER_HINT,
+    FOLDER_PROBLEM,
     EXEC_NO_LOG_HINT,
     EXEC_NOT_FOUND_HINT,
     EXEC_START_HINT,
@@ -20,6 +23,7 @@ import type {
     ExecFn,
     ExecOptions,
     ExecResult,
+    FolderProblem,
     ExecRun,
     SpawnOutcome
 } from '../models.js';
@@ -51,16 +55,30 @@ function echo(run: ExecRun, mode: ExecMode, chunk: string, stream: ChildStream):
 const failureHint = (run: ExecRun): string =>
     run.log ? `${EXEC_LOG_HINT_PREFIX} ${run.log.path}` : EXEC_NO_LOG_HINT;
 
+/** Why a child cannot run in its folder, with what to do about it; the folder is always named. */
+function folderError(command: string, problem: FolderProblem, cwd: string): CommandError {
+    switch (problem) {
+        case FOLDER_PROBLEM.MISSING:
+            return new CommandError(`The folder ${cwd} does not exist`, {
+                hint: `Create it, or check the cwd passed to ${command}.`
+            });
+        case FOLDER_PROBLEM.NOT_A_FOLDER:
+            return new CommandError(`${cwd} is not a folder`, { hint: EXEC_NOT_A_FOLDER_HINT });
+        case FOLDER_PROBLEM.NO_ACCESS:
+            return new CommandError(`This user cannot enter the folder ${cwd}`, {
+                hint: EXEC_FOLDER_ACCESS_HINT
+            });
+    }
+}
+
 /** The error for a child that never started: a missing folder, a program that cannot run or is not there. */
 export function startFailure(
     command: string,
-    outcome: Pick<SpawnOutcome, 'cwdMissing' | 'startError' | 'notFound'>,
+    outcome: Pick<SpawnOutcome, 'cwdProblem' | 'startError' | 'notFound'>,
     cwd: string | undefined
 ): CommandError | undefined {
-    if (outcome.cwdMissing) {
-        return new CommandError(`The folder ${cwd ?? ''} does not exist`, {
-            hint: `Create it, or check the cwd passed to ${command}.`
-        });
+    if (outcome.cwdProblem !== undefined) {
+        return folderError(command, outcome.cwdProblem, cwd ?? '');
     }
 
     if (outcome.startError !== undefined) {

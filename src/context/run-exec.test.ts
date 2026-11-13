@@ -4,18 +4,25 @@ import path from 'node:path';
 import { afterEach, describe, expect, test } from 'vitest';
 
 import {
+    EXEC_FOLDER_ACCESS_HINT,
     EXEC_NO_LOG_HINT,
+    EXEC_NOT_A_FOLDER_HINT,
     EXEC_NOT_FOUND_HINT,
     EXEC_TAIL_LINE_CHARS,
     EXEC_TAIL_LINES,
     EXIT_CODE
 } from '../constants.js';
 import { art, envelope } from '../test/art.js';
+import { NO_EXECUTE_MODE, ROOT_UID } from '../test/constants.js';
+import { withMode } from '../test/permissions.js';
 import { createSink } from '../test/sink.js';
 import { failure } from './run-exec.js';
 import { createTempFolders } from '../test/temp.js';
 
 const folders = createTempFolders();
+
+/** A folder with no execute bit can still be entered by root, so those tests do not apply there. */
+const isRoot = process.getuid?.() === ROOT_UID;
 
 afterEach(() => folders.cleanUp());
 
@@ -252,7 +259,7 @@ describe('ctx.exec: a program that cannot be started', () => {
 });
 
 describe('ctx.exec: a folder that does not exist', () => {
-    test('a cwd that is a file is the same error, not "could not be started"', async () => {
+    test('a cwd that is a file says so, naming it, with a hint', async () => {
         const cwd = path.join(folders.make('artemis-exec-cwd-'), 'plain.txt');
 
         fs.writeFileSync(cwd, 'x');
@@ -261,9 +268,27 @@ describe('ctx.exec: a folder that does not exist', () => {
 
         expect(envelope(run)).toMatchObject({
             ok: false,
-            error: `The folder ${cwd} does not exist`
+            error: `${cwd} is not a folder`,
+            hint: EXEC_NOT_A_FOLDER_HINT
         });
     });
+
+    test.skipIf(isRoot)(
+        'a folder this user cannot enter says so, naming it, with a hint',
+        async () => {
+            const cwd = folders.make('artemis-exec-cwd-');
+
+            const run = await withMode(cwd, NO_EXECUTE_MODE, () =>
+                art(['exec', 'process.exit(0)', '--cwd', cwd, '--json'])
+            );
+
+            expect(envelope(run)).toMatchObject({
+                ok: false,
+                error: `This user cannot enter the folder ${cwd}`,
+                hint: EXEC_FOLDER_ACCESS_HINT
+            });
+        }
+    );
 
     test('is its own error naming the folder, not "exited with code 1"', async () => {
         const cwd = path.join(folders.make('artemis-exec-cwd-'), 'typo');
@@ -368,7 +393,7 @@ describe('ctx.exec: a program that was not found and was stopped by the run', ()
         code: 1,
         timedOut: false,
         notFound: true,
-        cwdMissing: false,
+        cwdProblem: undefined,
         stopped: true,
         startError: undefined,
         signal: undefined

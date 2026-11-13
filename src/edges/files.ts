@@ -2,7 +2,13 @@ import { randomUUID } from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
 
-import { ERROR_CODE, JSON_EXTENSION, MANIFEST_FILE, TEMP_SUFFIX } from '../constants.js';
+import {
+    ERROR_CODE,
+    FOLDER_PROBLEM,
+    JSON_EXTENSION,
+    MANIFEST_FILE,
+    TEMP_SUFFIX
+} from '../constants.js';
 import { CommandError } from '../errors/errors.js';
 import { messageOf } from '../utils/error-message.js';
 import { isRecord } from '../utils/is-record.js';
@@ -11,6 +17,7 @@ import { codeOf } from '../utils/error-code.js';
 import type {
     AppendTextFn,
     CreateExclusiveFn,
+    FolderProblemFn,
     IsFolderFn,
     ListDirectoryFn,
     ListJsonFilesFn,
@@ -195,6 +202,33 @@ export const readManifest: ReadManifestFn = (dir) => {
     }
 
     return text === undefined ? undefined : parseManifest(file, text);
+};
+
+/**
+ * Why a child cannot run in a folder, or undefined when it can. Whatever the disk says is a problem
+ * of one of three kinds, never a raw error: the folder is not there, it is not a folder (a file, or
+ * a parent that is one), or this user cannot enter it (no permission on it or on a parent).
+ */
+export const folderProblem: FolderProblemFn = (folder) => {
+    try {
+        if (!fs.statSync(folder).isDirectory()) {
+            return FOLDER_PROBLEM.NOT_A_FOLDER;
+        }
+
+        fs.accessSync(folder, fs.constants.X_OK);
+
+        return undefined;
+    } catch (error) {
+        const code = codeOf(error);
+
+        if (code === ERROR_CODE.MISSING) {
+            return FOLDER_PROBLEM.MISSING;
+        }
+
+        return code === ERROR_CODE.NOT_A_DIRECTORY
+            ? FOLDER_PROBLEM.NOT_A_FOLDER
+            : FOLDER_PROBLEM.NO_ACCESS;
+    }
 };
 
 export const isFolder: IsFolderFn = (target) =>

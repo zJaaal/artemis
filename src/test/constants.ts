@@ -48,3 +48,5 @@ export const BRIEF_FOLDED_MAX_BYTES = 6144;
 export const ROOT_UID = 0;
 export const UNREADABLE_MODE = 0;
 export const OWNER_MODE = 0o700;
+/** A folder that can be listed and written but not entered: the owner has no execute bit. */
+export const NO_EXECUTE_MODE = 0o600;

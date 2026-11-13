@@ -116,7 +116,7 @@ describe('ctx.exec detached: through a command', () => {
         });
     });
 
-    test('a folder that is a file is the missing-folder error naming it', async () => {
+    test('a folder that is a file says it is not a folder, naming it', async () => {
         const file = path.join(folders.make('artemis-detached-'), 'plain.txt');
 
         fs.writeFileSync(file, 'x');
@@ -125,7 +125,7 @@ describe('ctx.exec detached: through a command', () => {
 
         expect(envelope(run)).toMatchObject({
             ok: false,
-            error: `The folder ${file} does not exist`
+            error: `${file} is not a folder`
         });
     });
 
