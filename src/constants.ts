@@ -182,6 +182,29 @@ export const DRY_RUN_NOTE = 'Says what it would do and changes nothing.';
 export const BRIEF_MORE_SUFFIX = 'help <command> --json';
 export const BRIEF_SEARCH_SUFFIX = 'help --search <words> --json';
 export const BRIEF_FLAG = '--brief';
+/** The flags that make `help` print the brief JSON listing. */
+export const BRIEF_LISTING_FLAGS = '--json --brief';
+/** Search and "did you mean": text is split on anything that is not a Unicode letter or digit. */
+export const SEARCH_WORD_SPLIT = /[^\p{L}\p{N}]+/u;
+/** Words shorter than this are dropped: a one-character word says nothing. */
+export const SEARCH_MIN_WORD_CHARS = 2;
+export const SEARCH_STOP_WORDS: readonly string[] = [
+    'the',
+    'and',
+    'for',
+    'with',
+    'from',
+    'into',
+    'of',
+    'to',
+    'in',
+    'on',
+    'an'
+];
+/** The most ids "did you mean one of" names. */
+export const UNKNOWN_COMMAND_MAX_IDS = 3;
+/** What a usage hint says after the usage line, before the global flags. */
+export const USAGE_HINT_GLOBAL = 'Global:';
 export const AGENTS_FLAG = '--agents';
 
 export const NO_COMMAND = null;

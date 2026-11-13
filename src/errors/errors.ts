@@ -41,10 +41,14 @@ export class UsageError extends CommandError {
     /** The usage line of the command, shown after the message. */
     readonly usage: string | undefined;
 
-    constructor(message: string, { hint, usage }: UsageErrorOptions = {}) {
+    /** Whether it comes from parsing a resolved project command, which is what gets the usage hint. */
+    readonly fromCommand: boolean;
+
+    constructor(message: string, { hint, usage, fromCommand = false }: UsageErrorOptions = {}) {
         super(message, { hint, exitCode: EXIT_CODE.USAGE });
         this.name = 'UsageError';
         this.usage = usage;
+        this.fromCommand = fromCommand;
         Object.defineProperty(this, USAGE_ERROR_TAG, { value: true });
     }
 }

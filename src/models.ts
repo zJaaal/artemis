@@ -292,7 +292,11 @@ export type CommandErrorShape = Error & {
     hint: string | undefined;
     exitCode: ExitCode;
 };
-export type UsageErrorShape = CommandErrorShape & { usage: string | undefined };
+export type UsageErrorShape = CommandErrorShape & {
+    usage: string | undefined;
+    /** Set by `parse()` for a resolved project command: the usage hint is built for it. Absent on an older copy of Artemis. */
+    fromCommand?: boolean | undefined;
+};
 
 export type CommandErrorOptions = {
     hint?: string | undefined;
@@ -308,7 +312,15 @@ export type ExecErrorOptions = CommandErrorOptions & {
 export type ExecErrorShape = CommandErrorShape & { tail: readonly string[]; showTail: boolean };
 export type IsExecErrorFn = (value: unknown) => value is ExecErrorShape;
 
-export type UsageErrorOptions = { hint?: string | undefined; usage?: string | undefined };
+export type UsageErrorOptions = {
+    hint?: string | undefined;
+    usage?: string | undefined;
+    /** The error comes from parsing the argv of a resolved project command. */
+    fromCommand?: boolean;
+};
+
+/** The words of a text for search and suggestions: lowercase, without short and stop words. */
+export type WordsOfFn = (text: string) => string[];
 
 // ---------------------------------------------------------------------------------------------
 // Parsing
@@ -912,6 +924,8 @@ export type ErrorReport = {
     message: string;
     hint: string | undefined;
     usage: string | undefined;
+    /** True when `hint` was built from the usage, so the separate Usage line would repeat it. */
+    usageHint: boolean;
     /** Only for a plain error, which means a bug. */
     stack: string | undefined;
     /** The last lines of a failed child, when `ctx.exec` made this error. */

@@ -135,7 +135,7 @@ describe('run: usage errors', () => {
 
         expect(result.code).toBe(EXIT_CODE.USAGE);
         expect(result.err).toMatch(/Missing required argument "b"/);
-        expect(result.err).toMatch(/art math add <a> <b>/);
+        expect(result.err).toMatch(/math add <a> <b>\. Global:/);
     });
 
     test('a value outside the allowed choices is a usage error that lists them', async () => {

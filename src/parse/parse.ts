@@ -40,7 +40,7 @@ function parseCommandLine(argv: readonly string[], options: ParseOptions, usage:
     try {
         return parseArgs({ args: [...argv], options, allowPositionals: true, strict: true });
     } catch (error) {
-        throw new UsageError(firstSentence(messageOf(error)), { usage });
+        throw new UsageError(firstSentence(messageOf(error)), { usage, fromCommand: true });
     }
 }
 
@@ -62,7 +62,7 @@ function checkChoice({ kind, name, value, choices, usage }: ChoiceCheck): void {
     if (isOutsideChoices) {
         throw new UsageError(
             `Invalid ${kind} "${name}": "${String(value)}". Allowed: ${choices.join(', ')}`,
-            { usage }
+            { usage, fromCommand: true }
         );
     }
 }
@@ -71,7 +71,10 @@ function readArg(arg: ArgDefinition, positional: string | undefined, usage: stri
     const value = positional ?? arg.default;
 
     if (value === undefined && arg.required) {
-        throw new UsageError(`Missing required argument "${arg.name}"`, { usage });
+        throw new UsageError(`Missing required argument "${arg.name}"`, {
+            usage,
+            fromCommand: true
+        });
     }
 
     checkChoice({ kind: 'argument', name: arg.name, value, choices: arg.choices, usage });
@@ -83,7 +86,7 @@ function readArgs(args: ArgDefinitions, positionals: string[], usage: string) {
     const extra = positionals[args.length];
 
     if (extra !== undefined) {
-        throw new UsageError(`Unexpected argument "${extra}"`, { usage });
+        throw new UsageError(`Unexpected argument "${extra}"`, { usage, fromCommand: true });
     }
 
     return Object.fromEntries(

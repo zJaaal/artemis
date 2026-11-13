@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'vitest';
 
-import { EXIT_CODE } from '../constants.js';
+import { EXIT_CODE, GLOBAL_FLAGS_TEXT, USAGE_HINT_GLOBAL } from '../constants.js';
 import { CommandError, UsageError } from '../errors/errors.js';
 import { foreignCommandError } from '../test/foreign-error.js';
 import { createStyle } from '../help/help.js';
@@ -56,6 +56,42 @@ describe('reportError under --json', () => {
 
     test('writes nothing to stderr', () => {
         expect(report(new CommandError('Bad input'), true).err).toBe('');
+    });
+});
+
+describe('reportError: the usage hint', () => {
+    test('a usage error of a command gets the usage and the global flags as its hint', () => {
+        const error = new UsageError('Missing', { usage: 'x <a>', fromCommand: true });
+
+        expect(JSON.parse(report(error, true).out).hint).toBe(
+            `x <a>. ${USAGE_HINT_GLOBAL} ${GLOBAL_FLAGS_TEXT}`
+        );
+    });
+
+    test('a usage error that did not come from a command has no hint', () => {
+        expect(
+            JSON.parse(report(new UsageError('Missing', { usage: 'x <a>' }), true).out)
+        ).not.toHaveProperty('hint');
+    });
+
+    test('a usage error with its own hint keeps it', () => {
+        const error = new UsageError('Missing', {
+            usage: 'x <a>',
+            hint: 'Mine',
+            fromCommand: true
+        });
+
+        expect(JSON.parse(report(error, true).out).hint).toBe('Mine');
+    });
+
+    test('a usage error from an older copy, with no marker, gets no hint', () => {
+        const error = foreignCommandError('Missing', {
+            exitCode: EXIT_CODE.USAGE,
+            usage: 'x <a>',
+            isUsage: true
+        });
+
+        expect(JSON.parse(report(error, true).out)).not.toHaveProperty('hint');
     });
 });
 

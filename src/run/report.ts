@@ -1,4 +1,10 @@
-import { EXIT_CODE, FAILURE_CODES, ID_SEPARATOR } from '../constants.js';
+import {
+    EXIT_CODE,
+    FAILURE_CODES,
+    GLOBAL_FLAGS_TEXT,
+    ID_SEPARATOR,
+    USAGE_HINT_GLOBAL
+} from '../constants.js';
 import { isCommandError, isExecError, isUsageError } from '../errors/errors.js';
 import type {
     ErrorReport,
@@ -18,11 +24,21 @@ const failureCodeOf: FailureCodeOfFn = (value) =>
 /** Splits an error into what the user sees; only a plain error (a bug) carries its stack. */
 function describeError(error: unknown): ErrorReport {
     const isExpected = isCommandError(error);
+    const usage = isUsageError(error) ? error.usage : undefined;
+    const ownHint = isExpected ? error.hint : undefined;
+
+    // The error of a resolved command that has no hint of its own gets what is valid, in the hint
+    const usageHint =
+        isUsageError(error) &&
+        error.fromCommand === true &&
+        ownHint === undefined &&
+        usage !== undefined;
 
     return {
         message: messageOf(error),
-        hint: isExpected ? error.hint : undefined,
-        usage: isUsageError(error) ? error.usage : undefined,
+        hint: usageHint ? `${usage}. ${USAGE_HINT_GLOBAL} ${GLOBAL_FLAGS_TEXT}` : ownHint,
+        usage: usageHint ? undefined : usage,
+        usageHint,
         stack: !isExpected && error instanceof Error ? error.stack : undefined,
         tail: isExecError(error) && error.tail.length ? error.tail : undefined,
         showTail: isExecError(error) && error.showTail,

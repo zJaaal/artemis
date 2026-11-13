@@ -16,9 +16,12 @@ import {
     NEXT_PREFIX,
     DRY_RUN_EMPTY,
     DRY_RUN_HEADER,
-    TABLE_INDENT
+    TABLE_INDENT,
+    UNKNOWN_COMMAND_MAX_IDS,
+    BRIEF_LISTING_FLAGS
 } from '../constants.js';
 import { discover } from '../discover/discover.js';
+import { wordsOf } from '../help/search.js';
 import { CommandError, UsageError, isUsageError } from '../errors/errors.js';
 import {
     briefHelp,
@@ -80,6 +83,17 @@ const shown = (
     extras
 });
 
+/** The ids that share a word with what was typed, the first few by id order. */
+function idsSharingAWord(registry: Registry, name: string): string[] {
+    // Only the word that was not found: the topic before it is right, and shares a word with every command in it
+    const typed = new Set(wordsOf(name.split(ID_SEPARATOR).slice(-1).join(ID_SEPARATOR)));
+
+    return [...registry.commands.keys()]
+        .filter((id) => wordsOf(id).some((word) => typed.has(word)))
+        .sort()
+        .slice(0, UNKNOWN_COMMAND_MAX_IDS);
+}
+
 const unknownHint = (
     bin: string,
     registry: Registry,
@@ -96,9 +110,18 @@ const unknownHint = (
         return `Did you mean "${match}"?`;
     }
 
+    const sharing = idsSharingAWord(registry, name);
+
+    if (sharing.length) {
+        return `Did you mean one of: ${sharing.map((id) => `"${id}"`).join(', ')}?`;
+    }
+
     // Inside a topic, point at that topic's list rather than the whole CLI
     const topic = name.split(ID_SEPARATOR).slice(0, -1).join(ID_SEPARATOR);
-    const listing = registry.topics.has(topic) ? `${bin} ${topic} help` : `${bin} help`;
+
+    const listing = registry.topics.has(topic)
+        ? `${bin} help ${topic} ${BRIEF_LISTING_FLAGS}`
+        : `${bin} help ${BRIEF_LISTING_FLAGS}`;
 
     return `Run "${listing}" to see the commands.`;
 };
