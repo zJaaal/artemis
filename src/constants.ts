@@ -324,3 +324,15 @@ export const AUDIT_WRITE_WARNING = 'could not write the audit trail';
 export const NEWLINE = '\n';
 export const YES_FLAG_TOKENS: readonly string[] = ['--yes', '-y'];
 export const DRY_RUN_FLAG_TOKEN = '--dry-run';
+
+// ---------------------------------------------------------------------------------------------
+// Doctor: command health from the audit trail
+// ---------------------------------------------------------------------------------------------
+
+/** A command whose last this-many real runs all failed is reported. */
+export const HEALTH_FAILING_RUNS = 3;
+/** A destructive command with this many dry runs and no real run is reported. */
+export const HEALTH_PREVIEW_RUNS = 3;
+/** A command whose newest run is older than this many days is reported. */
+export const HEALTH_STALE_DAYS = 60;
+export const MS_PER_DAY = 24 * 60 * 60 * 1000;

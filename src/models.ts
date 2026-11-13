@@ -646,7 +646,18 @@ export type CheckRangeFn = (version: string, range: string) => RangeVerdict;
 // ---------------------------------------------------------------------------------------------
 
 export type DoctorCheckId =
-    'version' | 'range' | 'installed' | 'project' | 'module' | 'commands' | 'words' | 'state';
+    | 'version'
+    | 'range'
+    | 'installed'
+    | 'project'
+    | 'module'
+    | 'commands'
+    | 'words'
+    | 'state'
+    | 'history'
+    | 'history-failing'
+    | 'history-previewed'
+    | 'history-stale';
 
 export type DoctorStatus = 'ok' | 'warn' | 'fail';
 
@@ -693,10 +704,16 @@ export type DoctorFacts = {
               problem?: string;
               /** Every alias with the id of its command, to see which one is called like a built-in word. */
               aliases?: readonly (readonly [alias: string, id: string])[];
+              /** Every command that loads, and whether it is destructive: what the health checks need. */
+              loaded?: readonly { id: string; destructive: boolean }[];
           }
         | undefined;
     /** The built-in words a project command, topic or alias hides, and what hides each. */
     hiddenWords: readonly HiddenWord[];
+    /** The audit trail, when there is a project: what it holds, or why it cannot be read. */
+    history: DoctorHistory | undefined;
+    /** The clock, in milliseconds, for "not run for 60 days". */
+    now: number;
     /** The state folder: whether it is there, the documents that cannot be read, or why it cannot be listed. */
     state:
         | {
@@ -707,6 +724,22 @@ export type DoctorFacts = {
           }
         | undefined;
 };
+
+/** The audit trail as the doctor reads it: absent, unreadable (`problem`), or the lines it holds in file order. */
+export type DoctorHistory = {
+    present: boolean;
+    entries: readonly AuditLine[];
+    problem?: string;
+};
+
+/** What the health checks decide from: the trail, the commands that exist (none known when they do not load), and the time. */
+export type HealthFacts = {
+    history: DoctorHistory;
+    loaded: readonly { id: string; destructive: boolean }[] | undefined;
+    now: number;
+};
+
+export type HealthChecksFn = (facts: HealthFacts) => DoctorCheck[];
 
 export type RunDoctorFn = (facts: DoctorFacts) => DoctorCheck[];
 

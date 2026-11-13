@@ -1,8 +1,16 @@
 import path from 'node:path';
 
-import { EXIT_CODE, JSON_EXTENSION } from '../constants.js';
+import { AUDIT_FILE_NAME, EXIT_CODE, JSON_EXTENSION } from '../constants.js';
+import { parseAuditText } from '../audit/audit.js';
+import { now } from '../edges/clock.js';
 import { discover } from '../discover/discover.js';
-import { isFolder, listJsonFiles, pathExists, readManifest } from '../edges/files.js';
+import {
+    isFolder,
+    listJsonFiles,
+    pathExists,
+    readManifest,
+    readTextIfExists
+} from '../edges/files.js';
 import { shadowKind } from './shadow.js';
 import { findLocalCopy, readRunningPackage } from '../edges/package-info.js';
 import { CommandError, UsageError } from '../errors/errors.js';
@@ -12,6 +20,7 @@ import type {
     DoctorCheck,
     DoctorCommandFn,
     DoctorFacts,
+    DoctorHistory,
     DoctorWordsRead,
     HiddenWord,
     Project,
@@ -68,7 +77,11 @@ async function readCommands(project: Project): Promise<DoctorFacts['commands']> 
             dir: commandsDir,
             exists: true,
             warnings: registry.warnings,
-            aliases: [...registry.aliases.entries()]
+            aliases: [...registry.aliases.entries()],
+            loaded: [...registry.commands.values()].map((entry) => ({
+                id: entry.id,
+                destructive: entry.definition.destructive
+            }))
         };
     } catch (error) {
         return { dir: '', exists: false, warnings: [], problem: messageOf(error) };
@@ -120,14 +133,40 @@ function readState(project: Project): DoctorFacts['state'] {
     }
 }
 
+/** The audit trail: its lines in file order, or why it could not be read. A line that is not one is not a problem here. */
+function readHistory(project: Project): DoctorHistory {
+    try {
+        const text = readTextIfExists(path.join(resolveStateDir(project), AUDIT_FILE_NAME));
+
+        return text === undefined
+            ? { present: false, entries: [] }
+            : { present: true, entries: parseAuditText(text).entries };
+    } catch (error) {
+        return {
+            present: true,
+            entries: [],
+            problem: `Cannot read the audit trail: ${messageOf(error)}`
+        };
+    }
+}
+
 /** Reads everything the checks need. A package.json that cannot be parsed is an error naming the file, as everywhere else. */
-async function gatherFacts(cwd: string): Promise<DoctorFacts> {
+async function gatherFacts(cwd: string, clock: () => number): Promise<DoctorFacts> {
     const running = readRunningPackage();
     const project = findProject(cwd, readManifest, isFolder, 'shipped');
     const local = findLocalCopy(project?.root ?? cwd);
 
     if (project === undefined) {
-        return { running, local, project, commands: undefined, hiddenWords: [], state: undefined };
+        return {
+            running,
+            local,
+            project,
+            commands: undefined,
+            hiddenWords: [],
+            state: undefined,
+            history: undefined,
+            now: clock()
+        };
     }
 
     const commands = await readCommands(project);
@@ -138,7 +177,9 @@ async function gatherFacts(cwd: string): Promise<DoctorFacts> {
         project,
         commands,
         hiddenWords: readHiddenWords(commands),
-        state: readState(project)
+        state: readState(project),
+        history: readHistory(project),
+        now: clock()
     };
 }
 
@@ -165,7 +206,7 @@ export const doctorCommand: DoctorCommandFn = async (words, options, cwd) => {
         return EXIT_CODE.OK;
     }
 
-    const facts = await gatherFacts(cwd);
+    const facts = await gatherFacts(cwd, options.audit?.now ?? now);
     const checks = runDoctor(facts);
     const failure = doctorFailure(checks);
 

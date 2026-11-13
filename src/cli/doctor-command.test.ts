@@ -51,6 +51,9 @@ const newProject = (
     return root;
 };
 
+/** version, range, installed, project, module, commands, words, state and the history check. */
+const HEALTHY_CHECKS = 9;
+
 describe('art doctor: a healthy project', () => {
     test('exits 0', async () => {
         expect((await art(['doctor'], newProject())).code).toBe(EXIT_CODE.OK);
@@ -69,7 +72,7 @@ describe('art doctor: a healthy project', () => {
     test('text mode prints one line per check', async () => {
         const { out } = await art(['doctor'], newProject());
 
-        expect(out.trim().split('\n')).toHaveLength(8);
+        expect(out.trim().split('\n')).toHaveLength(HEALTHY_CHECKS);
     });
 });
 
@@ -264,5 +267,101 @@ describe('art doctor: its flags', () => {
             command: 'doctor',
             result: { id: 'doctor' }
         });
+    });
+});
+
+describe('art doctor: the health of the commands, from the audit trail', () => {
+    const NOW = Date.parse('2026-11-13T12:00:00.000Z');
+
+    const runDoctor = async (root: string) => {
+        const stdout = createSink();
+
+        await cli({
+            argv: ['doctor', '--json'],
+            cwd: root,
+            stdout,
+            stderr: createSink(),
+            env: {},
+            interactive: false,
+            color: false,
+            audit: { now: () => NOW }
+        });
+
+        return stdout.text;
+    };
+
+    const writeTrail = (root: string, lines: object[]): void => {
+        const file = path.join(root, 'state', 'audit.jsonl');
+
+        fs.mkdirSync(path.dirname(file), { recursive: true });
+        fs.writeFileSync(file, `${lines.map((line) => JSON.stringify(line)).join('\n')}\n`);
+    };
+
+    const failedRun = {
+        time: '2026-11-12T12:00:00.000Z',
+        command: 'hello',
+        argv: [],
+        ran: true,
+        dryRun: false,
+        yes: false,
+        exitCode: 1,
+        ms: 5
+    };
+
+    test('no audit file is an ok "no history yet"', async () => {
+        const out = await runDoctor(newProject());
+
+        expect(checksOf(out).find((check) => check.id === 'history')).toMatchObject({
+            status: 'ok',
+            message: 'no history yet'
+        });
+    });
+
+    test('three failed runs of a command that exists is a warning, and doctor still exits 0', async () => {
+        const root = newProject();
+
+        writeTrail(root, [failedRun, failedRun, failedRun]);
+
+        const result = await art(['doctor', '--json'], root);
+
+        expect([result.code, statusOf(result.out, 'history-failing')]).toEqual([
+            EXIT_CODE.OK,
+            'warn'
+        ]);
+    });
+
+    test('runs of a command that no longer exists produce nothing', async () => {
+        const root = newProject();
+        const gone = { ...failedRun, command: 'removed' };
+
+        writeTrail(root, [gone, gone, gone]);
+
+        expect(statusOf(await runDoctor(root), 'history-failing')).toBeUndefined();
+    });
+
+    test('a run older than 60 days is stale, by the injected clock', async () => {
+        const root = newProject();
+
+        writeTrail(root, [{ ...failedRun, exitCode: 0, time: '2026-01-01T00:00:00.000Z' }]);
+
+        expect(statusOf(await runDoctor(root), 'history-stale')).toBe('warn');
+    });
+
+    test('a line that is not JSON does not break doctor', async () => {
+        const root = newProject();
+        const file = path.join(root, 'state', 'audit.jsonl');
+
+        fs.mkdirSync(path.dirname(file), { recursive: true });
+        fs.writeFileSync(file, 'garbage\n');
+
+        expect(statusOf(await runDoctor(root), 'history')).toBe('ok');
+    });
+
+    test('a command called history is reported as hidden by the words check', async () => {
+        const root = newProject();
+
+        fs.writeFileSync(path.join(root, 'commands', 'history.js'), 'export default 1;\n');
+
+        expect(statusOf((await art(['doctor', '--json'], root)).out, 'words')).toBe('warn');
     });
 });
