@@ -96,7 +96,7 @@ A key whose value is its default is left out: `aliases` when empty, `examples` w
 
 - **Which errors:** a `UsageError` gains an option `fromCommand: true`, set only by `parse()` when it parses a resolved project command's argv (unknown flag, missing or extra argument, a bad choice, a flag missing its value). For those, when the error has no hint of its own, the hint is `<usage>. Global: <globalFlags>`. It is built in one place, where the error is reported (`report`), from the error's `usage`. Errors without `fromCommand` (built-in words, help, the leading-flag split) are unchanged.
 - **An error with its own hint keeps it** (for example `--dry-run` on a command without `dryRun`) and keeps today's `Usage` line in text.
-- **Text mode:** when the usage hint is used, it is printed as `Hint` and the separate `Usage` line is not printed (the hint already has the usage in it). Wherever text prints a usage, the bin goes in front, so `ReportContext` gains `bin`.
+- **Text mode:** when the usage hint is used, it is printed as `Hint` and the separate `Usage` line is not printed (the hint already has the usage in it). `ReportContext` gains an optional `bin`, and `toText` puts it in front of any usage it prints when it is set. Only `run()`'s reporting sets it, so a project command's usage (with or without its own hint) prints `Usage  art <usage>`, while built-in words, reported through `reportSetupFailure` without a bin, keep printing `Usage  state ...` as today. A test covers both. `UsageErrorShape` gains the optional `fromCommand`, and an error from an older copy of Artemis (no marker) just gets no usage hint.
 - **`ctx.invoke`:** a nested usage error stays what it is today (a `CommandError`, exit 1, hint `Usage: <bin> <usage>`), with the new `usage` string and without the global flags.
 - **Unknown command:** `Did you mean "x"?` when the current edit-distance suggestion finds one (unchanged). Otherwise, the ids that share a word with what was typed (words split as in search, equal words only), the first `UNKNOWN_COMMAND_MAX_IDS` (3) by id order, as `Did you mean one of: "a", "b"?`. Otherwise `Run "art help --json --brief" to see the commands.` (inside a topic, `Run "art help <topic> --json --brief"`), which replaces today's `Run "art <topic> help"` text.
 
@@ -205,7 +205,7 @@ Each kind is **one check**, whatever the number of commands: its message names e
 | `history` | `ok` | no audit file | "no history yet" |
 | `history` | `ok` | there is history and none of the checks below apply | "no problems in the last <n> runs" |
 | `history-failing` | `warn` | some command's last `HEALTH_FAILING_RUNS` (3) real runs all have a non-zero `exitCode` | names them; fix: `Run art history <id> to see the errors.` for each |
-| `history-previewed` | `warn` | some `destructive` command has at least `HEALTH_PREVIEW_RUNS` (3) dry runs and no real run | "only ever previewed", names them; fix: `Run it with --yes when the plan looks right, or delete it if it is not needed.` |
+| `history-previewed` | `warn` | some `destructive` command has at least `HEALTH_PREVIEW_RUNS` (3) dry runs (`ran: true`, `dryRun: true`) and no real run | "only ever previewed", names them; fix: `Run it with --yes when the plan looks right, or delete it if it is not needed.` |
 | `history-stale` | `warn` | some command with history has its newest line older than `HEALTH_STALE_DAYS` (60) | names them; fix: `Delete the file if the command is no longer used.` |
 
 - A command with no lines gets no check.
@@ -249,7 +249,7 @@ This project's commands run through `<bin>`. Start with `npx <bin> help --json -
   - it never rewrites a line
   - it adds a newline first when the file does not end with one, then one blank line, then the pointer
   - it uses the file's line ending (CRLF when the file's first line ends with one)
-- **Gitignore:** `art init` appends `/<stateDir>/audit*.jsonl` to the `.gitignore` in the project folder (next to its `package.json`), under the same append rules: create it when missing, skip it when the line is there. `<stateDir>` is written relative to the project folder with forward slashes (`/data/state/audit*.jsonl`). When `stateDir` resolves outside the project folder, nothing is written. Whether the folder is a git repository does not matter.
+- **Gitignore:** `art init` appends `/<stateDir>/audit*.jsonl` to the `.gitignore` in the project folder (next to its `package.json`), under the same append rules: create it when missing, skip it when a line equal to it is there (compared without a trailing CR or spaces). `<stateDir>` is written relative to the project folder with forward slashes (`/data/state/audit*.jsonl`). When `stateDir` resolves outside the project folder, nothing is written. Whether the folder is a git repository does not matter.
 - **Result:** `InitResult` gains `changed`, the files appended to. `created` stays the files made new. A rerun with nothing to do is still "Already a project".
 
 ## Behavior
