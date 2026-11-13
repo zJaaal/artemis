@@ -4,7 +4,7 @@ import {
     HEALTH_STALE_DAYS,
     MS_PER_DAY
 } from '../constants.js';
-import { FIX_SEPARATOR, LIST_SEPARATOR } from './constants.js';
+import { FIX_END, FIX_SEPARATOR, LIST_SEPARATOR } from './constants.js';
 import type { AuditLine, DoctorCheck, HealthChecksFn } from '../models.js';
 
 // Pure: the checks of `art doctor` that read the audit trail. They are warnings, never a failure.
@@ -56,7 +56,7 @@ const warning = (
     id,
     status: 'warn',
     message: `${message}: ${ids.join(LIST_SEPARATOR)}`,
-    fix: ids.map(fix).join(FIX_SEPARATOR)
+    fix: `${ids.map(fix).join(FIX_SEPARATOR)}${FIX_END}`
 });
 
 /** A fix that says the same for every command still names the command it is for. */
@@ -109,7 +109,7 @@ export const healthChecks: HealthChecksFn = ({ history, loaded, now }) => {
                       'history-failing',
                       `Failed in each of their last ${HEALTH_FAILING_RUNS} runs`,
                       failing,
-                      (id) => `Run art history ${id} to see the errors.`
+                      (id) => `Run art history ${id} to see the errors`
                   )
               ]
             : []),
@@ -122,7 +122,7 @@ export const healthChecks: HealthChecksFn = ({ history, loaded, now }) => {
                       (id) =>
                           named(
                               id,
-                              'Run it with --yes when the plan looks right, or delete it if it is not needed.'
+                              'Run it with --yes when the plan looks right, or delete it if it is not needed'
                           )
                   )
               ]
@@ -133,7 +133,7 @@ export const healthChecks: HealthChecksFn = ({ history, loaded, now }) => {
                       'history-stale',
                       `Not run for over ${HEALTH_STALE_DAYS} days`,
                       stale,
-                      (id) => named(id, 'Delete the file if the command is no longer used.')
+                      (id) => named(id, 'Delete the file if the command is no longer used')
                   )
               ]
             : [])

@@ -9,6 +9,7 @@ import {
 import type { AuditLine, DoctorCheck, HealthFacts } from '../models.js';
 import { healthChecks } from './health.js';
 
+const MANY_LINES = 1000;
 const NOW = Date.parse('2026-11-13T12:00:00.000Z');
 const RECENT = '2026-11-12T12:00:00.000Z';
 
@@ -124,7 +125,7 @@ describe('healthChecks: failing', () => {
             expect.objectContaining({
                 id: 'history-failing',
                 message: expect.stringMatching(/build.*db reset/),
-                fix: 'Run art history build to see the errors. Run art history db reset to see the errors.'
+                fix: 'Run art history build to see the errors; Run art history db reset to see the errors.'
             })
         ]);
     });
@@ -190,13 +191,13 @@ describe('healthChecks: stale', () => {
 });
 
 describe('healthChecks: a fix that names its command', () => {
-    test('each stale command has its own part of the fix, joined with a space', () => {
+    test('each stale command has its own part of the fix, joined with a semicolon and ended by one period', () => {
         const old = new Date(NOW - (HEALTH_STALE_DAYS + 1) * MS_PER_DAY).toISOString();
 
         const checks = checksOf([line({ time: old }), line({ time: old, command: 'db reset' })]);
 
         expect(checks[0]?.fix).toBe(
-            'build: Delete the file if the command is no longer used. db reset: Delete the file if the command is no longer used.'
+            'build: Delete the file if the command is no longer used; db reset: Delete the file if the command is no longer used.'
         );
     });
 
@@ -212,15 +213,15 @@ describe('healthChecks: a fix that names its command', () => {
         ];
 
         expect(checksOf(entries, { loaded: destructive })[0]?.fix).toMatch(
-            /^db reset: .*\. db wipe: /
+            /^db reset: .*; db wipe: .*\.$/
         );
     });
 });
 
 describe('healthChecks: many lines of one command', () => {
-    test('are one command, however many lines there are', () => {
-        expect(checksOf(times(1000, {}))).toEqual([
-            { id: 'history', status: 'ok', message: 'no problems in the last 1000 runs' }
+    test('are counted as the runs looked at', () => {
+        expect(checksOf(times(MANY_LINES, {}))).toEqual([
+            { id: 'history', status: 'ok', message: `no problems in the last ${MANY_LINES} runs` }
         ]);
     });
 });

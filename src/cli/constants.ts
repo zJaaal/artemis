@@ -216,4 +216,6 @@ export const DOCTOR_SINGULAR_FAILED = '1 check failed';
 
 /** Between the names of the commands a health check lists, and between the fixes it gives. */
 export const LIST_SEPARATOR = ', ';
-export const FIX_SEPARATOR = ' ';
+export const FIX_SEPARATOR = '; ';
+/** What ends the fix of a check, after its parts (which have no period of their own). */
+export const FIX_END = '.';
