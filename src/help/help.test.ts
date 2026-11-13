@@ -8,7 +8,7 @@ import { COMMANDS_FIXTURE_DIR } from '../test/constants.js';
 import { art, envelope } from '../test/art.js';
 import { defineCommand } from '../define/define.js';
 import {
-    briefManifest,
+    briefListing,
     describeBuiltins,
     manifest,
     rootHelp,
@@ -428,7 +428,7 @@ describe('help: the binary’s own words', () => {
     });
 });
 
-describe('briefManifest: a nested topic', () => {
+describe('briefListing: a nested topic', () => {
     const command = (id: string) => ({
         id,
         description: id,
@@ -448,11 +448,13 @@ describe('briefManifest: a nested topic', () => {
     };
 
     test('does not list the topics above the one asked for, nor the topic itself', () => {
-        expect(briefManifest(everything, 'dotcms db').topics.map((topic) => topic.id)).toEqual([]);
+        expect(briefListing(everything, 'dotcms db').brief.topics.map((topic) => topic.id)).toEqual(
+            []
+        );
     });
 
     test('lists the direct sub-topics of the topic asked for', () => {
-        expect(briefManifest(everything, 'dotcms').topics.map((topic) => topic.id)).toEqual([
+        expect(briefListing(everything, 'dotcms').brief.topics.map((topic) => topic.id)).toEqual([
             'dotcms db'
         ]);
     });

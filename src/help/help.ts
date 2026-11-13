@@ -30,7 +30,6 @@ import type {
     BriefListing,
     BriefListingFn,
     BriefManifest,
-    BriefManifestFn,
     BriefTopic,
     DescribedWord,
     Builtin,
@@ -444,10 +443,6 @@ export const briefListing: BriefListingFn = (everything, topicId) => {
 
     return { brief, moreLabel: shown.moreLabel };
 };
-
-/** The brief manifest as data: the JSON of `help --brief`. */
-export const briefManifest: BriefManifestFn = (everything, topicId) =>
-    briefListing(everything, topicId).brief;
 
 /** One line per command: `id  description`, with what an agent must not miss in parentheses. */
 const briefRows = (commands: BriefCommand[]): TableRow[] =>

@@ -929,15 +929,6 @@ export type ExecModeInput = {
 };
 export type PickExecModeFn = (input: ExecModeInput) => ExecMode;
 
-/** The last lines of a child's output, each cut: what a failed command's envelope carries as `tail`. */
-export type TailRing = {
-    push: (stream: ChildStream, chunk: string) => void;
-    /** Closes the lines still being written and returns the last ones. */
-    lines: () => string[];
-};
-
-export type CreateTailFn = (maxLines: number, maxChars: number) => TailRing;
-
 /** Splits a child's output into cleaned lines, per stream, each bounded by `maxChars`. */
 export type LineReader = {
     push: (stream: ChildStream, chunk: string) => void;
@@ -1008,9 +999,6 @@ export type BriefManifest = {
 /** The brief manifest with the label its text listing gives its `more` line. */
 export type BriefListing = { brief: BriefManifest; moreLabel: string };
 export type BriefListingFn = (everything: Manifest, topicId?: string) => BriefListing;
-
-/** The brief manifest of everything, or of one topic when `topicId` is given. */
-export type BriefManifestFn = (everything: Manifest, topicId?: string) => BriefManifest;
 
 export type DescribeBuiltinsFn = (builtins: readonly Builtin[]) => ManifestCommand[];
 

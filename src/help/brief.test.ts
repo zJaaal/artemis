@@ -5,7 +5,7 @@ import { BUILTINS } from '../cli/constants.js';
 import { GLOBAL_FLAGS_TEXT } from '../constants.js';
 import type { BriefManifest, Manifest, ManifestCommand } from '../models.js';
 import { BRIEF_FIXTURE_MAX_BYTES } from '../test/constants.js';
-import { briefManifest } from './help.js';
+import { briefListing } from './help.js';
 import { art, envelope } from '../test/art.js';
 
 const briefOf = async (...argv: string[]): Promise<BriefManifest> =>
@@ -154,7 +154,7 @@ describe('help: a command with markers', () => {
     });
 });
 
-describe('briefManifest: topics and size', () => {
+describe('briefListing: topics and size', () => {
     const entry = (id: string): ManifestCommand => ({
         id,
         description: id,
@@ -174,13 +174,13 @@ describe('briefManifest: topics and size', () => {
     };
 
     test('a topic with no description has no description key', () => {
-        const db = briefManifest(everything).topics.find((topic) => topic.id === 'db');
+        const db = briefListing(everything).brief.topics.find((topic) => topic.id === 'db');
 
         expect(db).toEqual({ id: 'db', commands: 2 });
     });
 
     test('a topic with a description keeps it, with its count', () => {
-        const ci = briefManifest(everything).topics.find((topic) => topic.id === 'ci');
+        const ci = briefListing(everything).brief.topics.find((topic) => topic.id === 'ci');
 
         expect(ci).toEqual({ id: 'ci', description: 'Continuous integration', commands: 1 });
     });

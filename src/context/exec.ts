@@ -18,7 +18,6 @@ import type {
     CreateErrorLinesFn,
     CreateLineReaderFn,
     CreateOutputKeeperFn,
-    CreateTailFn,
     DetachedPlannedLineFn,
     ExecDetachedOptions,
     ExecOptions,
@@ -108,9 +107,9 @@ export const createErrorLines: CreateErrorLinesFn = (pattern, maxLines, maxChars
 
 /**
  * What a failed child leaves behind, from one reader per stream: the last `tailLines` lines, each cut
- * at `tailChars` (blank lines cost tokens and are not kept), and, with an `errorPattern`, the lines
- * that match it. With a pattern the reader keeps lines up to `EXEC_ERROR_LINE_BUFFER_CHARS` so a long
- * line split across chunks is matched whole; the tail is cut after.
+ * at `tailChars` (a line that is blank is not kept: it costs tokens), and, with an `errorPattern`, the
+ * first lines that match it, tested whole. The reader keeps lines up to `EXEC_ERROR_LINE_BUFFER_CHARS`
+ * with or without a pattern, so the tail never depends on whether there is one.
  */
 export const createOutputKeeper: CreateOutputKeeperFn = (options) => {
     const { tailLines, tailChars, errorPattern, errorLines } = options;
@@ -121,18 +120,15 @@ export const createOutputKeeper: CreateOutputKeeperFn = (options) => {
             ? undefined
             : createErrorLines(errorPattern, errorLines, tailChars);
 
-    const reader = createLineReader(
-        errorPattern === undefined ? tailChars : EXEC_ERROR_LINE_BUFFER_CHARS,
-        (line) => {
-            ring.push(line.slice(0, tailChars));
+    const reader = createLineReader(EXEC_ERROR_LINE_BUFFER_CHARS, (line) => {
+        ring.push(line.slice(0, tailChars));
 
-            if (ring.length > tailLines) {
-                ring.shift();
-            }
-
-            matcher?.add(line);
+        if (ring.length > tailLines) {
+            ring.shift();
         }
-    );
+
+        matcher?.add(line);
+    });
 
     return {
         push: reader.push,
@@ -147,18 +143,6 @@ export const createOutputKeeper: CreateOutputKeeperFn = (options) => {
             return matcher?.lines() ?? [];
         }
     };
-};
-
-/** Keeps the last `maxLines` lines a child printed, each cut at `maxChars`. */
-export const createTail: CreateTailFn = (maxLines, maxChars) => {
-    const keeper = createOutputKeeper({
-        tailLines: maxLines,
-        tailChars: maxChars,
-        errorPattern: undefined,
-        errorLines: 0
-    });
-
-    return { push: keeper.push, lines: keeper.tail };
 };
 
 /** How long a timeout was, as a person writes it: 1500 ms is "1.5 s", 30000 ms is "30 s". */
