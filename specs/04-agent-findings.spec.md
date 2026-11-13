@@ -98,7 +98,7 @@ A key whose value is its default is left out: `aliases` when empty, `examples` w
 - **An error with its own hint keeps it** (for example `--dry-run` on a command without `dryRun`) and keeps today's `Usage` line in text.
 - **Text mode:** when the usage hint is used, it is printed as `Hint` and the separate `Usage` line is not printed (the hint already has the usage in it). `ReportContext` gains an optional `bin`, and `toText` puts it in front of any usage it prints when it is set. Only `run()`'s reporting sets it, so a project command's usage (with or without its own hint) prints `Usage  art <usage>`, while built-in words, reported through `reportSetupFailure` without a bin, keep printing `Usage  state ...` as today. A test covers both. `UsageErrorShape` gains the optional `fromCommand`, and an error from an older copy of Artemis (no marker) just gets no usage hint.
 - **`ctx.invoke`:** a nested usage error stays what it is today (a `CommandError`, exit 1, hint `Usage: <bin> <usage>`), with the new `usage` string and without the global flags.
-- **Unknown command:** `Did you mean "x"?` when the current edit-distance suggestion finds one (unchanged). Otherwise, the ids that share a word with what was typed (words split as in search, equal words only), the first `UNKNOWN_COMMAND_MAX_IDS` (3) by id order, as `Did you mean one of: "a", "b"?`. Otherwise `Run "art help --json --brief" to see the commands.` (inside a topic, `Run "art help <topic> --json --brief"`), which replaces today's `Run "art <topic> help"` text.
+- **Unknown command:** `Did you mean "x"?` when the current edit-distance suggestion finds one (unchanged). Otherwise, the ids that share a word with the last word typed, the one that was not found (words split as in search, equal words only; the topic before it is right, and would share a word with every command in it), the first `UNKNOWN_COMMAND_MAX_IDS` (3) by id order, as `Did you mean one of: "a", "b"?`. Otherwise `Run "art help --json --brief" to see the commands.` (inside a topic, `Run "art help <topic> --json --brief"`), which replaces today's `Run "art <topic> help"` text.
 
 ### Search (fix 10)
 
@@ -186,7 +186,7 @@ type ExecDetachedResult = { pid: number | null; skipped: boolean };
 - **`--limit`:** parsed the way `parseStateWords` parses its flags (`--limit 5` or `--limit=5`). A missing value or a value that is not a positive integer is a usage error (exit 2).
 - **Text:** one line per run: the time in UTC ISO form (as written), the command, `dry run` / `exit <code>`, and the argv joined.
 - **`--json`:** `{ entries, skipped }`, with the audit lines as written. `skipped` is the number of lines that could not be parsed.
-- **No audit file:** `entries: []`, and in text `Nothing recorded yet.`
+- **Nothing to show:** `entries: []`, and in text `Nothing recorded yet.`, whether there is no audit file or no run matches the filter.
 - **As a built-in word of the shipped `art`,** like `state`:
   - it is reserved and listed under `builtins`
   - doctor's shadow check covers it
