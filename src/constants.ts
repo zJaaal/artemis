@@ -59,8 +59,8 @@ export const GLOBAL_FLAG_TOKENS: readonly string[] = Object.entries(GLOBAL_FLAGS
     ([name, flag]) => [`--${name}`, ...('short' in flag ? [`-${flag.short}`] : [])]
 );
 
-/** A word of letters after one dash, such as `-fy`: short flags written together. */
-export const SHORT_FLAG_GROUP = /^-[A-Za-z]{2,}$/;
+/** The kind `parseArgs` gives the tokens that are options. */
+export const OPTION_TOKEN = 'option';
 export const RESERVED_SHORTS: readonly string[] = Object.values(GLOBAL_FLAGS).flatMap((flag) =>
     'short' in flag ? [flag.short] : []
 );

@@ -378,6 +378,17 @@ export type ParsedCommandLine = {
     args: Record<string, string | undefined>;
     flags: Record<string, unknown>;
     global: GlobalFlags;
+    /** What the parser read, word by word: which words are options, and which words are their values. */
+    tokens: readonly ArgToken[];
+};
+
+/** One token of `parseArgs`, as far as the audit needs it: `index` is the word it came from (a group such as `-fy` shares one). */
+export type ArgToken = {
+    kind: string;
+    index: number;
+    name?: string | undefined;
+    /** Whether the value was typed in the same word (`--log=x`, `-nyes`); false when it is the next word. */
+    inlineValue?: boolean | undefined;
 };
 
 export type ParseTarget = Pick<Command, 'args' | 'flags'>;
@@ -1086,6 +1097,8 @@ export type AuditDraft = {
     recordable: boolean;
     tokens: string[];
     ran: boolean;
+    /** The words as typed without the global options, once the words parsed; a usage error has none. */
+    argv?: string[];
     /** What the parser read, once the words parsed: it knows `-fy` is `--yes`. A usage error has none, and the tokens stand in. */
     global?: Pick<GlobalFlags, 'dryRun' | 'yes'>;
 };
@@ -1139,6 +1152,9 @@ export type DescribedWord = {
     destructive?: boolean | undefined;
     dryRun?: boolean | undefined;
 };
+
+/** The words of a parsed command line without its global options. */
+export type AuditArgvFn = (raw: readonly string[], tokens: readonly ArgToken[]) => string[];
 
 export type StripGlobalFlagsFn = (tokens: readonly string[]) => string[];
 export type BuildAuditLineFn = (facts: AuditFacts) => AuditLine;

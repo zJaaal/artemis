@@ -204,7 +204,9 @@ describe('the audit trail: flags the parser reads', () => {
         writeCommand(
             path.join(root, 'commands'),
             'ship',
-            commandSource("flags: { force: { type: 'boolean', short: 'f' } }")
+            commandSource(
+                "flags: { force: { type: 'boolean', short: 'f' }, name: { type: 'string', short: 'n' } }"
+            )
         );
 
         return root;
@@ -215,7 +217,7 @@ describe('the audit trail: flags the parser reads', () => {
 
         await art(['ship', '-fy', '--json'], root);
 
-        expect(trailOf(root)[0]).toMatchObject({ yes: true, argv: ['-f'] });
+        expect(trailOf(root)[0]).toMatchObject({ yes: true, argv: ['-fy'] });
     });
 
     test('a grouped short flag does not turn yes on when it is not there (-f)', async () => {
@@ -224,6 +226,38 @@ describe('the audit trail: flags the parser reads', () => {
         await art(['ship', '-f', '--json'], root);
 
         expect(trailOf(root)[0]).toMatchObject({ yes: false });
+    });
+
+    test('a string flag whose value spells global letters keeps its word (-nyes)', async () => {
+        const root = grouped();
+
+        await art(['ship', '-nyes', '--json'], root);
+
+        expect(trailOf(root)[0]).toMatchObject({ yes: false, argv: ['-nyes'] });
+    });
+
+    test('a group with a value that spells global letters keeps its word (-fnhey)', async () => {
+        const root = grouped();
+
+        await art(['ship', '-fnhey', '--json'], root);
+
+        expect(trailOf(root)[0]).toMatchObject({ yes: false, argv: ['-fnhey'] });
+    });
+
+    test('--log and its value are not in argv, nor is -y', async () => {
+        const root = grouped();
+
+        await art(['ship', '--log', 'x.log', '-y', '--json', 'target'], root);
+
+        expect(trailOf(root)[0]).toMatchObject({ argv: ['target'], yes: true });
+    });
+
+    test('a usage error drops only whole global words and never touches a group', async () => {
+        const root = grouped();
+
+        await art(['ship', '-fy', '--bogus', '--yes', '--json'], root);
+
+        expect(trailOf(root)[0]).toMatchObject({ ran: false, argv: ['-fy', '--bogus'] });
     });
 
     test('a usage error falls back to the words typed', async () => {

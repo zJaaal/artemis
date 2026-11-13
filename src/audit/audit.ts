@@ -4,13 +4,15 @@ import {
     LOG_FLAG,
     LOG_FLAG_PREFIX,
     NEWLINE,
-    RESERVED_SHORTS,
-    SHORT_FLAG_GROUP,
+    OPTION_TOKEN,
+    RESERVED_FLAGS,
     TERMINATOR,
     YES_FLAG_TOKENS
 } from '../constants.js';
 import type {
     AuditLine,
+    AuditArgvFn,
+    ArgToken,
     BuildAuditLineFn,
     ParseAuditTextFn,
     StripGlobalFlagsFn
@@ -24,21 +26,11 @@ import { beforeTerminator } from '../utils/terminator.js';
 const isStandalone = (token: string): boolean =>
     token !== LOG_FLAG && GLOBAL_FLAG_TOKENS.includes(token);
 
-/** A group of short flags (`-fy`) without the global ones (`-f`); nothing is left of a group that was only global (`-yh`). */
-const withoutGlobalShorts = (token: string): string[] => {
-    if (!SHORT_FLAG_GROUP.test(token)) {
-        return [token];
-    }
-
-    const letters = [...token.slice(1)].filter((letter) => !RESERVED_SHORTS.includes(letter));
-
-    return letters.length ? [`-${letters.join('')}`] : [];
-};
-
 /**
- * The words of a command without its global flags: `--json`, `-y`, `--log <file>`, `--log=<file>`
- * and the like are removed, with the value of `--log`. After `--` everything is a plain argument,
- * and `--` itself stays.
+ * The words of a command line that did not parse, without the whole words that are a global flag:
+ * `--json`, `-y`, `--log <file>`, `--log=<file>` and the like, with the value of `--log`. A group of
+ * short flags (`-fy`) is never touched: without a parse nobody can say what it holds. After `--`
+ * everything is a plain argument, and `--` itself stays.
  */
 export const stripGlobalFlags: StripGlobalFlagsFn = (tokens) => {
     const kept: string[] = [];
@@ -55,11 +47,36 @@ export const stripGlobalFlags: StripGlobalFlagsFn = (tokens) => {
         if (token === LOG_FLAG) {
             index++;
         } else if (!isStandalone(token) && !token.startsWith(LOG_FLAG_PREFIX)) {
-            kept.push(...withoutGlobalShorts(token));
+            kept.push(token);
         }
     }
 
     return kept;
+};
+
+/**
+ * The words of a command line that parsed, as typed, without the options the parser says are global
+ * and the value word they took (`--log x.log`). A group that holds a global and something else
+ * (`-fy`) stays as typed: the parser's own tokens say which words are whose, so a value that looks
+ * like a flag (`-nyes`) is never taken for one. Pure.
+ */
+export const auditArgv: AuditArgvFn = (raw, tokens) => {
+    const options = tokens.filter((token) => token.kind === OPTION_TOKEN);
+    const isGlobal = (token: ArgToken): boolean => RESERVED_FLAGS.includes(token.name ?? '');
+
+    const sharedWithOther = new Set(
+        options.filter((token) => !isGlobal(token)).map((token) => token.index)
+    );
+
+    const dropped = options
+        .filter((token) => isGlobal(token) && !sharedWithOther.has(token.index))
+        .flatMap((token) =>
+            token.inlineValue === false ? [token.index, token.index + 1] : [token.index]
+        );
+
+    const gone = new Set(dropped);
+
+    return raw.filter((_, index) => !gone.has(index));
 };
 
 /** The audit line of a run: what was asked, whether the command ran, how it ended and how long it took. */
@@ -72,7 +89,7 @@ export const buildAuditLine: BuildAuditLineFn = (facts) => {
     return {
         time: new Date(facts.startedAt).toISOString(),
         command: facts.commandId,
-        argv: stripGlobalFlags(draft.tokens),
+        argv: draft.argv ?? stripGlobalFlags(draft.tokens),
         ran: draft.ran,
         dryRun,
         yes,

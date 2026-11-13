@@ -1,7 +1,9 @@
 import { describe, expect, test } from 'vitest';
 
+import { defineCommand } from '../define/define.js';
 import type { AuditDraft } from '../models.js';
-import { buildAuditLine, parseAuditText, stripGlobalFlags } from './audit.js';
+import { parse } from '../parse/parse.js';
+import { auditArgv, buildAuditLine, parseAuditText, stripGlobalFlags } from './audit.js';
 
 const START = Date.parse('2026-11-13T10:02:11.391Z');
 
@@ -36,17 +38,12 @@ describe('stripGlobalFlags', () => {
         expect(stripGlobalFlags(tokens)).toEqual(['a']);
     });
 
-    test('removes the global letters of a group of short flags and keeps the rest (-fy is -f)', () => {
-        expect(stripGlobalFlags(['-fy'])).toEqual(['-f']);
-    });
-
-    test('removes a group made only of global letters (-yh)', () => {
-        expect(stripGlobalFlags(['a', '-yh'])).toEqual(['a']);
-    });
-
-    test('keeps a group with no global letter (-fo)', () => {
-        expect(stripGlobalFlags(['-fo'])).toEqual(['-fo']);
-    });
+    test.each(['-fy', '-yh', '-fo', '-nyes'])(
+        'never touches a group of short flags: %s',
+        (group) => {
+            expect(stripGlobalFlags([group])).toEqual([group]);
+        }
+    );
 
     test('removes --log and its value', () => {
         expect(stripGlobalFlags(['a', '--log', 'x.log', 'b'])).toEqual(['a', 'b']);
@@ -71,6 +68,58 @@ describe('stripGlobalFlags', () => {
             '--json',
             '-y'
         ]);
+    });
+});
+
+describe('auditArgv: the words of a command line that parsed', () => {
+    const definition = defineCommand({
+        description: 'A command with a boolean flag f and a string flag n',
+        args: [{ name: 'target' }],
+        flags: { force: { type: 'boolean', short: 'f' }, name: { type: 'string', short: 'n' } },
+        run: () => undefined
+    });
+
+    const argvOf = (...words: string[]): string[] =>
+        auditArgv(words, parse(definition, words, 'x').tokens);
+
+    test('a value that spells global letters is kept as typed (-nyes)', () => {
+        expect(argvOf('-nyes')).toEqual(['-nyes']);
+    });
+
+    test('a group whose value spells global letters is kept as typed (-fnhey)', () => {
+        expect(argvOf('-fnhey')).toEqual(['-fnhey']);
+    });
+
+    test('a group that mixes a global and another flag stays as typed (-fy)', () => {
+        expect(argvOf('-fy')).toEqual(['-fy']);
+    });
+
+    test('a global flag on its own is dropped (-y)', () => {
+        expect(argvOf('a', '-y')).toEqual(['a']);
+    });
+
+    test('a group made only of globals is dropped (-yh)', () => {
+        expect(argvOf('a', '-yh')).toEqual(['a']);
+    });
+
+    test('--log and its value word are dropped', () => {
+        expect(argvOf('a', '--log', 'x.log', '-f')).toEqual(['a', '-f']);
+    });
+
+    test('--log=<file> is dropped as one word', () => {
+        expect(argvOf('a', '--log=x.log')).toEqual(['a']);
+    });
+
+    test('a value word that looks like a global flag is its option value, not a flag (--name --json)', () => {
+        expect(argvOf('--name=--json', '--json')).toEqual(['--name=--json']);
+    });
+
+    test('everything after -- is a plain word and stays, with the --', () => {
+        expect(argvOf('--', '-y')).toEqual(['--', '-y']);
+    });
+
+    test('--json and --dry-run and --quiet are dropped', () => {
+        expect(argvOf('--json', 'a', '--dry-run', '--quiet')).toEqual(['a']);
     });
 });
 

@@ -31,7 +31,7 @@ import {
     SEARCH_EXAMPLE,
     SEARCH_FLAG
 } from '../constants.js';
-import { buildAuditLine } from '../audit/audit.js';
+import { auditArgv, buildAuditLine } from '../audit/audit.js';
 import { discover } from '../discover/discover.js';
 import { markdownSection } from '../help/markdown.js';
 import { readSearch, wordsOf } from '../help/search.js';
@@ -614,6 +614,7 @@ async function dispatch(session: Session, argv: string[]): Promise<number> {
     );
 
     session.state.audit.global = parsed.global;
+    session.state.audit.argv = auditArgv(session.state.audit.tokens, parsed.tokens);
 
     if (parsed.global.help) {
         // Reading the help of a command is not running it

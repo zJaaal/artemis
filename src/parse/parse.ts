@@ -38,7 +38,13 @@ const firstSentence = (message: string): string =>
 
 function parseCommandLine(argv: readonly string[], options: ParseOptions, usage: string) {
     try {
-        return parseArgs({ args: [...argv], options, allowPositionals: true, strict: true });
+        return parseArgs({
+            args: [...argv],
+            options,
+            allowPositionals: true,
+            strict: true,
+            tokens: true
+        });
     } catch (error) {
         throw new UsageError(firstSentence(messageOf(error)), { usage, fromCommand: true });
     }
@@ -116,7 +122,7 @@ function checkFlagChoices(definitions: FlagDefinitions, values: ParsedValues, us
  */
 export const parse: ParseFn = (definition, argv, usage) => {
     const options = toParseOptions({ ...definition.flags, ...GLOBAL_FLAGS });
-    const { values, positionals } = parseCommandLine(argv, options, usage);
+    const { values, positionals, tokens } = parseCommandLine(argv, options, usage);
     const global = readGlobalFlags(values);
 
     const flags = Object.fromEntries(
@@ -124,12 +130,12 @@ export const parse: ParseFn = (definition, argv, usage) => {
     );
 
     if (global.help) {
-        return { args: {}, flags, global };
+        return { args: {}, flags, global, tokens };
     }
 
     const args = readArgs(definition.args, positionals, usage);
 
     checkFlagChoices(definition.flags, values, usage);
 
-    return { args, flags, global };
+    return { args, flags, global, tokens };
 };
