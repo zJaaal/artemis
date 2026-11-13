@@ -343,7 +343,13 @@ export type SearchCommandsFn = (input: {
 }) => ManifestCommand[];
 
 /** What a brief listing shows: which topics and which commands, and how to go one step further. */
-export type ShownListing = { topics: TopicEntry[]; commands: ManifestCommand[]; more: string };
+export type ShownListing = {
+    topics: TopicEntry[];
+    commands: ManifestCommand[];
+    more: string;
+    /** What `more` points at, as the text listing says it: one command in full, or a topic to open. */
+    moreLabel: string;
+};
 
 /** The result of `help --search`: the query as typed, the best commands as brief entries, how to read one in full. */
 export type SearchResult = { query: string; matches: BriefCommand[]; more: string };
@@ -998,6 +1004,10 @@ export type BriefManifest = {
     /** How to search the commands by intent. */
     search: string;
 };
+
+/** The brief manifest with the label its text listing gives its `more` line. */
+export type BriefListing = { brief: BriefManifest; moreLabel: string };
+export type BriefListingFn = (everything: Manifest, topicId?: string) => BriefListing;
 
 /** The brief manifest of everything, or of one topic when `topicId` is given. */
 export type BriefManifestFn = (everything: Manifest, topicId?: string) => BriefManifest;

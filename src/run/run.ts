@@ -38,7 +38,7 @@ import { readSearch, wordsOf } from '../help/search.js';
 import { CommandError, UsageError, isUsageError } from '../errors/errors.js';
 import {
     briefHelp,
-    briefManifest,
+    briefListing,
     builtinHelp,
     commandHelp,
     describeBuiltins,
@@ -326,9 +326,9 @@ function showBriefFor(session: Session, words: string[]): void {
     if (!words.length) {
         session.state.commandId = HELP_WORD;
 
-        const brief = briefManifest(everything);
+        const listing = briefListing(everything);
 
-        printResult(session.io, shown(session, briefHelp(brief, style, builtins), brief));
+        printResult(session.io, shown(session, briefHelp(listing, style, builtins), listing.brief));
 
         return;
     }
@@ -350,9 +350,9 @@ function showBriefFor(session: Session, words: string[]): void {
 
     session.state.commandId = target.topic.id;
 
-    const brief = briefManifest(everything, target.topic.id);
+    const listing = briefListing(everything, target.topic.id);
 
-    printResult(session.io, shown(session, briefHelp(brief, style, builtins), brief));
+    printResult(session.io, shown(session, briefHelp(listing, style, builtins), listing.brief));
 }
 
 /**

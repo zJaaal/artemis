@@ -2,7 +2,9 @@ import path from 'node:path';
 
 import { afterEach, describe, expect, test } from 'vitest';
 
-import { BRIEF_FOLD_THRESHOLD } from '../constants.js';
+import { BRIEF_COMMAND_LABEL, BRIEF_FOLD_THRESHOLD, BRIEF_TOPIC_LABEL } from '../constants.js';
+import { discover } from '../discover/discover.js';
+import { briefListing, manifest } from './help.js';
 import type { BriefManifest } from '../models.js';
 import { art, envelope } from '../test/art.js';
 import { BRIEF_FOLDED_MAX_BYTES } from '../test/constants.js';
@@ -134,5 +136,22 @@ describe('help <topic> --brief: never folded', () => {
 
     test('says how to get one command, as an unfolded listing does', async () => {
         expect((await briefOf(bigProject(), 'topic2')).more).toBe('art help <command> --json');
+    });
+});
+
+describe('briefListing: the label of the more line', () => {
+    const everythingOf = async (commandsDir: string) =>
+        manifest('art', await discover(commandsDir));
+
+    test('a folded listing labels it as a topic to open', async () => {
+        const { moreLabel } = briefListing(await everythingOf(bigProject()));
+
+        expect(moreLabel).toBe(BRIEF_TOPIC_LABEL);
+    });
+
+    test('a topic listing of the same project labels it as one command', async () => {
+        const { moreLabel } = briefListing(await everythingOf(bigProject()), 'topic1');
+
+        expect(moreLabel).toBe(BRIEF_COMMAND_LABEL);
     });
 });

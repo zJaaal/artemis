@@ -27,6 +27,8 @@ import { searchCommands } from './search.js';
 import type {
     ArgDefinition,
     BriefCommand,
+    BriefListing,
+    BriefListingFn,
     BriefManifest,
     BriefManifestFn,
     BriefTopic,
@@ -378,7 +380,8 @@ const shownForTopic = (
         (topic) => counts.has(topic.id) && parentOf(topic.id) === topicId
     ),
     commands: [...inside],
-    more: `${everything.bin} ${BRIEF_MORE_SUFFIX}`
+    more: `${everything.bin} ${BRIEF_MORE_SUFFIX}`,
+    moreLabel: BRIEF_COMMAND_LABEL
 });
 
 /**
@@ -392,14 +395,16 @@ const shownForTop = (everything: Manifest, counts: ReadonlyMap<string, number>):
         return {
             topics,
             commands: everything.commands,
-            more: `${everything.bin} ${BRIEF_MORE_SUFFIX}`
+            more: `${everything.bin} ${BRIEF_MORE_SUFFIX}`,
+            moreLabel: BRIEF_COMMAND_LABEL
         };
     }
 
     return {
         topics: topics.filter((topic) => isTopLevelId(topic.id)),
         commands: everything.commands.filter((command) => isTopLevelId(command.id)),
-        more: `${everything.bin} ${BRIEF_TOPIC_MORE_SUFFIX}`
+        more: `${everything.bin} ${BRIEF_TOPIC_MORE_SUFFIX}`,
+        moreLabel: BRIEF_TOPIC_LABEL
     };
 };
 
@@ -409,7 +414,7 @@ const shownForTop = (everything: Manifest, counts: ReadonlyMap<string, number>):
  * Topics carry the number of commands under them. A project with more than `BRIEF_FOLD_THRESHOLD`
  * commands gets a folded top level (topics, not commands); a topic listing is never folded.
  */
-export const briefManifest: BriefManifestFn = (everything, topicId) => {
+export const briefListing: BriefListingFn = (everything, topicId) => {
     const inside = everything.commands.filter(
         (command) => topicId === undefined || isWithin(command.id, topicId)
     );
@@ -421,7 +426,7 @@ export const briefManifest: BriefManifestFn = (everything, topicId) => {
             ? shownForTop(everything, counts)
             : shownForTopic(everything, inside, counts, topicId);
 
-    return {
+    const brief: BriefManifest = {
         bin: everything.bin,
         topics: shown.topics.map((topic) => ({
             id: topic.id,
@@ -436,7 +441,13 @@ export const briefManifest: BriefManifestFn = (everything, topicId) => {
         more: shown.more,
         search: `${everything.bin} ${BRIEF_SEARCH_SUFFIX}`
     };
+
+    return { brief, moreLabel: shown.moreLabel };
 };
+
+/** The brief manifest as data: the JSON of `help --brief`. */
+export const briefManifest: BriefManifestFn = (everything, topicId) =>
+    briefListing(everything, topicId).brief;
 
 /** One line per command: `id  description`, with what an agent must not miss in parentheses. */
 const briefRows = (commands: BriefCommand[]): TableRow[] =>
@@ -456,16 +467,12 @@ const topicRows = (topics: readonly BriefTopic[]): TableRow[] =>
         ])
     ]);
 
-/** What the `more` line points at: a topic listing when folded, one command otherwise. */
-const moreLabel = (more: string): string =>
-    more.endsWith(BRIEF_TOPIC_MORE_SUFFIX) ? BRIEF_TOPIC_LABEL : BRIEF_COMMAND_LABEL;
-
 /**
  * `help --brief` as text: the same listing as the JSON, one line per command. The built-in words
  * are ids in the JSON, so their descriptions come from `builtins`.
  */
 export const briefHelp = (
-    brief: BriefManifest,
+    { brief, moreLabel }: BriefListing,
     style: Style,
     builtins: readonly Builtin[] = []
 ): string => {
@@ -487,7 +494,7 @@ export const briefHelp = (
         sections.push(section('Built-in', table(rows, style), style));
     }
 
-    sections.push(style.dim(`${moreLabel(brief.more)} ${brief.more}`));
+    sections.push(style.dim(`${moreLabel} ${brief.more}`));
 
     return sections.join(SECTION_SEPARATOR);
 };

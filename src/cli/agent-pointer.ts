@@ -10,7 +10,7 @@ import {
     POINTER_MARKER,
     POSIX_SEPARATOR
 } from '../constants.js';
-import { pointsOutside } from '../utils/points-outside.js';
+import { relativeInside } from '../utils/points-outside.js';
 import type {
     AppendedTextFn,
     GitignoreLineFn,
@@ -51,11 +51,11 @@ export const appendedText: AppendedTextFn = (existing, addition) => {
 
 /** The `.gitignore` line for the audit files, relative to the project; undefined when the state folder is outside it. */
 export const gitignoreLine: GitignoreLineFn = (dir, stateDir) => {
-    if (pointsOutside(stateDir, dir)) {
+    const relative = relativeInside(stateDir, dir);
+
+    if (relative === undefined) {
         return undefined;
     }
-
-    const relative = path.relative(dir, stateDir);
 
     const folder = relative === '' ? '' : `/${relative.split(path.sep).join(POSIX_SEPARATOR)}`;
 
