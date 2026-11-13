@@ -211,3 +211,7 @@ export const DOCTOR_FIX_INDENT = '      ';
 
 export const SKILL_WRITE_PREFIX = `${SKILL_FLAGS.write}=`;
 export const DOCTOR_SINGULAR_FAILED = '1 check failed';
+
+/** Between the names of the commands a health check lists, and between the fixes it gives. */
+export const LIST_SEPARATOR = ', ';
+export const FIX_SEPARATOR = '; ';

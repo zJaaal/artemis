@@ -124,7 +124,7 @@ describe('healthChecks: failing', () => {
             expect.objectContaining({
                 id: 'history-failing',
                 message: expect.stringMatching(/build.*db reset/),
-                fix: 'Run art history build to see the errors. Run art history db reset to see the errors.'
+                fix: 'Run art history build to see the errors.; Run art history db reset to see the errors.'
             })
         ]);
     });
@@ -139,7 +139,7 @@ describe('healthChecks: only previewed', () => {
             id: 'history-previewed',
             status: 'warn',
             message: expect.stringContaining('db reset'),
-            fix: expect.stringContaining('--yes')
+            fix: expect.stringMatching(/^db reset: Run it with --yes/)
         });
     });
 
@@ -170,7 +170,7 @@ describe('healthChecks: stale', () => {
             id: 'history-stale',
             status: 'warn',
             message: expect.stringContaining('build'),
-            fix: 'Delete the file if the command is no longer used.'
+            fix: 'build: Delete the file if the command is no longer used.'
         });
     });
 
@@ -186,6 +186,47 @@ describe('healthChecks: stale', () => {
 
     test('an unusable time is never stale', () => {
         expect(ids(checksOf([line({ time: 'yesterday' })]))).toEqual(['history']);
+    });
+});
+
+describe('healthChecks: a fix that names its command', () => {
+    test('each stale command has its own part of the fix, joined with a semicolon', () => {
+        const old = new Date(NOW - (HEALTH_STALE_DAYS + 1) * MS_PER_DAY).toISOString();
+
+        const checks = checksOf([line({ time: old }), line({ time: old, command: 'db reset' })]);
+
+        expect(checks[0]?.fix).toBe(
+            'build: Delete the file if the command is no longer used.; db reset: Delete the file if the command is no longer used.'
+        );
+    });
+
+    test('each previewed command has its own part of the fix', () => {
+        const destructive = [
+            { id: 'db reset', destructive: true },
+            { id: 'db wipe', destructive: true }
+        ];
+
+        const entries = [
+            ...times(HEALTH_PREVIEW_RUNS, { command: 'db reset', dryRun: true }),
+            ...times(HEALTH_PREVIEW_RUNS, { command: 'db wipe', dryRun: true })
+        ];
+
+        expect(checksOf(entries, { loaded: destructive })[0]?.fix).toMatch(
+            /^db reset: .*; db wipe: /
+        );
+    });
+});
+
+describe('healthChecks: a long trail', () => {
+    const LINES = 50000;
+    const SLOW_MS = 2000;
+
+    test('is grouped in one pass, not by copying a list per line', () => {
+        const started = performance.now();
+
+        checksOf(times(LINES, {}));
+
+        expect(performance.now() - started).toBeLessThan(SLOW_MS);
     });
 });
 
