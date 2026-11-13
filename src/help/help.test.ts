@@ -121,30 +121,15 @@ describe('help --json: the manifest', () => {
             id: 'hello',
             description: 'Greet someone',
             usage: 'art hello [name] [flags]',
-            aliases: [],
-            args: [
-                {
-                    name: 'name',
-                    description: 'Who to greet',
-                    required: false,
-                    default: 'world',
-                    choices: null
-                }
-            ],
+            args: [{ name: 'name', description: 'Who to greet', default: 'world' }],
             flags: [
                 {
                     name: 'shout',
                     type: 'boolean',
                     short: 's',
-                    multiple: false,
-                    description: 'Uppercase the greeting',
-                    default: null,
-                    choices: null
+                    description: 'Uppercase the greeting'
                 }
-            ],
-            examples: [],
-            destructive: false,
-            dryRun: false
+            ]
         });
     });
 
@@ -169,21 +154,68 @@ describe('help --json: the manifest', () => {
 
     test('the manifest keeps its field order', async () => {
         const manifest = await manifestOf('help');
-        const [first] = manifest.commands;
 
         expect(Object.keys(manifest)).toEqual(['bin', 'topics', 'commands', 'globalFlags']);
+    });
 
-        expect(Object.keys(first ?? {})).toEqual([
+    test('an entry with every default has only id, description, usage, args and flags', async () => {
+        const manifest = await manifestOf('help');
+        const hello = manifest.commands.find((command) => command.id === 'hello');
+
+        expect(Object.keys(hello ?? {})).toEqual(['id', 'description', 'usage', 'args', 'flags']);
+    });
+
+    test('a command with aliases has the aliases key between usage and args', async () => {
+        const manifest = await manifestOf('help');
+        const add = manifest.commands.find((command) => command.id === 'math add');
+
+        expect(Object.keys(add ?? {})).toEqual([
             'id',
             'description',
             'usage',
             'aliases',
             'args',
-            'flags',
-            'examples',
-            'destructive',
-            'dryRun'
+            'flags'
         ]);
+    });
+
+    test('a built-in with examples has the examples key after flags', () => {
+        const state = describeBuiltins('art', BUILTINS).find((builtin) => builtin.id === 'state');
+
+        expect(Object.keys(state ?? {}).slice(-2)).toEqual(['flags', 'examples']);
+    });
+
+    test('a destructive command with dry-run support has both keys after the examples', async () => {
+        const manifest = await manifestOf('help');
+        const wipe = manifest.commands.find((command) => command.id === 'wipe');
+
+        expect(Object.keys(wipe ?? {}).slice(-2)).toEqual(['destructive', 'dryRun']);
+    });
+
+    test('an arg with a default and choices, and a repeatable flag, carry those keys', async () => {
+        const manifest = await manifestOf('help');
+        const pick = manifest.commands.find((command) => command.id === 'math pick');
+
+        expect(Object.keys(pick?.args[0] ?? {})).toEqual([
+            'name',
+            'description',
+            'default',
+            'choices'
+        ]);
+
+        expect(Object.keys(pick?.flags[0] ?? {})).toEqual([
+            'name',
+            'type',
+            'multiple',
+            'description'
+        ]);
+    });
+
+    test('a required arg says required: true', async () => {
+        const manifest = await manifestOf('help');
+        const add = manifest.commands.find((command) => command.id === 'math add');
+
+        expect(add?.args[0]).toHaveProperty('required', true);
     });
 
     test('the global flags are part of the manifest', async () => {
@@ -191,11 +223,11 @@ describe('help --json: the manifest', () => {
 
         expect(manifest.globalFlags.map((flag) => [flag.name, flag.short])).toEqual([
             ['help', 'h'],
-            ['json', null],
+            ['json', undefined],
             ['yes', 'y'],
-            ['dry-run', null],
-            ['quiet', null],
-            ['log', null]
+            ['dry-run', undefined],
+            ['quiet', undefined],
+            ['log', undefined]
         ]);
     });
 
@@ -260,12 +292,9 @@ describe('help: the binary’s own words', () => {
             'id',
             'description',
             'usage',
-            'aliases',
             'args',
             'flags',
-            'examples',
-            'destructive',
-            'dryRun'
+            'examples'
         ]);
     });
 
@@ -334,7 +363,7 @@ describe('help: the binary’s own words', () => {
         expect(result).toMatchObject({
             ok: true,
             command: 'state',
-            result: { id: 'state', usage: 'art state [doc] [flags]', aliases: [] }
+            result: { id: 'state', usage: 'art state [doc] [flags]' }
         });
     });
 
@@ -361,8 +390,7 @@ describe('help: the binary’s own words', () => {
 
         expect(described).toMatchObject({
             usage: 'art state [doc] [flags]',
-            aliases: [],
-            args: [{ name: 'doc', required: false }],
+            args: [{ name: 'doc' }],
             flags: [{ name: 'reset', type: 'boolean' }]
         });
     });
@@ -400,12 +428,8 @@ describe('briefManifest: a nested topic', () => {
         id,
         description: id,
         usage: id,
-        aliases: [],
         args: [],
-        flags: [],
-        examples: [],
-        destructive: false,
-        dryRun: false
+        flags: []
     });
 
     const everything: Manifest = {

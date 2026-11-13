@@ -7,12 +7,8 @@ import { buildSkill } from './skill.js';
 const command = (overrides: Partial<ManifestCommand> & { id: string }): ManifestCommand => ({
     description: `${overrides.id} does a thing`,
     usage: `art ${overrides.id} [flags]`,
-    aliases: [],
     args: [],
     flags: [],
-    examples: [],
-    destructive: false,
-    dryRun: false,
     ...overrides
 });
 
@@ -150,18 +146,13 @@ describe('buildSkill: what it never says', () => {
             command({
                 id: 'greet',
                 usage: 'art greet <name> [flags]',
-                args: [
-                    { name: 'name', description: '', required: true, default: null, choices: null }
-                ],
+                args: [{ name: 'name', description: '', required: true }],
                 flags: [
                     {
                         name: 'shout',
                         type: 'boolean',
                         short: 's',
-                        multiple: false,
-                        description: 'Loud',
-                        default: null,
-                        choices: null
+                        description: 'Loud'
                     }
                 ],
                 examples: ['greet ana']

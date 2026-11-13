@@ -272,47 +272,57 @@ const describeFlags = (flags: FlagDefinitions): ManifestFlag[] =>
     Object.entries(flags).map(([name, flag]) => ({
         name,
         type: flag.type,
-        short: flag.short ?? null,
-        multiple: Boolean(flag.multiple),
+        ...(flag.short === undefined ? {} : { short: flag.short }),
+        ...(flag.multiple ? { multiple: true as const } : {}),
         description: flag.description ?? '',
-        default: flag.default ?? null,
-        choices: flag.choices ?? null
+        ...(flag.default === undefined ? {} : { default: flag.default }),
+        ...(flag.choices === undefined ? {} : { choices: flag.choices })
     }));
 
 const describeArgs = (args: readonly ArgDefinition[]): ManifestArg[] =>
     args.map((arg) => ({
         name: arg.name,
         description: arg.description ?? '',
-        required: Boolean(arg.required),
-        default: arg.default ?? null,
-        choices: arg.choices ?? null
+        ...(arg.required ? { required: true as const } : {}),
+        ...(arg.default === undefined ? {} : { default: arg.default }),
+        ...(arg.choices === undefined ? {} : { choices: arg.choices })
     }));
 
-const describeCommand = (bin: string, entry: CommandEntry): ManifestCommand => ({
-    id: entry.id,
-    description: entry.definition.description,
-    usage: usage(bin, entry),
-    aliases: entry.definition.aliases,
-    args: describeArgs(entry.definition.args),
-    flags: describeFlags(entry.definition.flags),
-    examples: entry.definition.examples,
-    destructive: entry.definition.destructive,
-    dryRun: entry.definition.dryRun
+/** The manifest entry of a command or built-in; a key that holds its default is left out. */
+const describeWord = (word: {
+    id: string;
+    description: string;
+    usage: string;
+    aliases: readonly string[];
+    args: readonly ArgDefinition[];
+    flags: FlagDefinitions;
+    examples: readonly string[];
+    destructive?: boolean | undefined;
+    dryRun?: boolean | undefined;
+}): ManifestCommand => ({
+    id: word.id,
+    description: word.description,
+    usage: word.usage,
+    ...(word.aliases.length ? { aliases: word.aliases } : {}),
+    args: describeArgs(word.args),
+    flags: describeFlags(word.flags),
+    ...(word.examples.length ? { examples: word.examples } : {}),
+    ...(word.destructive ? { destructive: true as const } : {}),
+    ...(word.dryRun ? { dryRun: true as const } : {})
 });
+
+const describeCommand = (bin: string, entry: CommandEntry): ManifestCommand =>
+    describeWord({ ...entry.definition, id: entry.id, usage: usage(bin, entry) });
 
 /** The words of the shipped binary, described like commands so a caller reads both the same way. */
 export const describeBuiltins: DescribeBuiltinsFn = (bin, builtins) =>
-    builtins.map((builtin) => ({
-        id: builtin.id,
-        description: builtin.description,
-        usage: usageOf(bin, builtin.id, builtin.args, builtin.flags),
-        aliases: [],
-        args: describeArgs(builtin.args),
-        flags: describeFlags(builtin.flags),
-        examples: builtin.examples,
-        destructive: false,
-        dryRun: false
-    }));
+    builtins.map((builtin) =>
+        describeWord({
+            ...builtin,
+            usage: usageOf(bin, builtin.id, builtin.args, builtin.flags),
+            aliases: []
+        })
+    );
 
 /**
  * Everything help shows, as data: what an agent reads to know which commands exist and how to call

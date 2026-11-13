@@ -25,7 +25,7 @@ const destructiveLine = (bin: string, command: ManifestCommand): string => {
 /** The first examples in manifest order: commands in order, each one's examples in order. */
 const exampleLines = (bin: string, commands: readonly ManifestCommand[]): string[] =>
     commands
-        .flatMap((command) => command.examples)
+        .flatMap((command) => command.examples ?? [])
         .slice(0, SKILL_MAX_EXAMPLES)
         .map((example) => `- \`${bin} ${example}\``);
 

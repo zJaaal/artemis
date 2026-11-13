@@ -818,7 +818,7 @@ describe('cli: the init word of the shipped binary', () => {
         expect(envelope(result.out)).toMatchObject({
             ok: true,
             command: 'init',
-            result: { id: 'init', aliases: [], args: [], flags: [] }
+            result: { id: 'init', args: [], flags: [] }
         });
     });
 

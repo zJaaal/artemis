@@ -459,34 +459,37 @@ export type HelpSubject = {
     dryRun?: boolean;
 };
 
+/** An argument in the manifest. A key that holds its default (`required` false, no `default`, no `choices`) is left out. */
 export type ManifestArg = {
     name: string;
     description: string;
-    required: boolean;
-    default: string | null;
-    choices: readonly string[] | null;
+    required?: true;
+    default?: string;
+    choices?: readonly string[];
 };
 
+/** A flag in the manifest. A key that holds its default (no `short`, `default` or `choices`, not `multiple`) is left out. */
 export type ManifestFlag = {
     name: string;
     type: FlagDefinition['type'];
-    short: string | null;
-    multiple: boolean;
+    short?: string;
+    multiple?: true;
     description: string;
-    default: boolean | string | readonly string[] | null;
-    choices: readonly string[] | null;
+    default?: boolean | string | readonly string[];
+    choices?: readonly string[];
 };
 
+/** A command in the manifest. A key that holds its default (no aliases, no examples, not destructive, no dry run) is left out. */
 export type ManifestCommand = {
     id: string;
     description: string;
     usage: string;
-    aliases: readonly string[];
+    aliases?: readonly string[];
     args: ManifestArg[];
     flags: ManifestFlag[];
-    examples: readonly string[];
-    destructive: boolean;
-    dryRun: boolean;
+    examples?: readonly string[];
+    destructive?: true;
+    dryRun?: true;
 };
 
 /** Everything help shows, as data: what an agent reads to know which commands exist. */
