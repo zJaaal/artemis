@@ -12,16 +12,21 @@
 
 > **Agents:** run `art help --agents` (or read [AGENTS.md](AGENTS.md)); it is the short version of this file.
 
-Artemis turns repetitive work into commands an AI agent can call, instead of steps it has to read and redo.
-
-An agent that does the same job twice usually pays for it twice: it reads the instructions (a skill, a doc, a prompt), works out the steps, and runs them. With Artemis the agent writes the job down once, as one file in a folder. From then on it just calls it:
+Artemis is a small framework for the commands a project's people and AI agents run over and over. One file in `commands/` is one command. Every command gets, without extra code, the parts that hand-written scripts usually skip: `--help`, one JSON result, exit codes that mean something, a confirmation before anything destructive, and a dry run that does nothing.
 
 ```console
-$ art deploy staging --json
-{"ok":true,"command":"deploy","result":{"url":"https://staging.example.com"}}
+$ art db reset --json
+{"ok":false,"command":"db reset","error":"art db reset changes or deletes data","hint":"Pass --yes to confirm. Pass --dry-run first to see what it would do."}
+
+$ art db reset --dry-run --json
+{"ok":true,"command":"db reset","result":null,"dryRun":true,"plan":["delete .data/db.json","run 5 migrations","load the seed"]}
 ```
 
-The script does the work, the same way every time. The agent spends tokens on the call and on the small result it reads back, not on re-reading instructions or re-deriving the steps. That is near zero, not zero: a run still costs the call and its result, and discovery (`help --json`) costs tokens in proportion to how many commands you have. What it saves is the repeated work itself.
+What to expect, and what not to:
+
+- **It makes commands safe to hand to an agent.** A command marked `destructive` cannot run without `--yes` when nobody is there to answer, and a dry run is checked by the framework, not left to the script. This holds for commands an agent writes itself.
+- **It does not make an agent cheaper on its own.** A command saves work when it replaces several steps an agent would otherwise repeat each time. For a job that is one call anyway, it costs about the same as a script. Finding commands (`help --json`) costs tokens too, more as you add commands.
+- **It is not a sandbox.** Commands run with your permissions, like any script.
 
 Every file is a command, every folder is a group of commands, and there is no registry to keep up to date: Artemis finds whatever you drop in the folder. Everything an agent needs to call a command (arguments, flags, defaults, allowed values, examples) is machine-readable, and people get a normal CLI with `--help`.
 
@@ -36,8 +41,8 @@ commands/
 
 ## Where it fits
 
-- **Instead of a skill, for work that is deterministic.** A skill is instructions a model reads and follows: it costs tokens each time it is loaded, and the model can still get a step wrong. If the steps are always the same, write them as a command and let the agent call it. Keep skills for work that needs judgment.
-- **Like an MCP server, without the server.** The idea is the same: tools with a name, a description and typed arguments that an agent can discover (`help --json`) and call. The difference is that there is no server, no protocol and no process to keep running: a tool is a file, and calling it is a shell command. It is not an MCP implementation; an MCP adapter is possible later, but it is not part of this release.
+- **Next to a skill, for the steps that never change.** A skill is instructions a model follows, and it can skip or change a step. A command runs the same steps every time. Keep skills for work that needs judgment, and let them call commands for the fixed parts.
+- **Close to an MCP server, without the server.** Both give an agent tools with a name, a description and typed arguments. Here there is no server, no protocol and no process to keep running: a tool is a file, and calling it is a shell command. It is not an MCP implementation.
 - **Local and private, with one caveat.** The work happens on your machine, with your files and credentials, and Artemis itself sends nothing anywhere. What reaches the model is whatever a command returns, so return what the agent needs and not everything the command saw.
 - **Commands are scripts.** They run with your permissions. Treat a command file like any script you run, and review the ones an agent writes.
 
@@ -46,7 +51,7 @@ commands/
 - **One file, one command.** No central list to edit. Delete the file and the command is gone.
 - **Machine-readable by default.** `help --json` lists every command with its arguments, flags, defaults, choices and examples. With `--json`, every call prints exactly one JSON object.
 - **Honest exit codes.** `0` success, `1` the command failed, `2` the command line was wrong.
-- **Never hangs.** `--yes` and `--json` never prompt, and a prompt that nobody can answer fails with a hint instead of waiting forever.
+- **No prompt waits forever.** `--yes` and `--json` never prompt, and a question nobody can answer fails with a hint instead of waiting.
 - **Typed.** `run({ args, flags })` is typed from the definition, even in plain JavaScript with `// @ts-check`.
 - **Small.** ESM only, Node 22 or newer, and one runtime dependency, [`@topcli/prompts`](https://github.com/TopCli/prompts), which has none of its own and is loaded only when a command asks a question.
 
