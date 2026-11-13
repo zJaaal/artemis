@@ -40,3 +40,6 @@ export const KIT_LOCK_TIMEOUT_MS = 100;
 
 /** The most bytes the brief listing of the fixture commands may take (it was 2.7 KB before `usage`). */
 export const BRIEF_FIXTURE_MAX_BYTES = 4096;
+
+/** The most bytes the folded top-level brief listing of a 200-command project may take. */
+export const BRIEF_FOLDED_MAX_BYTES = 6144;

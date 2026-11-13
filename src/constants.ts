@@ -180,6 +180,9 @@ export const DRY_RUN_NOTE = 'Says what it would do and changes nothing.';
 
 /** The tail of the line a brief manifest ends with: how to get one command in full. */
 export const BRIEF_MORE_SUFFIX = 'help <command> --json';
+/** Above this many commands the top-level brief listing shows topics instead of commands. */
+export const BRIEF_FOLD_THRESHOLD = 40;
+export const BRIEF_TOPIC_MORE_SUFFIX = 'help <topic> --json --brief';
 export const BRIEF_SEARCH_SUFFIX = 'help --search <words> --json';
 export const BRIEF_FLAG = '--brief';
 /** The flags that make `help` print the brief JSON listing. */

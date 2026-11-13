@@ -446,15 +446,12 @@ describe('briefManifest: a nested topic', () => {
         globalFlags: []
     };
 
-    test('does not list the topics above the one asked for', () => {
-        expect(briefManifest(everything, 'dotcms db').topics.map((topic) => topic.id)).toEqual([
-            'dotcms db'
-        ]);
+    test('does not list the topics above the one asked for, nor the topic itself', () => {
+        expect(briefManifest(everything, 'dotcms db').topics.map((topic) => topic.id)).toEqual([]);
     });
 
-    test('lists the topic asked for and the ones below it', () => {
+    test('lists the direct sub-topics of the topic asked for', () => {
         expect(briefManifest(everything, 'dotcms').topics.map((topic) => topic.id)).toEqual([
-            'dotcms',
             'dotcms db'
         ]);
     });

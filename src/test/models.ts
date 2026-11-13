@@ -139,3 +139,11 @@ export type StateProjectOptions = {
     /** Other files in the state folder (locks, temporary files), by name. */
     files?: Record<string, string>;
 };
+
+/** The shape of a generated tree of commands (see `writeGeneratedCommands`). */
+export type GeneratedTree = {
+    topics: number;
+    perTopic: number;
+    nestedPerTopic: number;
+    topLevel: number;
+};

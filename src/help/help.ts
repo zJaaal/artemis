@@ -3,7 +3,9 @@ import {
     ANSI_RESET,
     GLOBAL_FLAGS,
     BRIEF_MORE_SUFFIX,
+    BRIEF_FOLD_THRESHOLD,
     BRIEF_SEARCH_SUFFIX,
+    BRIEF_TOPIC_MORE_SUFFIX,
     GLOBAL_FLAGS_TEXT,
     DESTRUCTIVE_NOTE,
     DRY_RUN_NOTE,
@@ -36,6 +38,7 @@ import type {
     ManifestCommand,
     ManifestFlag,
     ManifestFn,
+    TopicEntry,
     TopicManifestFn,
     Registry,
     RootHelpFn,
@@ -368,38 +371,84 @@ const countByTopic = (commands: readonly ManifestCommand[]): Map<string, number>
     return counts;
 };
 
+const isTopLevelId = (id: string): boolean => !id.includes(ID_SEPARATOR);
+
+/** The parent of a topic id: `dotcms db` sits under `dotcms`; a top-level topic has none. */
+const parentOf = (id: string): string => id.split(ID_SEPARATOR).slice(0, -1).join(ID_SEPARATOR);
+
+/** What a listing shows: which topics and which commands, and how to go one step further. */
+type Shown = { topics: TopicEntry[]; commands: ManifestCommand[]; more: string };
+
+/**
+ * What the listing of a topic shows: its direct sub-topics, and every command under it at any depth.
+ * It is a step down, so it is never folded.
+ */
+const shownForTopic = (
+    everything: Manifest,
+    inside: readonly ManifestCommand[],
+    counts: ReadonlyMap<string, number>,
+    topicId: string
+): Shown => ({
+    topics: everything.topics.filter(
+        (topic) => counts.has(topic.id) && parentOf(topic.id) === topicId
+    ),
+    commands: [...inside],
+    more: `${everything.bin} ${BRIEF_MORE_SUFFIX}`
+});
+
+/**
+ * What the top-level listing shows. Past `BRIEF_FOLD_THRESHOLD` commands it is folded: the
+ * top-level topics, and only the commands that sit in no topic. Below it, everything.
+ */
+const shownForTop = (everything: Manifest, counts: ReadonlyMap<string, number>): Shown => {
+    const topics = everything.topics.filter((topic) => counts.has(topic.id));
+
+    if (everything.commands.length <= BRIEF_FOLD_THRESHOLD) {
+        return {
+            topics,
+            commands: everything.commands,
+            more: `${everything.bin} ${BRIEF_MORE_SUFFIX}`
+        };
+    }
+
+    return {
+        topics: topics.filter((topic) => isTopLevelId(topic.id)),
+        commands: everything.commands.filter((command) => isTopLevelId(command.id)),
+        more: `${everything.bin} ${BRIEF_TOPIC_MORE_SUFFIX}`
+    };
+};
+
 /**
  * The brief manifest: ids, one-line descriptions and how to call each (`usage`), and `destructive`
  * and `dryRun` only when true, because they are the two facts an agent must not miss before calling.
- * Topics are listed at any depth, by full id, with the number of commands under them.
+ * Topics carry the number of commands under them. A project with more than `BRIEF_FOLD_THRESHOLD`
+ * commands gets a folded top level (topics, not commands); a topic listing is never folded.
  */
 export const briefManifest: BriefManifestFn = (everything, topicId) => {
-    const commands = everything.commands.filter(
+    const inside = everything.commands.filter(
         (command) => topicId === undefined || isWithin(command.id, topicId)
     );
 
-    const counts = countByTopic(commands);
+    const counts = countByTopic(inside);
 
-    const topics: BriefTopic[] = everything.topics
-        .filter(
-            (topic) =>
-                counts.has(topic.id) && (topicId === undefined || isWithin(topic.id, topicId))
-        )
-        .map((topic) => ({
-            id: topic.id,
-            ...(topic.description ? { description: topic.description } : {}),
-            commands: counts.get(topic.id) ?? 0
-        }));
+    const shown =
+        topicId === undefined
+            ? shownForTop(everything, counts)
+            : shownForTopic(everything, inside, counts, topicId);
 
     return {
         bin: everything.bin,
-        topics,
-        commands: commands.map(briefCommand),
+        topics: shown.topics.map((topic) => ({
+            id: topic.id,
+            ...(topic.description ? { description: topic.description } : {}),
+            commands: counts.get(topic.id) ?? 0
+        })),
+        commands: shown.commands.map(briefCommand),
         ...(everything.builtins === undefined || topicId !== undefined
             ? {}
             : { builtins: everything.builtins.map((builtin) => builtin.id) }),
         globalFlags: GLOBAL_FLAGS_TEXT,
-        more: `${everything.bin} ${BRIEF_MORE_SUFFIX}`,
+        more: shown.more,
         search: `${everything.bin} ${BRIEF_SEARCH_SUFFIX}`
     };
 };
