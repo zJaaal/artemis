@@ -43,7 +43,7 @@ Earlier owner decisions that bound this spec: no permission hooks and no destruc
 
 ### The `usage` string (fixes 1, 2, 3)
 
-One `usage` string per command, the same everywhere it appears: the full manifest, the brief listing, search results, the usage hint and `UsageError.usage`.
+One `usage` string per project command, the same everywhere it appears: the full manifest, the brief listing, search results, the usage hint and `UsageError.usage`. Built-in words keep their own fixed usage lines (`STATE_USAGE_LINE` and the others), and `history` gets one written the same way: `history [command words]... [--limit <n>] [--json] [--quiet]`.
 
 - It is the id, then each arg, then each command flag, separated by spaces. **No bin** and no `[flags]` placeholder. Text help and every text line that shows a usage print the bin in front (`Usage  art db prune [target] [--older-than <value>] [--all]`); JSON never does.
 - An arg: `<name>` when required, `[name]` when optional. An arg with choices drops its name: `<a|b>` when required, `[a|b]` when optional.
@@ -79,7 +79,8 @@ Example: `db prune [target] [--older-than <value>] [--all]`.
 - `search` is always present.
 - **Not folded** (as today, plus the fields above): `topics` lists every topic at every depth, and `commands` every command.
 - **Folded:** when the project has more than `BRIEF_FOLD_THRESHOLD` (40) commands, the top-level listing has only the top-level topics in `topics`, only the commands that sit in no topic in `commands`, and `more` becomes `"art help <topic> --json --brief"`. A topic's count still includes its nested topics.
-- **A topic listing** (`help <topic> --json --brief`) is never folded: its direct sub-topics in `topics` (with counts) and every command under it in `commands`, as today.
+- **A topic listing** (`help <topic> --json --brief`) is never folded: its **direct** sub-topics in `topics` (with counts), which is a change (today it lists topics at every depth), and every command under it, at every depth, in `commands`. The difference from the unfolded top level (every topic at every depth) is on purpose: a topic listing is a step down, so its sub-topics are the next step.
+- A topic with no command anywhere under it (count 0) is left out of every listing, as today.
 - Text `help --brief` folds the same way: a `Topics` section, one line per topic with its count and description, then the commands outside topics, then the `more` line.
 
 ### Full manifest entry (fix 3)
@@ -93,12 +94,11 @@ A key whose value is its default is left out: `aliases` when empty, `examples` w
   "hint": "db prune [target] [--older-than <value>] [--all]. Global: --help --json --yes --dry-run --quiet --log <file>" }
 ```
 
-- **Which errors:** every `UsageError` raised for a resolved project command (unknown flag, missing or extra argument, a bad choice, a flag missing its value), when the error has no hint of its own. The hint is `<usage>. Global: <globalFlags>`. It is built in one place, where the error is reported (`report`), from the error's `usage`.
+- **Which errors:** a `UsageError` gains an option `fromCommand: true`, set only by `parse()` when it parses a resolved project command's argv (unknown flag, missing or extra argument, a bad choice, a flag missing its value). For those, when the error has no hint of its own, the hint is `<usage>. Global: <globalFlags>`. It is built in one place, where the error is reported (`report`), from the error's `usage`. Errors without `fromCommand` (built-in words, help, the leading-flag split) are unchanged.
 - **An error with its own hint keeps it** (for example `--dry-run` on a command without `dryRun`) and keeps today's `Usage` line in text.
-- **Text mode:** when the usage hint is used, it is printed as `Hint` and the separate `Usage` line is not printed (the hint already has the usage in it).
-- **Built-in words** (`init`, `state`, `skill`, `doctor`, `history`) keep today's usage errors.
-- **`ctx.invoke`** usage errors carry the same `usage` string, so the same hint.
-- **Unknown command:** `Did you mean "x"?` when the current edit-distance suggestion finds one (unchanged). Otherwise, the ids (at most `UNKNOWN_COMMAND_MAX_IDS`, 3) that share a word with what was typed, as `Did you mean one of: "a", "b"?`. Otherwise `Run "art help --json --brief" to see the commands.` (inside a topic, `Run "art help <topic> --json --brief"`), which replaces today's `Run "art <topic> help"` text. Words are split as in search (below).
+- **Text mode:** when the usage hint is used, it is printed as `Hint` and the separate `Usage` line is not printed (the hint already has the usage in it). Wherever text prints a usage, the bin goes in front, so `ReportContext` gains `bin`.
+- **`ctx.invoke`:** a nested usage error stays what it is today (a `CommandError`, exit 1, hint `Usage: <bin> <usage>`), with the new `usage` string and without the global flags.
+- **Unknown command:** `Did you mean "x"?` when the current edit-distance suggestion finds one (unchanged). Otherwise, the ids that share a word with what was typed (words split as in search, equal words only), the first `UNKNOWN_COMMAND_MAX_IDS` (3) by id order, as `Did you mean one of: "a", "b"?`. Otherwise `Run "art help --json --brief" to see the commands.` (inside a topic, `Run "art help <topic> --json --brief"`), which replaces today's `Run "art <topic> help"` text.
 
 ### Search (fix 10)
 
@@ -107,8 +107,9 @@ A key whose value is its default is left out: `aliases` when empty, `examples` w
   "result": { "query": "delete old build artifacts", "matches": [ /* brief entries, best first */ ], "more": "art help <command> --json" } }
 ```
 
-- **Parsing:** `--search` always takes the next token as its value, whatever it starts with, and `--search=<words>` works too. That value is never a topic word. A missing value is a usage error (exit 2).
-- **Words:** text is lowercased and split on anything that is not a Unicode letter or digit (`[^\p{L}\p{N}]+`). Words of 1 character are dropped, and so are the words of `SEARCH_STOP_WORDS` (the, and, for, with, from, into, of, to, in, on, a, an).
+- **Parsing:** `--search` takes the next token as its value, whatever it starts with, and `--search=<words>` works too. That value is never a topic word. The one exception is a next token that is exactly a global flag (`--json`, `--quiet`, `--dry-run`, `--log`, `--yes`, `--help`, `-h`, `-y`): it stays that flag, the same rule as `--log --json` in spec 03, and the search has no value. A missing value is a usage error (exit 2). Tests cover `help --search --json` and `help --search --dry-run`.
+- **`result.query`** is the value as typed.
+- **Words:** text is lowercased and split on anything that is not a Unicode letter or digit (`[^\p{L}\p{N}]+`). Words of 1 character are dropped, and so are the words of `SEARCH_STOP_WORDS` (the, and, for, with, from, into, of, to, in, on, an).
 - **Empty query:** a query with no word left is a usage error, hint `Search with words from what the command does, for example: art help --search "reset database" --json`.
 - **Match:** a query word matches a command word when they are equal, or when the shorter has at least `SEARCH_PREFIX_MIN` (4) characters and is a prefix of the longer (`build` matches `builds`).
 - **Text of a command:** its id, aliases, description, examples, its args' and flags' names and descriptions, and the descriptions of every topic above it.
@@ -136,13 +137,14 @@ type ExecDetachedResult = { pid: number | null; skipped: boolean };
 - **Starting it:** the child is spawned in its own process group (`detached: true`, `windowsHide: true`), with `stdin` ignored and stdout and stderr appended to `logFile`. `logFile` is resolved against the child's resolved `cwd`, and its folders are created. The edge opens the file, hands the descriptor to the child, closes it in the parent and `unref`s the child.
 - **When it resolves:** once the child has spawned (the `spawn` event), to `{ pid, skipped: false }`. A spawn error (`error` event) rejects with a `CommandError`, as today. It is never killed when `run` ends and never awaited after that.
 - **Tracking:** Artemis does not track the child. The command records the `pid` (the store kit is the place) and offers its own stop command.
-- **Bad options:** an empty `logFile`, or any option not in `ExecDetachedOptions` (`capture`, `readOnly`, `timeoutMs`, `reject`, `errorPattern`), rejects with a `TypeError`. This is checked before the `--dry-run` skip, so a dry run finds the bug too.
+- **Bad options:** an empty `logFile`, any option not in `ExecDetachedOptions` (`capture`, `readOnly`, `timeoutMs`, `reject`, `errorPattern`), or `logFile` on a call whose `detached` is not `true`, rejects with a `TypeError`. This is checked before the `--dry-run` skip, so a dry run finds the bug too.
+- **Failures:** a `cwd` that does not exist fails first, with today's "The folder X does not exist" error (the log's folders are created only under an existing `cwd`). A `logFile` that cannot be opened or created (permission, a folder) fails with a `CommandError` naming the file, with the hint `LOG_FILE_HINT`.
 - **Under `--dry-run`:** it is planned (`start <command> <args> in the background, output in <logFile>`) and resolves to `{ pid: null, skipped: true }`.
 - **Output:** a detached child's output goes only to its `logFile`, never to the terminal, `--log` or `tail`.
 
 **`errorPattern`**
 
-- **Piping:** setting it makes the call piped: the child's output is read line by line and still echoed as the mode would show it. This loses a terminal child's colors and progress bars, which the docs say.
+- **Piping:** a call that would inherit the terminal (`pickExecMode` today gives no pipe) becomes `{ pipe: true, echo: 'split', keep: true }`: the child's output is read line by line and still shown (stdout to stdout, stderr to stderr). This loses a terminal child's colors and progress bars, which the docs say. In every other mode (`quiet`, `capture`, `json`, `log`) the echo does not change, and `keep` becomes `true`.
 - **What it matches:** the same cleaned lines `tail` sees (CR handled, blank lines dropped), before the per-line cut, from stdout and stderr both.
 - **What is kept:** the first `EXEC_ERROR_LINES` (20) matches, each cut to `EXEC_TAIL_LINE_CHARS`.
 - **On a failure** (non-zero exit with `reject: true`, or a timeout), they go into the `CommandError` as `errorLines`. In the envelope they go out as `errorLines` right after `tail`, and before `checks`. In text they print under the same condition as `tail`, before it, under the heading `Error lines`.
@@ -160,11 +162,13 @@ type ExecDetachedResult = { pid: number | null; skipped: boolean };
 - **Where:** only the shipped `art` writes it, to `<stateDir>/audit.jsonl` (the folder is created). `run()` writes only when given `auditFile` (an absolute path), and the shipped route passes it. A published tool (`cli({ root })`) does not audit, because its state folder would sit in its own package.
 - **Which runs:** one line per run of a resolved project command: success, failure, a usage error, a refused or declined confirmation. `--help` on a command, help itself, topics, built-in words and unknown commands are not recorded. A command run through `ctx.invoke` is not a separate line.
 - **Fields:**
-  - `time`: when the run started, from the injected clock.
+  - `time`: when the run started, `now()` as an ISO string.
   - `command`: the resolved id, also when an alias was typed.
   - `argv`: the tokens after the command id, with every global flag and its value removed and `--` kept.
-  - `ran`: `true` when the command's `run` started.
-  - `ms`: from start to end, prompts included.
+  - `ran`: `true` when the command's `run` started. A usage error, a refused confirmation (no `--yes` with nobody to answer), a declined one and a `--log` file that cannot be opened are all `ran: false`.
+  - `dryRun`: `--dry-run` was passed. `yes`: `--yes` was passed.
+  - `exitCode`: the exit code `run()` returns (a refused or declined confirmation is `1`).
+  - `ms`: `now()` at the end minus `now()` at the start, prompts included. The same injected `now` is used for both.
   - `plan`: only on a dry run.
   - `error`: only on a failure, the error message.
 - **When it is written:** last, in `run()`'s `finally`, after the envelope is printed and after the `--log` file is closed. A slow disk never delays the result.
@@ -178,9 +182,9 @@ type ExecDetachedResult = { pid: number | null; skipped: boolean };
 `art history [<command words>...] [--limit <n>] [--json] [--quiet]`
 
 - **Which runs:** the newest lines first, at most `HISTORY_DEFAULT_LIMIT` (20).
-- **Filter:** every argument is joined by spaces into one command id (`art history db reset`). When commands load, an alias resolves to its id. When they don't, only an exact id matches.
-- **`--limit`:** must be a positive integer, else it is a usage error (exit 2).
-- **Text:** one line per run: the local time, the command, `dry run` / `exit <code>`, and the argv joined.
+- **Filter:** every argument (and every word after `--`) is joined by spaces into one command id (`art history db reset`). `history` tries to load the commands to resolve an alias to its id. Any failure to load is ignored silently, and then only an exact id matches.
+- **`--limit`:** parsed the way `parseStateWords` parses its flags (`--limit 5` or `--limit=5`). A missing value or a value that is not a positive integer is a usage error (exit 2).
+- **Text:** one line per run: the time in UTC ISO form (as written), the command, `dry run` / `exit <code>`, and the argv joined.
 - **`--json`:** `{ entries, skipped }`, with the audit lines as written. `skipped` is the number of lines that could not be parsed.
 - **No audit file:** `entries: []`, and in text `Nothing recorded yet.`
 - **As a built-in word of the shipped `art`,** like `state`:
@@ -192,15 +196,17 @@ type ExecDetachedResult = { pid: number | null; skipped: boolean };
 
 ### Doctor health checks (fix 14)
 
-Doctor loads the commands (it already does) and reads `audit.jsonl`. Only lines with `ran: true` count toward the "failing" rule, so usage errors and refused confirmations never make a command look broken. Commands in the history that no longer exist produce nothing. Every check uses an injected `now`.
+Doctor loads the commands (it already does) and reads `audit.jsonl`. A **real run** is a line with `ran: true` and `dryRun: false`. Only real runs count toward "failing", so usage errors, refused confirmations and dry runs never make a command look broken or break a failing streak. Commands in the history that no longer exist produce nothing. Every check uses an injected `now`.
+
+Each kind is **one check**, whatever the number of commands: its message names every command it applies to, and its `fix` names each one. `DoctorCheckId` gains the four ids below, and `DOCTOR_ID_WIDTH` grows to fit the longest.
 
 | Check id | Status | When | Message and `fix` |
 | --- | --- | --- | --- |
 | `history` | `ok` | no audit file | "no history yet" |
 | `history` | `ok` | there is history and none of the checks below apply | "no problems in the last <n> runs" |
-| `history-failing` | `warn` | for each command whose last `HEALTH_FAILING_RUNS` (3) lines with `ran: true` all have a non-zero `exitCode` | names the command; fix: `Run art history <id> to see the errors.` |
-| `history-previewed` | `warn` | for each `destructive` command with at least `HEALTH_PREVIEW_RUNS` (3) dry runs and no line with `ran: true` and `dryRun: false` | "only ever previewed"; fix: `Run it with --yes when the plan looks right, or delete it if it is not needed.` |
-| `history-stale` | `warn` | for each command with history whose newest line is older than `HEALTH_STALE_DAYS` (60) | fix: `Delete the file if the command is no longer used.` |
+| `history-failing` | `warn` | some command's last `HEALTH_FAILING_RUNS` (3) real runs all have a non-zero `exitCode` | names them; fix: `Run art history <id> to see the errors.` for each |
+| `history-previewed` | `warn` | some `destructive` command has at least `HEALTH_PREVIEW_RUNS` (3) dry runs and no real run | "only ever previewed", names them; fix: `Run it with --yes when the plan looks right, or delete it if it is not needed.` |
+| `history-stale` | `warn` | some command with history has its newest line older than `HEALTH_STALE_DAYS` (60) | names them; fix: `Delete the file if the command is no longer used.` |
 
 - A command with no lines gets no check.
 - The "no real run" rule only sees the retained file.
@@ -221,7 +227,7 @@ Doctor loads the commands (it already does) and reads `audit.jsonl`. Only lines 
 
 > **Write a command when you do the same job twice.** If you ran the same steps twice in a session, put them in `<commandsDir>/<topic>/<name>.js` and call that instead. `<bin> help --authoring` has the rules: a one-line `description`, `args` and `flags` with descriptions, `destructive: true` for anything that deletes, `dryRun: true` with `ctx.plan` and `ctx.dryRun`, `ctx.exec` for child processes, and `CommandError(message, { hint })` for a failure the caller can fix. Make the result answer the question you ran it for, not a log.
 
-- **Size:** the section is one paragraph under its own heading, at most `SKILL_AUTHORING_MAX_BYTES` (900 bytes) once rendered.
+- **Size:** the section is the heading `## Writing a command` and the paragraph above, at most `SKILL_AUTHORING_MAX_BYTES` (900 bytes) once rendered with the default `bin` and `commandsDir` (a test checks that case; a longer `bin` or folder is not cut).
 - **Destructive list:** it is capped at `SKILL_MAX_DESTRUCTIVE` (20) entries plus an `and <n> more: <bin> help --json --brief` line, so the skill's size has a ceiling.
 - **Test:** the whole generated skill for the `src/test/fixtures` project stays under `SKILL_MAX_BYTES` (4 KB).
 
@@ -233,7 +239,7 @@ Doctor loads the commands (it already does) and reads `audit.jsonl`. Only lines 
 This project's commands run through `<bin>`. Start with `npx <bin> help --json --brief`, call one with `--json`, and pass `--dry-run` before `--yes` on a destructive one. To write a new one: `npx <bin> help --authoring`.
 ```
 
-- **Size:** `<bin>` is the project's `bin` setting, default `art`. The pointer stays under `INIT_POINTER_MAX_BYTES` (400).
+- **Size:** `<bin>` is the project's `bin` setting, default `art`. With the default, the pointer stays under `INIT_POINTER_MAX_BYTES` (400); a test checks that case, and a longer `bin` is not cut.
 - **One decision per file:**
   - `AGENTS.md`: append the pointer, unless the file already contains `help --json --brief`.
   - `CLAUDE.md`, when it exists: append the pointer, unless it has a line matching `^@AGENTS\.md\b` (it imports AGENTS.md) or already contains `help --json --brief`.
@@ -243,7 +249,7 @@ This project's commands run through `<bin>`. Start with `npx <bin> help --json -
   - it never rewrites a line
   - it adds a newline first when the file does not end with one, then one blank line, then the pointer
   - it uses the file's line ending (CRLF when the file's first line ends with one)
-- **Gitignore:** `art init` appends `/<stateDir>/audit*.jsonl` to `.gitignore`, under the same rules: create it when missing, skip it when the line is there.
+- **Gitignore:** `art init` appends `/<stateDir>/audit*.jsonl` to the `.gitignore` in the project folder (next to its `package.json`), under the same append rules: create it when missing, skip it when the line is there. `<stateDir>` is written relative to the project folder with forward slashes (`/data/state/audit*.jsonl`). When `stateDir` resolves outside the project folder, nothing is written. Whether the folder is a git repository does not matter.
 - **Result:** `InitResult` gains `changed`, the files appended to. `created` stays the files made new. A rerun with nothing to do is still "Already a project".
 
 ## Behavior
@@ -287,12 +293,12 @@ Branch `spec-04`, cut from `housekeeping` (PR #14), which is cut from `main` aft
     - no final newline
     - `.gitignore`
     - running it twice
-14. **Docs and version.** AGENTS.md (the calling section gains `usage`, `--search`, `errorLines`, `history`; it is measured against its limit), docs/cli.md, docs/commands.md (the exec options, and that `errorPattern` pipes), README "For agents", docs/upgrading.md ("to 1.2": manifest keys left out, the `usage` format, `history` reserved, the audit file). Set the version to `1.2.0` in a PR labelled `release`.
+14. **Docs and version.** AGENTS.md (the calling section gains `usage`, `--search`, `errorLines`, `history`; it is measured against its limit), docs/cli.md, docs/commands.md (the exec options, and that `errorPattern` pipes), the README (the agents line near the top and "For agents", which say `help --agents` prints the whole file), docs/upgrading.md ("to 1.2": manifest keys left out, the `usage` format, `history` reserved, the audit file). Set the version to `1.2.0` in a PR labelled `release`.
 
 ## Acceptance criteria
 
 - `pnpm run test:all`, `build`, `check-exports`, `check-bin` and `check-lock` pass.
-- `db prune --days 30` on the fixture above fails (exit 2) with a hint showing `--older-than`, and `help --json --brief` shows `--older-than` without another call.
+- `db prune --days 30`, on a `db prune` command a test adds with the flags of the example above, fails (exit 2) with a hint showing `--older-than`, and `help --json --brief` shows `--older-than` without another call.
 - The folded brief listing of a 200-command project is under 6 KB, and `help --search` returns at most 5 entries whatever the project size.
 - `help --agents` is under 5 KB.
 - A detached child started by a command through the packed `art` is still running after `art` exits.
@@ -304,7 +310,7 @@ Branch `spec-04`, cut from `housekeeping` (PR #14), which is cut from `main` aft
 - **One spec for all fourteen** (owner, 2026-11-13).
 - **Defaults left out of the manifest** rather than a new compact format: one shape, smaller everywhere. `args` and `flags` always present.
 - **One `usage` string, flags spelled out, no bin:** it reads like the call an agent is about to type, and costs fewer bytes than a `flags` array. Flags show `<value>`. A `valueName` field could show `<days>` later, but it is a new public field, so it is out.
-- **Folding at 40 commands:** below it the full brief listing (about 150 bytes a command) stays under 6 KB. Above it, topics are the cheaper first step.
+- **Folding at 40 commands:** with `usage` an entry is about 220 bytes, so the full brief listing tops out near 9 KB, about one `help --agents` read today. Above it, topics are the cheaper first step. The benchmark world (21 commands, about 4.6 KB) stays unfolded.
 - **Keyword search, no model:** deterministic, offline, no dependency (issue #15). There is no `keywords` field until searches are shown to miss. Words of 2 characters are kept, because topics like `db` and `ci` are common.
 - **Every project command run is audited, not only destructive ones** (2026-11-13): doctor's health checks need the successes too. It is local, and secrets are not a concern (owner).
 - **Audit on the shipped route only:** a published tool's state folder is inside its own package, and only `art history` reads the file.
