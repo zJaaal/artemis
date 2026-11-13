@@ -2,7 +2,7 @@
 
 > **Status:** Approved
 > **Depends on:** SPEC 03 (merged in `43b8993`)
-> **Date:** 2026-11-13
+> **Date:** 2026-11-13 (revised 2026-11-13 after a clarity review)
 > **Source:** issue #15 (fixes 1 to 14), from two internal benchmarks of headless Claude Code on a synthetic project
 > **Release:** `1.2.0` (the shape of `help --json` changes; Artemis has no outside users yet, the same reasoning as 1.1.0)
 
@@ -14,7 +14,7 @@ Two benchmarks (about 1,700 agent runs, Haiku and Sonnet, every result checked b
 - A destructive marker in the manifest is followed more consistently than the same rule in a doc (a preview before a database reset 5/5 against 2/5).
 - A command saves money only when it replaces several steps (about −30 to −50% per repetition on multi-step jobs, nothing on one-call jobs), and a command shaped to the agent's question beats a general one (a self-written `build diagnose` at one call against five).
 
-What cost Artemis its share, against plain scripts, is **discovery**: guessing flags the brief listing does not show, usage errors that say what is wrong but not what is right, a heavy single-command entry, and `help --agents` printing 15 KB mostly about writing commands. Each fix below is from issue #15, which has the evidence for it. The owner chose (2026-11-13) to do all fourteen in one spec, then run the benchmarks again.
+What cost Artemis its share, against plain scripts, is **discovery**: guessing flags the brief listing does not show, usage errors that say what is wrong but not what is right, a heavy single-command entry, and `help --agents` printing all of AGENTS.md (about 15 KB: 5.4 KB on writing commands, 3.5 KB on calling them, 5.9 KB on running the CLI) when a calling agent needs 3.5 KB. Each fix below is from issue #15, which has the evidence for it. The owner chose (2026-11-13) to do all fourteen in one spec, then run the benchmarks again.
 
 Earlier owner decisions that bound this spec: no permission hooks and no destructive levels ("destructive is destructive"), secrets in arguments are not a concern (everything is local), Node only, and no `tags` field for search.
 
@@ -25,31 +25,41 @@ Earlier owner decisions that bound this spec: no permission hooks and no destruc
 1. The brief listing shows how to call each command, flags included.
 2. A usage error carries a hint with what is valid.
 3. Manifest entries drop keys that hold their default.
-4. `help --agents` prints only the calling contract; `help --authoring` prints the writing part.
+4. `help --agents` prints only the calling contract; `help --authoring` prints the writing and setup parts.
 5. The brief listing is measured, and keys that repeat are stated once.
 6. `ctx.exec(..., { detached: true, logFile })` starts a child meant to outlive the command.
 7. `ctx.exec(..., { errorPattern })` keeps the matching lines of a failed child next to its `tail`.
 8. Above a number of commands, the top brief listing shows topics, not commands.
-9. A size budget for what agents load up front (the generated skill, the init pointer).
+9. A size budget for what agents load up front (`help --agents`, the generated skill, the init pointer).
 10. `help --search <words>`: the best few commands for an intent.
-11. `art init` writes the agent pointer.
+11. `art init` writes the agent pointer and ignores the audit files in git.
 12. The generated skill gains a short "write a command" section.
 13. An audit trail, `<stateDir>/audit.jsonl`, and the built-in word `art history`.
 14. `art doctor` reports command health from the audit trail.
 
-**Out:** an MCP adapter (#7), shell completion (#8), a `keywords` field, embeddings or any model for search, running commands from doctor (the issue's "next steps"), the benchmark changes (they live outside the repo).
+**Out:** an MCP adapter (#7), shell completion (#8), a `keywords` field, a `valueName` for flags, embeddings or any model for search, running commands from doctor (the issue's "next steps"), auditing for published tools (`cli({ root })`) and `run()` callers that do not ask for it, the benchmark changes (they live outside the repo).
 
 ## Data model
+
+### The `usage` string (fixes 1, 2, 3)
+
+One `usage` string per command, the same everywhere it appears: the full manifest, the brief listing, search results, the usage hint and `UsageError.usage`.
+
+- It is the id, then each arg, then each command flag, separated by spaces. **No bin** and no `[flags]` placeholder. Text help and every text line that shows a usage print the bin in front (`Usage  art db prune [target] [--older-than <value>] [--all]`); JSON never does.
+- An arg: `<name>` when required, `[name]` when optional. An arg with choices drops its name: `<a|b>` when required, `[a|b]` when optional.
+- A flag, in definition order: `[--name]` for a boolean, `[--name <value>]` for a string, `[--name <a|b>]` for a string with choices, and `...` after the closing bracket when `multiple` (`[--tag <value>]...`). A flag's `short` is not shown.
+- Global flags are never in `usage`.
+
+Example: `db prune [target] [--older-than <value>] [--all]`.
 
 ### Brief entry (fixes 1, 5)
 
 ```jsonc
-{ "id": "artifacts prune", "description": "Delete build artifacts older than a number of days",
-  "usage": "artifacts prune [--older-than <days>] [--all]", "destructive": true, "dryRun": true }
+{ "id": "db prune", "description": "Delete old builds", "usage": "db prune [target] [--older-than <value>] [--all]",
+  "destructive": true, "dryRun": true }
 ```
 
-- `usage` is new: the id, then each arg (`<name>` required, `[name]` optional, `<a|b>` when it has choices), then each command flag (`[--name]` for a boolean, `[--name <value>]` for a string, the value written as `<a|b>` when it has choices, `...` after it when `multiple`). No bin in front (the listing states `bin` once), no global flags (stated once, below), and no `[flags]` placeholder.
-- `destructive` and `dryRun` stay as in spec 03: present only when `true`.
+`usage` is new. `destructive` and `dryRun` stay as in spec 03: present only when `true`.
 
 ### Brief listing (fixes 5, 8)
 
@@ -58,164 +68,255 @@ Earlier owner decisions that bound this spec: no permission hooks and no destruc
   "topics": [{ "id": "db", "description": "The local database", "commands": 4 }],
   "commands": [ /* brief entries */ ],
   "builtins": ["init", "state", "skill", "doctor", "history"],
-  "globalFlags": "--json --yes --dry-run --quiet --log <file> --help",
+  "globalFlags": "--help --json --yes --dry-run --quiet --log <file>",
   "more": "art help <command> --json",
   "search": "art help --search <words> --json" }
 ```
 
-- A topic with no description has no `description` key. `commands` is the number of commands under it (nested topics included).
-- `builtins` becomes a list of ids (each has `art <word> --help --json`). The descriptions stay in the full `help --json`.
-- `globalFlags` is new: one string, so a caller never has to look them up.
-- `search` is present only when the listing is folded (below).
-- **Folding:** when the project has more than `BRIEF_FOLD_THRESHOLD` commands (40), the top-level brief listing lists the topics with their counts and only the commands that sit in no topic, and `more` becomes `"art help <topic> --json --brief"`. `help <topic> --json --brief` is never folded. Text `help --brief` folds the same way.
+- A topic always has `commands`: the number of commands under it, nested topics included. A topic with no description has no `description` key.
+- `builtins` becomes a list of ids, present only for the shipped `art` (as today). Their descriptions stay in the full `help --json`.
+- `globalFlags` is new: the long names of `GLOBAL_FLAGS` in their declared order, `<file>` after `--log`, derived from the constant (not written by hand).
+- `search` is always present.
+- **Not folded** (as today, plus the fields above): `topics` lists every topic at every depth, and `commands` every command.
+- **Folded:** when the project has more than `BRIEF_FOLD_THRESHOLD` (40) commands, the top-level listing has only the top-level topics in `topics`, only the commands that sit in no topic in `commands`, and `more` becomes `"art help <topic> --json --brief"`. A topic's count still includes its nested topics.
+- **A topic listing** (`help <topic> --json --brief`) is never folded: its direct sub-topics in `topics` (with counts) and every command under it in `commands`, as today.
+- Text `help --brief` folds the same way: a `Topics` section, one line per topic with its count and description, then the commands outside topics, then the `more` line.
 
 ### Full manifest entry (fix 3)
 
-A key whose value is its default is left out: `aliases` when empty, `examples` when empty, `destructive` and `dryRun` when `false`; on an arg, `required` when `false`, `default` and `choices` when `null`; on a flag, `short`, `default` and `choices` when `null`, `multiple` when `false`. `id`, `description` and `usage` are always there, and so are `args` and `flags` (possibly empty), so a caller can tell "no flags" from an old Artemis. The types in `models.ts` mark the left-out keys optional. This applies to every `help --json` level and to `art <word> --help --json`.
+A key whose value is its default is left out: `aliases` when empty, `examples` when empty, `destructive` and `dryRun` when `false`; on an arg, `required` when `false`, `default` and `choices` when `null`; on a flag, `short`, `default` and `choices` when `null`, `multiple` when `false`. `id`, `description` and `usage` are always there, and so are `args` and `flags` (possibly empty), so a caller can tell "no flags" from an old Artemis. The types in `models.ts` mark the left-out keys optional, and every reader inside Artemis (text help, `art skill`, doctor, search, brief) treats a missing key as its default. This applies to every `help --json` level and to `art <word> --help --json`.
 
-### Usage error envelope (fix 2)
+### Usage hints (fix 2)
 
 ```jsonc
-{ "ok": false, "command": "artifacts prune", "error": "Unknown option '--days'",
-  "hint": "artifacts prune [--older-than <days>] [--all]. Global: --json --yes --dry-run --quiet --log <file> --help" }
+{ "ok": false, "command": "db prune", "error": "Unknown option '--days'",
+  "hint": "db prune [target] [--older-than <value>] [--all]. Global: --help --json --yes --dry-run --quiet --log <file>" }
 ```
 
-Every usage error on a resolved command (unknown flag, missing or extra argument, a bad choice, a flag missing its value) gets a `hint` with the brief `usage` and the global flags, unless the error already has a hint of its own. The text output prints the same hint under the error, where today it prints `Usage`. An unknown command keeps its current behavior, and gains a hint naming the closest ids when any id shares a word with what was typed (at most 3), else "Run art help --json --brief."
+- **Which errors:** every `UsageError` raised for a resolved project command (unknown flag, missing or extra argument, a bad choice, a flag missing its value), when the error has no hint of its own. The hint is `<usage>. Global: <globalFlags>`. It is built in one place, where the error is reported (`report`), from the error's `usage`.
+- **An error with its own hint keeps it** (for example `--dry-run` on a command without `dryRun`) and keeps today's `Usage` line in text.
+- **Text mode:** when the usage hint is used, it is printed as `Hint` and the separate `Usage` line is not printed (the hint already has the usage in it).
+- **Built-in words** (`init`, `state`, `skill`, `doctor`, `history`) keep today's usage errors.
+- **`ctx.invoke`** usage errors carry the same `usage` string, so the same hint.
+- **Unknown command:** `Did you mean "x"?` when the current edit-distance suggestion finds one (unchanged). Otherwise, the ids (at most `UNKNOWN_COMMAND_MAX_IDS`, 3) that share a word with what was typed, as `Did you mean one of: "a", "b"?`. Otherwise `Run "art help --json --brief" to see the commands.` (inside a topic, `Run "art help <topic> --json --brief"`), which replaces today's `Run "art <topic> help"` text. Words are split as in search (below).
 
-### Search result (fix 10)
+### Search (fix 10)
 
 ```jsonc
 { "ok": true, "command": "help",
   "result": { "query": "delete old build artifacts", "matches": [ /* brief entries, best first */ ], "more": "art help <command> --json" } }
 ```
 
-- **Words:** the query and each command's text are lowercased and split on anything that is not a letter or digit. Words under 3 characters and a fixed stop list (`SEARCH_STOP_WORDS`: the, and, for, with, from, into, that, this, all, any) are dropped. A query word matches a command word when they are equal, or when the shorter has at least 4 characters and is a prefix of the longer (`build` matches `builds`, `artifact` matches `artifacts`).
-- **Text of a command:** its id, aliases, description, examples, and its args' and flags' names and descriptions. Its topic's description counts too.
-- **Score:** the number of distinct query words that match, plus one when a query word matches a word of the id. Commands scoring 0 are left out. Ties go by id. At most `SEARCH_MAX_MATCHES` (5).
-- No match is `ok: true` with `matches: []`, exit 0, and in text mode a line "No command matches. Run art help --brief." Builtins are not searched.
-- `--search` is a flag of `help` (like `--brief`), never a reserved word. It takes one value (quote the words). `help <topic> --search` searches inside the topic. `--search` with `--brief` or `--agents` is a usage error.
+- **Parsing:** `--search` always takes the next token as its value, whatever it starts with, and `--search=<words>` works too. That value is never a topic word. A missing value is a usage error (exit 2).
+- **Words:** text is lowercased and split on anything that is not a Unicode letter or digit (`[^\p{L}\p{N}]+`). Words of 1 character are dropped, and so are the words of `SEARCH_STOP_WORDS` (the, and, for, with, from, into, of, to, in, on, a, an).
+- **Empty query:** a query with no word left is a usage error, hint `Search with words from what the command does, for example: art help --search "reset database" --json`.
+- **Match:** a query word matches a command word when they are equal, or when the shorter has at least `SEARCH_PREFIX_MIN` (4) characters and is a prefix of the longer (`build` matches `builds`).
+- **Text of a command:** its id, aliases, description, examples, its args' and flags' names and descriptions, and the descriptions of every topic above it.
+- **Score:** the number of distinct query words that match any word of that text, plus `SEARCH_ID_BONUS` (1) once when at least one query word matches a word of the id. Commands scoring 0 are left out. Ties go by id. At most `SEARCH_MAX_MATCHES` (5). Matching goes through an index (word → commands), not a loop in a loop.
+- **No match:** `ok: true`, `matches: []`, exit 0. Text: `No command matches. Run art help --brief.`
+- **Text output:** the matches as `help --brief` prints commands, best first, then the `more` line.
+- **Scope:** `help <topic> --search <words>` searches inside the topic. `help <command> --search` and `help <builtin> --search` are usage errors. Builtins are never searched.
+- **Clashes:** `--search` with `--brief`, `--agents` or `--authoring` is a usage error. `--search` is a flag of `help`, never a reserved word.
 
 ### Exec options (fixes 6, 7)
 
 ```ts
 type ExecOptions = {
     // ...the spec 03 options
-    detached?: boolean; // the child outlives the command
-    logFile?: string; // required with detached: where its stdout and stderr go (appended)
     errorPattern?: RegExp; // a failed child keeps the lines matching it
 };
+type ExecDetachedOptions = { cwd?: string; env?: NodeJS.ProcessEnv; detached: true; logFile: string };
+type ExecDetachedResult = { pid: number | null; skipped: boolean };
+// ctx.exec(command, args, options: ExecDetachedOptions): Promise<ExecDetachedResult>  (an overload)
 ```
 
-- **`detached: true`** starts the child in its own process group with its stdout and stderr appended to `logFile` (resolved against `cwd`, folders created), `stdin` ignored, and resolves at once to `{ code: null, output: '', skipped: false, pid }`. It is never killed when `run` ends and never awaited. Artemis does not track it: the command records the `pid` (the store kit is the place) and offers its own stop command. `detached` without `logFile`, or with `capture`, `readOnly`, `timeoutMs` or `reject: false`, is a `TypeError`. Under `--dry-run` it is planned and skipped like any other call ("start <command> in the background, output in <logFile>"). A child that fails to start (spawn error) is a `CommandError`, as today.
-- **`errorPattern`**: on a failure (non-zero exit or timeout), the lines of the child's output that match it, at most `EXEC_ERROR_LINES` (20) of at most `EXEC_TAIL_LINE_CHARS` each, the first ones kept, go into the `CommandError` as `errorLines`, and out as `errorLines` in the envelope after `tail`. It reads the whole output as it streams, so it works where the 40-line tail cannot reach. It is ignored with `detached`, and when it matches nothing the key is left out. A `RegExp` with the `g` or `y` flag is a `TypeError` (they make `test` stateful).
+**`detached: true`**
+
+- **Typing:** it is a separate overload with its own options and result, so `ExecResult` does not change. A type test covers it.
+- **Starting it:** the child is spawned in its own process group (`detached: true`, `windowsHide: true`), with `stdin` ignored and stdout and stderr appended to `logFile`. `logFile` is resolved against the child's resolved `cwd`, and its folders are created. The edge opens the file, hands the descriptor to the child, closes it in the parent and `unref`s the child.
+- **When it resolves:** once the child has spawned (the `spawn` event), to `{ pid, skipped: false }`. A spawn error (`error` event) rejects with a `CommandError`, as today. It is never killed when `run` ends and never awaited after that.
+- **Tracking:** Artemis does not track the child. The command records the `pid` (the store kit is the place) and offers its own stop command.
+- **Bad options:** an empty `logFile`, or any option not in `ExecDetachedOptions` (`capture`, `readOnly`, `timeoutMs`, `reject`, `errorPattern`), rejects with a `TypeError`. This is checked before the `--dry-run` skip, so a dry run finds the bug too.
+- **Under `--dry-run`:** it is planned (`start <command> <args> in the background, output in <logFile>`) and resolves to `{ pid: null, skipped: true }`.
+- **Output:** a detached child's output goes only to its `logFile`, never to the terminal, `--log` or `tail`.
+
+**`errorPattern`**
+
+- **Piping:** setting it makes the call piped: the child's output is read line by line and still echoed as the mode would show it. This loses a terminal child's colors and progress bars, which the docs say.
+- **What it matches:** the same cleaned lines `tail` sees (CR handled, blank lines dropped), before the per-line cut, from stdout and stderr both.
+- **What is kept:** the first `EXEC_ERROR_LINES` (20) matches, each cut to `EXEC_TAIL_LINE_CHARS`.
+- **On a failure** (non-zero exit with `reject: true`, or a timeout), they go into the `CommandError` as `errorLines`. In the envelope they go out as `errorLines` right after `tail`, and before `checks`. In text they print under the same condition as `tail`, before it, under the heading `Error lines`.
+- **With `reject: false`:** a non-zero exit returns `{ code, output, skipped, errorLines }`, so `ExecResult` gains an optional `errorLines`.
+- **No match:** when nothing matches, the key is left out.
+- **Bad pattern:** a `RegExp` with the `g` or `y` flag rejects with a `TypeError`, because those make `test` stateful.
 
 ### Audit line (fix 13)
 
 ```jsonc
-{ "time": "2026-11-13T10:02:11.391Z", "command": "db reset", "argv": ["--yes"], "dryRun": false, "yes": true,
+{ "time": "2026-11-13T10:02:11.391Z", "command": "db reset", "argv": [], "ran": true, "dryRun": false, "yes": true,
   "exitCode": 0, "ms": 1840, "plan": ["delete .data/db.json"], "error": "..." }
 ```
 
-- One line per run of a **project command** through the shipped `art` or `cli()`, after it ends (success, failure or usage error on a resolved command), appended to `<stateDir>/audit.jsonl` (folder created). `argv` is what followed the command id, with global flags removed. `plan` only on a dry run, `error` only on a failure. Help, built-in words and unknown commands are not recorded. A command run through `ctx.invoke` is not a separate line.
-- `run()` records only when given `auditFile` (an absolute path); `cli()` and `art` pass `<stateDir>/audit.jsonl`.
-- `"artemis": { "audit": false }` turns it off. A write that fails warns once on stderr (hidden by `--quiet`) and never changes the exit code or the envelope.
-- When the file passes `AUDIT_MAX_BYTES` (1 MB) before an append, it is renamed to `audit.1.jsonl` (replacing an older one) and a new file starts.
-- `art state` ignores both files (they are not store documents).
+- **Where:** only the shipped `art` writes it, to `<stateDir>/audit.jsonl` (the folder is created). `run()` writes only when given `auditFile` (an absolute path), and the shipped route passes it. A published tool (`cli({ root })`) does not audit, because its state folder would sit in its own package.
+- **Which runs:** one line per run of a resolved project command: success, failure, a usage error, a refused or declined confirmation. `--help` on a command, help itself, topics, built-in words and unknown commands are not recorded. A command run through `ctx.invoke` is not a separate line.
+- **Fields:**
+  - `time`: when the run started, from the injected clock.
+  - `command`: the resolved id, also when an alias was typed.
+  - `argv`: the tokens after the command id, with every global flag and its value removed and `--` kept.
+  - `ran`: `true` when the command's `run` started.
+  - `ms`: from start to end, prompts included.
+  - `plan`: only on a dry run.
+  - `error`: only on a failure, the error message.
+- **When it is written:** last, in `run()`'s `finally`, after the envelope is printed and after the `--log` file is closed. A slow disk never delays the result.
+- **Turning it off:** `"artemis": { "audit": false }`. `readConfig` validates `audit` as a boolean like the other keys, and `VALID_SHAPE_HINT` names it.
+- **Write failures:** a failed write warns once on stderr (hidden by `--quiet`) and never changes the exit code or the envelope.
+- **Rotation:** best effort. Before an append, when the file is larger than `AUDIT_MAX_BYTES` (1 MB), it is renamed to `audit.1.jsonl` (replacing an older one), and a missing file or a lost rename race is not an error.
+- **Other readers:** `art state` ignores both files. `art history` and doctor read only `audit.jsonl`.
 
 ### `art history` (fix 13)
 
-`art history [<command>] [--limit <n>] [--json]`: the newest lines first, default limit 20, filtered to one command id (or alias) when given. Text: one line per run (time, command, `dry run` or the exit code, the arguments). `--json`: `{ entries: [...] }` with the audit lines as written. No audit file: an empty list, and in text "Nothing recorded yet." A line that cannot be parsed is skipped and counted as `skipped` in the result. It is a built-in word of the shipped `art`, like `state`: reserved, listed under `builtins`, checked by doctor's shadow check, refuses `--dry-run` and `--log`.
+`art history [<command words>...] [--limit <n>] [--json] [--quiet]`
+
+- **Which runs:** the newest lines first, at most `HISTORY_DEFAULT_LIMIT` (20).
+- **Filter:** every argument is joined by spaces into one command id (`art history db reset`). When commands load, an alias resolves to its id. When they don't, only an exact id matches.
+- **`--limit`:** must be a positive integer, else it is a usage error (exit 2).
+- **Text:** one line per run: the local time, the command, `dry run` / `exit <code>`, and the argv joined.
+- **`--json`:** `{ entries, skipped }`, with the audit lines as written. `skipped` is the number of lines that could not be parsed.
+- **No audit file:** `entries: []`, and in text `Nothing recorded yet.`
+- **As a built-in word of the shipped `art`,** like `state`:
+  - it is reserved and listed under `builtins`
+  - doctor's shadow check covers it
+  - `--quiet` is accepted
+  - `--dry-run` and `--log` are refused (exit 2)
+  - `history --help --json` prints its manifest entry
 
 ### Doctor health checks (fix 14)
 
-Read from the audit trail; warnings only, never a failure, each with a `fix`:
+Doctor loads the commands (it already does) and reads `audit.jsonl`. Only lines with `ran: true` count toward the "failing" rule, so usage errors and refused confirmations never make a command look broken. Commands in the history that no longer exist produce nothing. Every check uses an injected `now`.
 
-- **failing:** the last `HEALTH_FAILING_RUNS` (3) real runs of a command all exited non-zero. Fix: "Run art history <id> to see the errors."
-- **only previewed:** a `destructive` command with at least 3 dry runs and no real run. Informational: "never run for real".
-- **stale:** a command whose last run is older than `HEALTH_STALE_DAYS` (60). Fix: "Delete the file if it is no longer used."
-- **gone:** a command id in the history that no longer exists is ignored.
+| Check id | Status | When | Message and `fix` |
+| --- | --- | --- | --- |
+| `history` | `ok` | no audit file | "no history yet" |
+| `history` | `ok` | there is history and none of the checks below apply | "no problems in the last <n> runs" |
+| `history-failing` | `warn` | for each command whose last `HEALTH_FAILING_RUNS` (3) lines with `ran: true` all have a non-zero `exitCode` | names the command; fix: `Run art history <id> to see the errors.` |
+| `history-previewed` | `warn` | for each `destructive` command with at least `HEALTH_PREVIEW_RUNS` (3) dry runs and no line with `ran: true` and `dryRun: false` | "only ever previewed"; fix: `Run it with --yes when the plan looks right, or delete it if it is not needed.` |
+| `history-stale` | `warn` | for each command with history whose newest line is older than `HEALTH_STALE_DAYS` (60) | fix: `Delete the file if the command is no longer used.` |
 
-No audit file: one `ok` check "no history yet". Doctor never runs a command.
+- A command with no lines gets no check.
+- The "no real run" rule only sees the retained file.
+- Doctor never runs a command, and none of these checks fails doctor.
 
-### `help --agents` and `help --authoring` (fix 4)
+### `help --agents` and `help --authoring` (fixes 4, 9)
 
-- `help --agents` prints the "Calling a command" section of the shipped AGENTS.md, under one line naming the other part: "To write a command: art help --authoring".
-- `help --authoring` prints the "Adding a command" section.
-- Both are found by their `## ` headings when the file is read. A missing heading is a bug (a test reads the shipped file).
-- The README, AGENTS.md and the generated skill point agents that only call commands to `help --json --brief`, and to `help --authoring` for writing them.
+- **`help --agents`** prints the `## Calling a command` section of the shipped AGENTS.md, then one line: `To write a command or set up a project: art help --authoring`. It must stay under `AGENTS_DOC_MAX_BYTES` (5 KB), and a test reads the shipped file to check it.
+- **`help --authoring`** prints the `## Adding a command` and `## Running the CLI` sections. Running the CLI covers setup and the built-in words, `history` included.
+- **Headings:** sections are found by exact heading constants, matched from the heading to the next `## `. A missing heading is a bug, and a test reads the shipped file.
+- **`--json`:** `{ file, markdown }`, as `--agents` gives today.
+- **Usage errors:** `--agents` with `--authoring`, either one with a topic or command word, and either one with `--brief` or `--search`.
+- **Pointers:** the README, AGENTS.md, the generated skill and the init pointer send calling agents to `help --json --brief`, and send authors to `help --authoring`.
 
 ### Generated skill (fixes 9, 12)
 
-`art skill` keeps its calling part and gains a section of at most `SKILL_AUTHORING_LINES` (15) lines:
+`art skill` keeps its calling part. Its line `To add a command: <bin> help --agents` (`src/cli/skill.ts`) is replaced by this section, written with the project's `bin` and its commands folder relative to the project:
 
-> **Write a command when you do the same job twice.** If you ran the same steps twice in a session, put them in `commands/<topic>/<name>.js` and call that instead. `art help --authoring` has the rules: a one-line `description`, `args` and `flags` with descriptions, `destructive: true` for anything that deletes, `dryRun: true` with `ctx.plan` and `ctx.dryRun`, `ctx.exec` for child processes, and `CommandError(message, { hint })` for a failure the caller can fix. Make the result answer the question you ran it for, not a log.
+> **Write a command when you do the same job twice.** If you ran the same steps twice in a session, put them in `<commandsDir>/<topic>/<name>.js` and call that instead. `<bin> help --authoring` has the rules: a one-line `description`, `args` and `flags` with descriptions, `destructive: true` for anything that deletes, `dryRun: true` with `ctx.plan` and `ctx.dryRun`, `ctx.exec` for child processes, and `CommandError(message, { hint })` for a failure the caller can fix. Make the result answer the question you ran it for, not a log.
 
-A test checks the whole generated skill for the fixture project stays under `SKILL_MAX_BYTES` (4 KB).
+- **Size:** the section is one paragraph under its own heading, at most `SKILL_AUTHORING_MAX_BYTES` (900 bytes) once rendered.
+- **Destructive list:** it is capped at `SKILL_MAX_DESTRUCTIVE` (20) entries plus an `and <n> more: <bin> help --json --brief` line, so the skill's size has a ceiling.
+- **Test:** the whole generated skill for the `src/test/fixtures` project stays under `SKILL_MAX_BYTES` (4 KB).
 
-### Init pointer (fixes 9, 11)
-
-`art init` also adds, to the project folder:
+### Init pointer and gitignore (fixes 9, 11)
 
 ```md
 ## Commands
 
-This project's commands run through `art`. Start with `npx art help --json --brief`, call one with `--json`, and pass `--dry-run` before `--yes` on a destructive one. To write a new one: `npx art help --authoring`.
+This project's commands run through `<bin>`. Start with `npx <bin> help --json --brief`, call one with `--json`, and pass `--dry-run` before `--yes` on a destructive one. To write a new one: `npx <bin> help --authoring`.
 ```
 
-- It is appended to `AGENTS.md`, and to `CLAUDE.md` when that file exists and does not import `@AGENTS.md`. With neither, `AGENTS.md` is created.
-- A file that already contains `art help` is left alone. It never rewrites a line, only appends (with one blank line before).
-- Its output and `--json` result name each file created or changed, like the other files.
+- **Size:** `<bin>` is the project's `bin` setting, default `art`. The pointer stays under `INIT_POINTER_MAX_BYTES` (400).
+- **One decision per file:**
+  - `AGENTS.md`: append the pointer, unless the file already contains `help --json --brief`.
+  - `CLAUDE.md`, when it exists: append the pointer, unless it has a line matching `^@AGENTS\.md\b` (it imports AGENTS.md) or already contains `help --json --brief`.
+- **Creating `AGENTS.md`:** it is created (starting with `# AGENTS.md`, a blank line, then the pointer) when it does not exist and either no `CLAUDE.md` exists or `CLAUDE.md` imports it.
+- **Symlinks:** both paths go through `realpath` first, and one real file is written once.
+- **Appending:**
+  - it never rewrites a line
+  - it adds a newline first when the file does not end with one, then one blank line, then the pointer
+  - it uses the file's line ending (CRLF when the file's first line ends with one)
+- **Gitignore:** `art init` appends `/<stateDir>/audit*.jsonl` to `.gitignore`, under the same rules: create it when missing, skip it when the line is there.
+- **Result:** `InitResult` gains `changed`, the files appended to. `created` stays the files made new. A rerun with nothing to do is still "Already a project".
 
 ## Behavior
 
-- **Order of a usage error:** the parse fails, the hint is built from the definition, the envelope or text goes out, exit 2, and the audit line is written (fix 13).
+- **Order of a usage error:** the parse fails, the error is reported with its usage hint, exit 2, then the audit line is written.
 - **Search and folding never change exit codes.** Search is help: exit 0 unless the command line is wrong.
-- **The audit write is the last thing a run does**, after the envelope is printed, so a slow disk never delays the result, and a failure to write never changes it.
-- **Detached children and `--log`:** a detached child's output goes only to its `logFile`, never to the `--log` file or the terminal.
+- **Edges:** the audit append, the rotation and the clock are edges (`src/edges/`), injected through `run()`'s options (`auditFile`, `now`) and faked in tests, per CODE_STANDARDS section 7. So are the detached spawn and the init file writes.
+- **Constants:** every number named in this spec is a constant in the `constants.ts` of its section.
 
 ## Implementation plan
 
-Branch `spec-04`, cut from `housekeeping` (PR #14). Every step leaves `pnpm run test:all` green, and each is one commit.
+Branch `spec-04`, cut from `housekeeping` (PR #14), which is cut from `main` after spec 03 (`43b8993`). Every step leaves `pnpm run test:all` green, and each is one commit.
 
 1. **Spec.** This file.
-2. **Manifest defaults (3).** Types optional, builders leave defaults out, every consumer (`art skill`, text help, doctor, brief) reads a missing key as the default. Tests: an entry with every default has only `id`, `description`, `usage`, `args`, `flags`; each key appears when set.
-3. **Brief usage, global flags, builtin ids (1, 5).** Tests: `usage` for each arg and flag shape (required, optional, choices, multiple, boolean); no topic `description` when empty; `globalFlags` once; a size test on the `src/test/fixtures` tree recording the bytes before and after in the commit message.
-4. **Usage hints (2).** Tests: one per usage-error kind has the hint, a command error keeps its own hint, the unknown-command hint with and without close ids, text mode prints the hint.
-5. **Folding (8).** A generated fixture of 200 commands in 10 topics (built in the test, not committed as 200 files). Tests: 40 commands not folded, 41 folded; the topic counts; `help <topic> --json --brief` lists commands. Record the folded and unfolded sizes in the commit message.
-6. **Search (10).** Pure scoring in `src/help/search.ts` with tests per rule (stop words, short words, prefixes, id bonus, ties, limit, topic scope, no match, the flag clashes).
-7. **`--agents` and `--authoring` (4).** Tests read the shipped AGENTS.md: each prints its section only.
-8. **Exec `detached` (6).** Tests: resolves with a pid while the child keeps running, the log file gets its output, `run` ending does not kill it (the test kills it), each `TypeError`, dry-run plans it.
-9. **Exec `errorPattern` (7).** Tests: a match at line 1,800 of 2,000 is in `errorLines`, at most 20 kept, absent on success and when nothing matches, `g` flag rejected, the envelope carries it.
-10. **Audit and `art history` (13).** Tests: a line per run with each field, usage error recorded, help and builtins not, `audit: false`, rotation at the limit, a failed write warns and keeps the exit code, `history` filters, limits, skips bad lines, and its reserved-word rules.
-11. **Doctor health (14).** Tests: each check from a written audit file, gone commands ignored, no file.
-12. **Skill and init pointer (9, 11, 12).** Tests: the authoring section, the size cap, every init case (none, AGENTS.md only, CLAUDE.md with and without the import, already has `art help`, run twice).
-13. **Docs.** AGENTS.md, docs/cli.md, docs/commands.md (exec options), README "For agents", docs/upgrading.md ("to 1.2": the manifest keys left out, `history` reserved), and the version to `1.2.0` in a PR labelled `release`.
+2. **Manifest defaults (3).** Types optional, builders leave defaults out, every reader treats a missing key as its default. Tests: an entry with every default has only `id`, `description`, `usage`, `args`, `flags`; each key appears when set.
+3. **One `usage` string (1).** The new format everywhere: manifest, text help with the bin in front, `UsageError.usage`, `ctx.invoke` errors. Tests for each arg and flag shape (required, optional, choices on both, boolean, string, multiple).
+4. **Brief listing (1, 5).** `usage` per entry, `commands` count per topic, no empty topic `description`, `globalFlags`, `builtins` as ids, `search`. A size test on the `src/test/fixtures` tree with a byte limit; the commit message records the bytes before and after.
+5. **Usage hints (2).** Tests: each usage-error kind has the hint; an error with its own hint keeps it and its Usage line; built-in words unchanged; the three unknown-command cases, top level and in a topic; text mode prints the hint instead of Usage.
+6. **Folding (8).** A fixture of 200 commands in 10 topics, built in the test, not committed as files. Tests: 40 not folded, 41 folded; top-level topics only, with counts that include nested ones; a topic listing with sub-topic counts; text folding. The folded top-level listing of the 200-command fixture stays under `BRIEF_FOLDED_MAX_BYTES` (6 KB).
+7. **Search (10).** Pure scoring in `src/help/search.ts`. Tests per rule: 1-character and stop words, Unicode, prefixes and the minimum length, the id bonus once, topic descriptions, ties, the limit, topic scope, no match, an empty query, `--search=`, a value starting with `-`, and every clash.
+8. **`--agents` and `--authoring` (4, 9).** Tests read the shipped AGENTS.md: each prints its sections only, `--agents` stays under its limit, the JSON shape, and every clash.
+9. **Exec `detached` (6).** Tests: resolves with a pid after spawn, while the child keeps running; the log file gets its output; `run` ending does not kill it (the test kills it); a spawn error; each `TypeError`, including under `--dry-run`; the dry-run plan; the type overload. A `check-bin` case starts a detached child through the packed `art` and finds it alive after `art` exits.
+10. **Exec `errorPattern` (7).** Tests: a match at line 1,800 of 2,000 is in `errorLines`; only 20 are kept; the key is absent on success and when nothing matches; it works with `reject: false`; a `g` flag is rejected; the envelope order; the text printing; a terminal-mode call becomes piped.
+11. **Audit and `art history` (13).** Tests:
+    - each field, an alias recorded as the id, a usage error recorded with `ran: false`
+    - `--help`, help, built-in words and unknown commands not recorded
+    - `audit: false`, and `audit` validated
+    - rotation at the limit
+    - a failed write warns and keeps the exit code
+    - `cli({ root })` writes nothing
+    - `history` with several words, aliases, `--limit` validation, bad lines skipped, and its reserved-word rules
+12. **Doctor health (14).** Tests: each check from a written audit file with an injected `now`; `ran: false` lines ignored; gone commands; no file; all healthy.
+13. **Skill and init (9, 11, 12).** Tests: the authoring section with a custom `bin` and `commandsDir`; the size limits; the destructive cap; every init case:
+    - neither file
+    - `AGENTS.md` only
+    - `CLAUDE.md` with and without the import
+    - `CLAUDE.md` importing a missing `AGENTS.md`
+    - a symlink
+    - the pointer already there
+    - CRLF
+    - no final newline
+    - `.gitignore`
+    - running it twice
+14. **Docs and version.** AGENTS.md (the calling section gains `usage`, `--search`, `errorLines`, `history`; it is measured against its limit), docs/cli.md, docs/commands.md (the exec options, and that `errorPattern` pipes), README "For agents", docs/upgrading.md ("to 1.2": manifest keys left out, the `usage` format, `history` reserved, the audit file). Set the version to `1.2.0` in a PR labelled `release`.
 
 ## Acceptance criteria
 
 - `pnpm run test:all`, `build`, `check-exports`, `check-bin` and `check-lock` pass.
-- On the issue's case, `artifacts prune --days 30` fails with a hint showing `--older-than`, and `help --json --brief` shows `--older-than` without another call.
-- The brief listing of a 200-command project is smaller than `BRIEF_FOLD_THRESHOLD` commands' worth, and `help --search` returns at most 5 entries whatever the project size.
-- `help --agents` is under 4 KB.
-- A detached child started by a command is still running after `art` exits.
-- A failed build whose only error line is far above the tail returns that line in `errorLines`.
-- Every project command run leaves one line in `audit.jsonl`, and `art history --json` returns it.
+- `db prune --days 30` on the fixture above fails (exit 2) with a hint showing `--older-than`, and `help --json --brief` shows `--older-than` without another call.
+- The folded brief listing of a 200-command project is under 6 KB, and `help --search` returns at most 5 entries whatever the project size.
+- `help --agents` is under 5 KB.
+- A detached child started by a command through the packed `art` is still running after `art` exits.
+- A failed child whose only error line is far above the tail returns that line in `errorLines`.
+- With the shipped `art` and auditing on, every run of a project command except `--help` leaves one line in `audit.jsonl`, and `art history --json` returns it.
 
 ## Decisions
 
 - **One spec for all fourteen** (owner, 2026-11-13).
 - **Defaults left out of the manifest** rather than a new compact format: one shape, smaller everywhere. `args` and `flags` always present.
-- **`usage` in the brief listing, not a `flags` array:** one string reads like the call an agent is about to type and costs the fewest bytes.
-- **Folding at 40 commands:** below it the full brief listing (about 150 bytes a command) stays under 6 KB; above it the topics are the cheaper first step.
-- **Keyword search, no model:** deterministic, offline, no dependency (issue #15). No `keywords` field until searches are shown to miss.
-- **Every project command run is audited, not only destructive ones:** doctor's health checks need the successes too, and it is local (secrets are not a concern, owner).
-- **`history` is a reserved word.** Same cost as `state` and `doctor`, and doctor's shadow check already warns.
-- **Detached children are not tracked by Artemis.** Tracking means a registry of pids and stop semantics; the store kit already gives a command a place for its pid, and a stop command is the command's to write.
-- **The init pointer also goes into an existing CLAUDE.md:** Claude Code reads CLAUDE.md, not AGENTS.md, unless CLAUDE.md imports it.
+- **One `usage` string, flags spelled out, no bin:** it reads like the call an agent is about to type, and costs fewer bytes than a `flags` array. Flags show `<value>`. A `valueName` field could show `<days>` later, but it is a new public field, so it is out.
+- **Folding at 40 commands:** below it the full brief listing (about 150 bytes a command) stays under 6 KB. Above it, topics are the cheaper first step.
+- **Keyword search, no model:** deterministic, offline, no dependency (issue #15). There is no `keywords` field until searches are shown to miss. Words of 2 characters are kept, because topics like `db` and `ci` are common.
+- **Every project command run is audited, not only destructive ones** (2026-11-13): doctor's health checks need the successes too. It is local, and secrets are not a concern (owner).
+- **Audit on the shipped route only:** a published tool's state folder is inside its own package, and only `art history` reads the file.
+- **`history` is a reserved word.** It costs the same as `state` and `doctor`, and doctor's shadow check already warns.
+- **Detached children are not tracked by Artemis.** Tracking means a registry of pids and stop semantics. The store kit already gives a command a place for its pid, and a stop command is the command's to write.
+- **The init pointer also goes into an existing CLAUDE.md** (2026-11-13): Claude Code reads CLAUDE.md, not AGENTS.md, unless CLAUDE.md imports it.
+- **"Running the CLI" moves behind `--authoring`:** setting a project up is the author's job, and a calling agent needs only the contract.
 
 ## Risks
 
-- **Leaving keys out breaks a reader that indexes them.** Mitigated by optional types and by `args`/`flags` always present; the upgrade note says it.
-- **Search misses on wording.** Prefix matching and aliases cover plurals and synonyms someone wrote down; a miss costs one retry or a fallback to `--brief`. The benchmark will measure it.
-- **The audit file grows in a busy project.** Rotation at 1 MB with one old file.
-- **A detached child leaks** if the command never records its pid. Documented as the command's job.
+- **Leaving keys out breaks a reader that indexes them.** Mitigated by optional types and by `args`/`flags` always present. The upgrade note says it.
+- **Search misses on wording.** Prefix matching and aliases cover plurals and synonyms someone wrote down. A miss costs one retry or a fallback to `--brief`. The benchmark will measure it.
+- **The audit file grows in a busy project.** Rotation at 1 MB with one old file. Rotation is best effort under concurrent runs.
+- **A detached child leaks** if the command never records its pid. The docs say that is the command's job.
+- **`errorPattern` changes how a terminal child looks** (piped, no colors). The docs say so.
