@@ -943,10 +943,30 @@ export type CreateLineReaderFn = (maxChars: number, onLine: (line: string) => vo
 
 /** The first lines of a child's output that match a pattern, each cut. */
 export type ErrorLineCollector = {
-    push: (stream: ChildStream, chunk: string) => void;
-    /** Closes the lines still being written and returns the matches. */
+    add: (line: string) => void;
     lines: () => string[];
 };
+
+export type OutputKeeperOptions = {
+    tailLines: number;
+    /** Each line of the tail is cut at this many characters. */
+    tailChars: number;
+    /** Without it nothing is matched, and the reader is as small as the tail's lines. */
+    errorPattern: RegExp | undefined;
+    /** How many matching lines are kept. */
+    errorLines: number;
+};
+
+/** What a child printed that is worth keeping: its last lines, and the lines that match `errorPattern`. */
+export type OutputKeeper = {
+    push: (stream: ChildStream, chunk: string) => void;
+    /** Closes the lines still being written and returns the last ones. */
+    tail: () => string[];
+    /** Closes the lines still being written and returns the first matches. */
+    errorLines: () => string[];
+};
+
+export type CreateOutputKeeperFn = (options: OutputKeeperOptions) => OutputKeeper;
 export type CreateErrorLinesFn = (
     pattern: RegExp,
     maxLines: number,

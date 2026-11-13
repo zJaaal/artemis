@@ -17,6 +17,7 @@ import type {
     ChildStream,
     CreateErrorLinesFn,
     CreateLineReaderFn,
+    CreateOutputKeeperFn,
     CreateTailFn,
     DetachedPlannedLineFn,
     ExecDetachedOptions,
@@ -87,54 +88,77 @@ export const createLineReader: CreateLineReaderFn = (maxChars, onLine) => {
 };
 
 /**
- * Keeps the last `maxLines` lines a child printed, each cut at `maxChars`: the tail is for reading
- * why a child failed, and blank lines cost tokens, so they are not kept.
- */
-export const createTail: CreateTailFn = (maxLines, maxChars) => {
-    const kept: string[] = [];
-
-    const reader = createLineReader(maxChars, (line) => {
-        kept.push(line);
-
-        if (kept.length > maxLines) {
-            kept.shift();
-        }
-    });
-
-    return {
-        push: reader.push,
-        lines: () => {
-            reader.flush();
-
-            return [...kept];
-        }
-    };
-};
-
-/**
- * Collects the first `maxLines` lines that match a pattern, each cut at `maxChars` after matching.
- * It has its own reader, whose lines are bounded by `EXEC_ERROR_LINE_BUFFER_CHARS` and not cut at
- * `maxChars`, so a long line split across chunks is matched whole. It sees every line as it streams,
- * so a line far above the last 40 is found too. The pattern is not stateful (no `g` or `y` flag), so
- * `test` gives the same answer for the same line.
+ * Keeps the first `maxLines` lines that match a pattern, each cut at `maxChars` after matching. It
+ * is fed whole lines (see `createOutputKeeper`), so a line far above the last 40 is found, and a long
+ * one is matched before it is cut. The pattern is not stateful (no `g` or `y` flag), so `test` gives
+ * the same answer for the same line.
  */
 export const createErrorLines: CreateErrorLinesFn = (pattern, maxLines, maxChars) => {
     const kept: string[] = [];
 
-    const reader = createLineReader(EXEC_ERROR_LINE_BUFFER_CHARS, (line) => {
-        if (kept.length < maxLines && pattern.test(line)) {
-            kept.push(line.slice(0, maxChars));
+    return {
+        add: (line) => {
+            if (kept.length < maxLines && pattern.test(line)) {
+                kept.push(line.slice(0, maxChars));
+            }
+        },
+        lines: () => [...kept]
+    };
+};
+
+/**
+ * What a failed child leaves behind, from one reader per stream: the last `tailLines` lines, each cut
+ * at `tailChars` (blank lines cost tokens and are not kept), and, with an `errorPattern`, the lines
+ * that match it. With a pattern the reader keeps lines up to `EXEC_ERROR_LINE_BUFFER_CHARS` so a long
+ * line split across chunks is matched whole; the tail is cut after.
+ */
+export const createOutputKeeper: CreateOutputKeeperFn = (options) => {
+    const { tailLines, tailChars, errorPattern, errorLines } = options;
+    const ring: string[] = [];
+
+    const matcher =
+        errorPattern === undefined
+            ? undefined
+            : createErrorLines(errorPattern, errorLines, tailChars);
+
+    const reader = createLineReader(
+        errorPattern === undefined ? tailChars : EXEC_ERROR_LINE_BUFFER_CHARS,
+        (line) => {
+            ring.push(line.slice(0, tailChars));
+
+            if (ring.length > tailLines) {
+                ring.shift();
+            }
+
+            matcher?.add(line);
         }
-    });
+    );
 
     return {
         push: reader.push,
-        lines: () => {
+        tail: () => {
             reader.flush();
 
-            return [...kept];
+            return [...ring];
+        },
+        errorLines: () => {
+            reader.flush();
+
+            return matcher?.lines() ?? [];
         }
     };
+};
+
+/** Keeps the last `maxLines` lines a child printed, each cut at `maxChars`. */
+export const createTail: CreateTailFn = (maxLines, maxChars) => {
+    const keeper = createOutputKeeper({
+        tailLines: maxLines,
+        tailChars: maxChars,
+        errorPattern: undefined,
+        errorLines: 0
+    });
+
+    return { push: keeper.push, lines: keeper.tail };
 };
 
 /** How long a timeout was, as a person writes it: 1500 ms is "1.5 s", 30000 ms is "30 s". */

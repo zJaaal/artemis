@@ -25,8 +25,7 @@ import type {
 } from '../models.js';
 import {
     assertExecOptions,
-    createErrorLines,
-    createTail,
+    createOutputKeeper,
     detachedPlannedLine,
     isDetachedOptions,
     pickExecMode,
@@ -196,12 +195,13 @@ async function runChild(
 
     const cwd = childCwd(run, options);
 
-    const matcher =
-        options.errorPattern === undefined
-            ? undefined
-            : createErrorLines(options.errorPattern, EXEC_ERROR_LINES, EXEC_TAIL_LINE_CHARS);
+    const keeper = createOutputKeeper({
+        tailLines: EXEC_TAIL_LINES,
+        tailChars: EXEC_TAIL_LINE_CHARS,
+        errorPattern: options.errorPattern,
+        errorLines: EXEC_ERROR_LINES
+    });
 
-    const tail = createTail(EXEC_TAIL_LINES, EXEC_TAIL_LINE_CHARS);
     // Only a caller that asked for the output gets it: a dev server under --log would grow this for hours
     const collect = options.capture === true || readOnly;
     let output = '';
@@ -222,8 +222,7 @@ async function runChild(
             run.log?.write(chunk);
 
             if (mode.keep) {
-                tail.push(stream, chunk);
-                matcher?.push(stream, chunk);
+                keeper.push(stream, chunk);
             }
         }
     });
@@ -232,14 +231,14 @@ async function runChild(
 
     try {
         const outcome = await child.done;
-        const errorLines = matcher?.lines() ?? [];
+        const errorLines = keeper.errorLines();
 
         const error = failure(
             run,
             command,
             outcome,
             options,
-            { tail: tail.lines(), errorLines },
+            { tail: keeper.tail(), errorLines },
             cwd
         );
 

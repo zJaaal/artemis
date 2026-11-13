@@ -8,6 +8,7 @@ import {
 import {
     createErrorLines,
     createLineReader,
+    createOutputKeeper,
     createTail,
     pickExecMode,
     timeoutText
@@ -38,65 +39,112 @@ describe('pickExecMode: an errorPattern', () => {
 });
 
 describe('createErrorLines', () => {
-    const feed = (found: ReturnType<typeof createErrorLines>, text: string): void =>
-        found.push('stdout', text);
+    const matching = (pattern: RegExp, maxLines: number, maxChars: number, ...lines: string[]) => {
+        const found = createErrorLines(pattern, maxLines, maxChars);
+
+        lines.forEach(found.add);
+
+        return found.lines();
+    };
 
     test('keeps the lines that match, in order', () => {
-        const found = createErrorLines(/error/, 20, 500);
-
-        feed(found, 'ok\nerror: one\nfine\nerror: two\n');
-
-        expect(found.lines()).toEqual(['error: one', 'error: two']);
+        expect(matching(/error/, 20, 500, 'ok', 'error: one', 'fine', 'error: two')).toEqual([
+            'error: one',
+            'error: two'
+        ]);
     });
 
     test('keeps only the first maxLines matches', () => {
-        const found = createErrorLines(/x/, 2, 500);
-
-        feed(found, 'x1\nx2\nx3\n');
-
-        expect(found.lines()).toEqual(['x1', 'x2']);
+        expect(matching(/x/, 2, 500, 'x1', 'x2', 'x3')).toEqual(['x1', 'x2']);
     });
 
-    test('cuts each kept line at maxChars', () => {
-        const found = createErrorLines(/x/, 2, 5);
-
-        feed(found, 'xxxxxxxxxx\n');
-
-        expect(found.lines()).toEqual(['xxxxx']);
+    test('cuts each kept line at maxChars, after matching it whole', () => {
+        expect(matching(/END$/, 2, 5, `${'x'.repeat(20)}END`)).toEqual(['xxxxx']);
     });
 
     test('has nothing when nothing matches', () => {
-        const found = createErrorLines(/x/, 2, 5);
+        expect(matching(/x/, 2, 5, 'abc')).toEqual([]);
+    });
+});
 
-        feed(found, 'abc\n');
+describe('createOutputKeeper', () => {
+    const keeperOf = (errorPattern: RegExp | undefined) =>
+        createOutputKeeper({
+            tailLines: 3,
+            tailChars: EXEC_TAIL_LINE_CHARS,
+            errorPattern,
+            errorLines: 2
+        });
 
-        expect(found.lines()).toEqual([]);
+    test('keeps the last lines as a tail', () => {
+        const keeper = keeperOf(undefined);
+
+        keeper.push('stdout', 'a\nb\nc\nd\n');
+
+        expect(keeper.tail()).toEqual(['b', 'c', 'd']);
     });
 
-    test('matches a long line split across chunks whole, before it is cut', () => {
-        const found = createErrorLines(/^x+END$/, 2, 5);
+    test('has no error lines without a pattern', () => {
+        const keeper = keeperOf(undefined);
 
-        feed(found, 'x'.repeat(EXEC_TAIL_LINE_CHARS * 4));
-        feed(found, 'END\n');
+        keeper.push('stdout', 'error\n');
 
-        expect(found.lines()).toEqual(['xxxxx']);
+        expect(keeper.errorLines()).toEqual([]);
     });
 
-    test('a line that never ends is bounded by EXEC_ERROR_LINE_BUFFER_CHARS', () => {
-        const found = createErrorLines(/END$/, 2, 5);
+    test('keeps a match the tail no longer holds', () => {
+        const keeper = keeperOf(/^error/);
 
-        feed(found, 'x'.repeat(EXEC_ERROR_LINE_BUFFER_CHARS * 2));
-        feed(found, 'END\n');
+        keeper.push('stdout', 'error: early\nb\nc\nd\ne\n');
 
-        expect(found.lines()).toEqual([]);
+        expect([keeper.errorLines(), keeper.tail()]).toEqual([['error: early'], ['c', 'd', 'e']]);
+    });
+
+    test('matches a long line split across chunks whole, and cuts the tail and the match after', () => {
+        const keeper = keeperOf(/^x+END$/);
+
+        keeper.push('stdout', 'x'.repeat(EXEC_TAIL_LINE_CHARS * 4));
+        keeper.push('stdout', 'END\n');
+
+        expect([keeper.errorLines()[0]?.length, keeper.tail()[0]?.length]).toEqual([
+            EXEC_TAIL_LINE_CHARS,
+            EXEC_TAIL_LINE_CHARS
+        ]);
+    });
+
+    test('a line that never ends is bounded by EXEC_ERROR_LINE_BUFFER_CHARS when there is a pattern', () => {
+        const keeper = keeperOf(/END$/);
+
+        keeper.push('stdout', 'x'.repeat(EXEC_ERROR_LINE_BUFFER_CHARS * 2));
+        keeper.push('stdout', 'END\n');
+
+        expect(keeper.errorLines()).toEqual([]);
+    });
+
+    test('without a pattern a line that never ends is bounded by the tail size', () => {
+        const keeper = keeperOf(undefined);
+
+        keeper.push('stdout', 'x'.repeat(EXEC_ERROR_LINE_BUFFER_CHARS));
+        keeper.push('stdout', 'END\n');
+
+        expect(keeper.tail()[0]).toHaveLength(EXEC_TAIL_LINE_CHARS);
     });
 
     test('reads the line still being written when the output ends', () => {
-        const found = createErrorLines(/last/, 2, 50);
+        const keeper = keeperOf(/last/);
 
-        feed(found, 'first\nlast words');
+        keeper.push('stdout', 'first\nlast words');
 
-        expect(found.lines()).toEqual(['last words']);
+        expect(keeper.errorLines()).toEqual(['last words']);
+    });
+
+    test('closing the lines for the matches does not lose them from the tail', () => {
+        const keeper = keeperOf(/last/);
+
+        keeper.push('stdout', 'first\nlast words');
+        keeper.errorLines();
+
+        expect(keeper.tail()).toEqual(['first', 'last words']);
     });
 });
 
