@@ -342,6 +342,9 @@ export type SearchCommandsFn = (input: {
     topicId?: string | undefined;
 }) => ManifestCommand[];
 
+/** What a brief listing shows: which topics and which commands, and how to go one step further. */
+export type ShownListing = { topics: TopicEntry[]; commands: ManifestCommand[]; more: string };
+
 /** The result of `help --search`: the query as typed, the best commands as brief entries, how to read one in full. */
 export type SearchResult = { query: string; matches: BriefCommand[]; more: string };
 

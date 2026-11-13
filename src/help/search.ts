@@ -84,29 +84,34 @@ const addTo = (map: Map<string, Set<number>>, key: string, id: number): void => 
     map.set(key, ids.add(id));
 };
 
+/** Every word of every command with the id of its command, in one flat list: one pass indexes it. */
+const wordsWithIds = (textsOfCommands: readonly string[][]): [word: string, id: number][] =>
+    textsOfCommands.flatMap((words, id) => words.map((word): [string, number] => [word, id]));
+
 /** Indexes the words of each text by the word and by its long-enough prefixes, once, so a lookup is a Map read. */
 function indexWords(textsOfCommands: readonly string[][]): WordIndex {
     const whole = new Map<string, Set<number>>();
     const prefixed = new Map<string, Set<number>>();
 
-    textsOfCommands.forEach((words, id) =>
-        words.forEach((word) => {
-            addTo(whole, word, id);
-            prefixesOf(word).forEach((prefix) => addTo(prefixed, prefix, id));
-        })
-    );
+    wordsWithIds(textsOfCommands).forEach(([word, id]) => {
+        addTo(whole, word, id);
+        prefixesOf(word).forEach((prefix) => addTo(prefixed, prefix, id));
+    });
 
     return { whole, prefixed };
 }
 
+const idsOf = (map: ReadonlyMap<string, ReadonlySet<number>>, key: string): number[] => [
+    ...(map.get(key) ?? [])
+];
+
 /** The commands with a word equal to the query word, or that it is a long-enough prefix of, or that is a prefix of it. */
 function lookup(index: WordIndex, word: string): Set<number> {
-    const found = new Set<number>(index.whole.get(word));
-
-    index.prefixed.get(word)?.forEach((id) => found.add(id));
-    prefixesOf(word).forEach((prefix) => index.whole.get(prefix)?.forEach((id) => found.add(id)));
-
-    return found;
+    return new Set([
+        ...idsOf(index.whole, word),
+        ...idsOf(index.prefixed, word),
+        ...prefixesOf(word).flatMap((prefix) => idsOf(index.whole, prefix))
+    ]);
 }
 
 const textOf = (command: ManifestCommand, topicDescriptions: ReadonlyMap<string, string>): string =>

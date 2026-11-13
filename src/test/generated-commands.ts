@@ -9,24 +9,26 @@ import type { GeneratedTree } from './models.js';
  * is built in the test, so a project of 200 commands is never 200 committed files.
  */
 export function writeGeneratedCommands(dir: string, tree: GeneratedTree): number {
-    const topicIds = Array.from({ length: tree.topics }, (_, index) => `topic${index}`);
+    const count = (length: number): number[] => Array.from({ length }, (_, index) => index);
+    const topicIds = count(tree.topics).map((index) => `topic${index}`);
 
-    topicIds.forEach((topic) => {
-        writeCommand(dir, `${topic}/_topic`, topicSource(`Commands of ${topic}`));
-        writeCommand(dir, `${topic}/sub/_topic`, topicSource(`Nested commands of ${topic}`));
+    const files = [
+        ...topicIds.flatMap((topic) => [
+            [`${topic}/_topic`, topicSource(`Commands of ${topic}`)],
+            [`${topic}/sub/_topic`, topicSource(`Nested commands of ${topic}`)],
+            ...count(tree.perTopic).map((index) => [
+                `${topic}/run${index}`,
+                commandSource('args: []')
+            ]),
+            ...count(tree.nestedPerTopic).map((index) => [
+                path.join(topic, 'sub', `run${index}`),
+                commandSource('args: []')
+            ])
+        ]),
+        ...count(tree.topLevel).map((index) => [`top${index}`, commandSource('args: []')])
+    ];
 
-        Array.from({ length: tree.perTopic }, (_, index) => index).forEach((index) =>
-            writeCommand(dir, `${topic}/run${index}`, commandSource('args: []'))
-        );
-
-        Array.from({ length: tree.nestedPerTopic }, (_, index) => index).forEach((index) =>
-            writeCommand(dir, path.join(topic, 'sub', `run${index}`), commandSource('args: []'))
-        );
-    });
-
-    Array.from({ length: tree.topLevel }, (_, index) => index).forEach((index) =>
-        writeCommand(dir, `top${index}`, commandSource('args: []'))
-    );
+    files.forEach(([name, source]) => writeCommand(dir, name ?? '', source ?? ''));
 
     return tree.topics * (tree.perTopic + tree.nestedPerTopic) + tree.topLevel;
 }

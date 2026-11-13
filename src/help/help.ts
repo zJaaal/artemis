@@ -42,10 +42,10 @@ import type {
     ManifestCommand,
     ManifestFlag,
     ManifestFn,
-    TopicEntry,
     TopicManifestFn,
     Registry,
     SearchResult,
+    ShownListing,
     SearchResultFn,
     RootHelpFn,
     StyleFn,
@@ -372,9 +372,6 @@ const isTopLevelId = (id: string): boolean => !id.includes(ID_SEPARATOR);
 /** The parent of a topic id: `dotcms db` sits under `dotcms`; a top-level topic has none. */
 const parentOf = (id: string): string => id.split(ID_SEPARATOR).slice(0, -1).join(ID_SEPARATOR);
 
-/** What a listing shows: which topics and which commands, and how to go one step further. */
-type Shown = { topics: TopicEntry[]; commands: ManifestCommand[]; more: string };
-
 /**
  * What the listing of a topic shows: its direct sub-topics, and every command under it at any depth.
  * It is a step down, so it is never folded.
@@ -384,7 +381,7 @@ const shownForTopic = (
     inside: readonly ManifestCommand[],
     counts: ReadonlyMap<string, number>,
     topicId: string
-): Shown => ({
+): ShownListing => ({
     topics: everything.topics.filter(
         (topic) => counts.has(topic.id) && parentOf(topic.id) === topicId
     ),
@@ -396,7 +393,7 @@ const shownForTopic = (
  * What the top-level listing shows. Past `BRIEF_FOLD_THRESHOLD` commands it is folded: the
  * top-level topics, and only the commands that sit in no topic. Below it, everything.
  */
-const shownForTop = (everything: Manifest, counts: ReadonlyMap<string, number>): Shown => {
+const shownForTop = (everything: Manifest, counts: ReadonlyMap<string, number>): ShownListing => {
     const topics = everything.topics.filter((topic) => counts.has(topic.id));
 
     if (everything.commands.length <= BRIEF_FOLD_THRESHOLD) {
