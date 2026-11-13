@@ -1100,6 +1100,28 @@ export type AuditFacts = {
 /** Appends one line to the audit file, rotating it first when it is full. Throws when it cannot write. */
 export type AppendAuditFn = (file: string, line: string) => void;
 
+/** How a run ended, for its audit line: when it started, its exit code, what failed it, its plan, and whether warnings are hidden. */
+export type AuditOutcome = {
+    startedAt: number;
+    code: number;
+    error: unknown;
+    plan: readonly string[];
+    quiet: boolean;
+};
+
+/** What a manifest entry is made of: a command's definition or a built-in, with its id and usage. */
+export type DescribedWord = {
+    id: string;
+    description: string;
+    usage: string;
+    aliases: readonly string[];
+    args: readonly ArgDefinition[];
+    flags: FlagDefinitions;
+    examples: readonly string[];
+    destructive?: boolean | undefined;
+    dryRun?: boolean | undefined;
+};
+
 export type StripGlobalFlagsFn = (tokens: readonly string[]) => string[];
 export type BuildAuditLineFn = (facts: AuditFacts) => AuditLine;
 

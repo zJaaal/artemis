@@ -14,12 +14,11 @@ import {
     HISTORY_LIMIT_HINT,
     HISTORY_LIMIT_PREFIX,
     HISTORY_USAGE_LINE,
-    HISTORY_WORD
+    HISTORY_WORD,
+    POSITIVE_INTEGER
 } from './constants.js';
 
 // Pure: the words after `history`, which runs to show, and how a run reads as a line of text.
-
-const POSITIVE_INTEGER = /^[1-9]\d*$/;
 
 const usageError = (message: string, hint: string): UsageError =>
     new UsageError(message, { usage: HISTORY_USAGE_LINE, hint });

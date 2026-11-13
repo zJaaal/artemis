@@ -4,6 +4,7 @@ import {
     GLOBAL_FLAGS,
     BRIEF_MORE_SUFFIX,
     BRIEF_FLAG,
+    CHOICE_SEPARATOR,
     BRIEF_FOLD_THRESHOLD,
     SEARCH_NO_MATCH_TEXT,
     BRIEF_SEARCH_SUFFIX,
@@ -27,6 +28,7 @@ import type {
     BriefManifest,
     BriefManifestFn,
     BriefTopic,
+    DescribedWord,
     Builtin,
     BuiltinHelpFn,
     CommandEntry,
@@ -71,8 +73,6 @@ export const createStyle: CreateStyleFn = (enabled) => ({
     yellow: wrap(STYLE_CODES.yellow, enabled),
     cyan: wrap(STYLE_CODES.cyan, enabled)
 });
-
-const CHOICE_SEPARATOR = '|';
 
 /** `<name>` for a required arg, `[name]` for an optional one; an arg with choices shows them instead of its name. */
 const argToken = (arg: ArgDefinition): string => {
@@ -307,17 +307,7 @@ const describeArgs = (args: readonly ArgDefinition[]): ManifestArg[] =>
     }));
 
 /** The manifest entry of a command or built-in; a key that holds its default is left out. */
-const describeWord = (word: {
-    id: string;
-    description: string;
-    usage: string;
-    aliases: readonly string[];
-    args: readonly ArgDefinition[];
-    flags: FlagDefinitions;
-    examples: readonly string[];
-    destructive?: boolean | undefined;
-    dryRun?: boolean | undefined;
-}): ManifestCommand => ({
+const describeWord = (word: DescribedWord): ManifestCommand => ({
     id: word.id,
     description: word.description,
     usage: word.usage,

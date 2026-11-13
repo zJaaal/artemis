@@ -207,6 +207,8 @@ export const BRIEF_LISTING_FLAGS = '--json --brief';
 export const SEARCH_WORD_SPLIT = /[^\p{L}\p{N}]+/u;
 /** Words shorter than this are dropped: a one-character word says nothing. */
 export const SEARCH_MIN_WORD_CHARS = 2;
+/** The separator between choices in a usage line: `<a|b>`. */
+export const CHOICE_SEPARATOR = '|';
 export const SEARCH_STOP_WORDS: readonly string[] = [
     'the',
     'and',
@@ -231,6 +233,7 @@ export const SEARCH_ID_BONUS = 1;
 export const SEARCH_MAX_MATCHES = 5;
 export const SEARCH_NO_MATCH_TEXT = 'No command matches.';
 export const SEARCH_EXAMPLE = 'reset database';
+export const SEARCH_STOP_WORD_SET: ReadonlySet<string> = new Set(SEARCH_STOP_WORDS);
 /** The most ids "did you mean one of" names. */
 export const UNKNOWN_COMMAND_MAX_IDS = 3;
 /** What a usage hint says after the usage line, before the global flags. */

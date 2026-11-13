@@ -116,6 +116,8 @@ export const SKILL_WRITE_HINT = 'Give --write the path of a file, in a folder th
 
 /** `history` shows what the audit trail recorded: the newest runs of project commands first. */
 export const HISTORY_WORD = 'history';
+/** What `--limit` takes: a whole number, 1 or more. */
+export const POSITIVE_INTEGER = /^[1-9]\d*$/;
 export const HISTORY_USAGE_LINE = `${HISTORY_WORD} [command words]... [--limit <n>] [--json] [--quiet]`;
 export const HISTORY_DEFAULT_LIMIT = 20;
 export const HISTORY_HELP = `Usage: ${HISTORY_USAGE_LINE}

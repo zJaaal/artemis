@@ -1,7 +1,5 @@
-import { MARKDOWN_FENCE, MARKDOWN_SECTION_START } from '../constants.js';
+import { MARKDOWN_FENCE, MARKDOWN_SECTION_START, NEWLINE } from '../constants.js';
 import type { MarkdownSectionFn } from '../models.js';
-
-const LINE_BREAK = '\n';
 
 /** Whether each line is outside a code fence, so a `## ` inside an example never ends a section. */
 function outsideFences(lines: readonly string[]): boolean[] {
@@ -22,7 +20,7 @@ function outsideFences(lines: readonly string[]): boolean[] {
  * heading (or the end). Pure.
  */
 export const markdownSection: MarkdownSectionFn = (markdown, heading) => {
-    const lines = markdown.split(LINE_BREAK);
+    const lines = markdown.split(NEWLINE);
     const outside = outsideFences(lines);
     const start = lines.findIndex((line, index) => outside[index] === true && line === heading);
 
@@ -37,6 +35,6 @@ export const markdownSection: MarkdownSectionFn = (markdown, heading) => {
 
     return lines
         .slice(start, next === -1 ? lines.length : next)
-        .join(LINE_BREAK)
+        .join(NEWLINE)
         .trimEnd();
 };

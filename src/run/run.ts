@@ -52,6 +52,7 @@ import {
 } from '../help/help.js';
 import type {
     AuditEdges,
+    AuditOutcome,
     Builtin,
     ChildHandle,
     CommandEntry,
@@ -663,13 +664,7 @@ function recordAudit(
     options: RunOptions,
     world: World,
     state: RunState,
-    outcome: {
-        startedAt: number;
-        code: number;
-        error: unknown;
-        plan: readonly string[];
-        quiet: boolean;
-    }
+    outcome: AuditOutcome
 ): void {
     const { commandId, audit } = state;
 

@@ -16,7 +16,8 @@ import type {
     GitignoreLineFn,
     InitStep,
     PlanPointerFn,
-    PointerText
+    PointerText,
+    TextFile
 } from '../models.js';
 
 // Pure: what `art init` adds so an agent that opens the project finds the commands, and so the
@@ -82,7 +83,7 @@ export const planPointer: PlanPointerFn = ({
     const steps: InitStep[] = [];
     const written = new Set<string>();
 
-    const append = (file: { path: string; real: string; text: string }, text: string): void => {
+    const append = (file: TextFile, text: string): void => {
         if (!written.has(file.real)) {
             written.add(file.real);
 
