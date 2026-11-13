@@ -252,6 +252,19 @@ describe('ctx.exec: a program that cannot be started', () => {
 });
 
 describe('ctx.exec: a folder that does not exist', () => {
+    test('a cwd that is a file is the same error, not "could not be started"', async () => {
+        const cwd = path.join(folders.make('artemis-exec-cwd-'), 'plain.txt');
+
+        fs.writeFileSync(cwd, 'x');
+
+        const run = await art(['exec', 'process.exit(0)', '--cwd', cwd, '--json']);
+
+        expect(envelope(run)).toMatchObject({
+            ok: false,
+            error: `The folder ${cwd} does not exist`
+        });
+    });
+
     test('is its own error naming the folder, not "exited with code 1"', async () => {
         const cwd = path.join(folders.make('artemis-exec-cwd-'), 'typo');
         const run = await art(['exec', 'process.exit(0)', '--cwd', cwd, '--json']);

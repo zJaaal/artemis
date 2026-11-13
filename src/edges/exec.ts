@@ -26,12 +26,25 @@ import type {
     SpawnOutcome
 } from '../models.js';
 import { codeOf } from '../utils/error-code.js';
-import { isFolder } from './files.js';
 import { messageOf } from '../utils/error-message.js';
 
 // Edge: the only place a child process starts for `ctx.exec`. It never uses a shell, so nothing in
 // `args` is interpreted, and it never lets the child it started outlive the call that asked for it (a grandchild the child started is
 // its own business: only the direct child is signalled).
+
+/**
+ * Whether a child can run in this folder: it is there and is a folder. Any failure to find out (it
+ * is a file, a parent that cannot be read) is a no, so the caller reports the folder and never a
+ * raw error with no hint.
+ */
+const canRunIn = (cwd: string): boolean => {
+    try {
+        return fs.statSync(cwd).isDirectory();
+    } catch {
+        // cannotRunInIt: ENOENT, ENOTDIR and EACCES all mean there is no folder to run in
+        return false;
+    }
+};
 
 /** The handle of a child that never started: it is already over, and there is nothing to stop. */
 const notStarted = (error: unknown): ChildHandle => ({
@@ -47,8 +60,26 @@ const notStarted = (error: unknown): ChildHandle => ({
     stop: () => Promise.resolve()
 });
 
+/** The handle of a child whose folder is not there (or is a file): the caller names the folder. */
+const noFolder = (): ChildHandle => ({
+    done: Promise.resolve<SpawnOutcome>({
+        code: EXIT_CODE.FAILED,
+        timedOut: false,
+        notFound: false,
+        cwdMissing: true,
+        stopped: false,
+        startError: undefined,
+        signal: undefined
+    }),
+    stop: () => Promise.resolve()
+});
+
 /** Starts a child. `done` resolves when it has ended; `stop` ends it politely, then for good. */
 export const spawnChild: SpawnChildFn = (request) => {
+    if (request.cwd !== undefined && !canRunIn(request.cwd)) {
+        return noFolder();
+    }
+
     let child: ChildProcess;
 
     try {
@@ -205,7 +236,7 @@ function openDetachedLog(logFile: string, cwd: string | undefined): number {
  */
 export const spawnDetached: SpawnDetachedFn = (request) => {
     // A folder that is not there, or is a file: either way there is no folder to run in
-    if (request.cwd !== undefined && !isFolder(request.cwd)) {
+    if (request.cwd !== undefined && !canRunIn(request.cwd)) {
         return Promise.resolve({
             ...DETACHED_NOT_STARTED,
             cwdMissing: true,

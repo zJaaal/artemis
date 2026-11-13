@@ -43,3 +43,8 @@ export const BRIEF_FIXTURE_MAX_BYTES = 4096;
 
 /** The most bytes the folded top-level brief listing of a 200-command project may take. */
 export const BRIEF_FOLDED_MAX_BYTES = 6144;
+
+/** The user id of root, who can read a folder whose mode is 0. */
+export const ROOT_UID = 0;
+export const UNREADABLE_MODE = 0;
+export const OWNER_MODE = 0o700;

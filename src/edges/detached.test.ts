@@ -4,10 +4,14 @@ import path from 'node:path';
 import { afterEach, describe, expect, test } from 'vitest';
 
 import { CommandError } from '../errors/errors.js';
+import { OWNER_MODE, ROOT_UID, UNREADABLE_MODE } from '../test/constants.js';
 import { createTempFolders } from '../test/temp.js';
 import { spawnDetached } from './exec.js';
 
 const folders = createTempFolders();
+
+/** A folder that cannot be read is readable to root, so those tests do not apply there. */
+const isRoot = process.getuid?.() === ROOT_UID;
 const started: number[] = [];
 
 /** A detached child is nobody's to stop but the test's: kill its whole group so none outlives the run. */
@@ -154,6 +158,22 @@ describe('spawnDetached', () => {
             cwdMissing: true
         });
     });
+
+    test.skipIf(isRoot)(
+        'a folder inside one that cannot be read is a missing folder, not a raw error',
+        async () => {
+            const locked = path.join(folders.make('artemis-det-'), 'locked');
+
+            fs.mkdirSync(path.join(locked, 'sub'), { recursive: true });
+            fs.chmodSync(locked, UNREADABLE_MODE);
+
+            const outcome = await start(SILENT_JOB, 'a.log', path.join(locked, 'sub'));
+
+            fs.chmodSync(locked, OWNER_MODE);
+
+            expect(outcome).toMatchObject({ pid: undefined, cwdMissing: true });
+        }
+    );
 
     test('a log file that cannot be opened is a CommandError naming the file', async () => {
         const root = folders.make('artemis-det-');

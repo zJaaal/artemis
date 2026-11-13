@@ -4,10 +4,14 @@ import path from 'node:path';
 import { afterEach, describe, expect, test } from 'vitest';
 
 import type { ChildStream, SpawnRequest } from '../models.js';
+import { OWNER_MODE, ROOT_UID, UNREADABLE_MODE } from '../test/constants.js';
 import { createTempFolders } from '../test/temp.js';
 import { spawnChild } from './exec.js';
 
 const folders = createTempFolders();
+
+/** A folder that cannot be read is readable to root, so those tests do not apply there. */
+const isRoot = process.getuid?.() === ROOT_UID;
 
 afterEach(() => folders.cleanUp());
 
@@ -74,15 +78,31 @@ describe('spawnChild: how a child ends', () => {
         expect(outcome).toMatchObject({ notFound: false, cwdMissing: true });
     });
 
-    test('a cwd that is a file is a start error, not a thrown exception', async () => {
+    test('a cwd that is a file is a missing folder, not a start error or a thrown exception', async () => {
         const file = path.join(folders.make('artemis-exec-'), 'plain.txt');
 
         fs.writeFileSync(file, 'x');
 
         const { outcome } = await runNode('process.exit(0)', { cwd: file });
 
-        expect(outcome.startError).toMatch(/ENOTDIR|not a directory/i);
+        expect(outcome).toMatchObject({ cwdMissing: true, startError: undefined });
     });
+
+    test.skipIf(isRoot)(
+        'a cwd inside a folder that cannot be read is a missing folder, not a raw error',
+        async () => {
+            const locked = path.join(folders.make('artemis-exec-'), 'locked');
+
+            fs.mkdirSync(path.join(locked, 'sub'), { recursive: true });
+            fs.chmodSync(locked, UNREADABLE_MODE);
+
+            const { outcome } = await runNode('process.exit(0)', { cwd: path.join(locked, 'sub') });
+
+            fs.chmodSync(locked, OWNER_MODE);
+
+            expect(outcome).toMatchObject({ cwdMissing: true });
+        }
+    );
 
     test('an argument with a null byte is a start error, not a thrown exception', async () => {
         const { outcome } = await runNode('process.exit(0)', {}, ['a\0b']);
