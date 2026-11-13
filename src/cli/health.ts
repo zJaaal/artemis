@@ -2,9 +2,10 @@ import {
     HEALTH_FAILING_RUNS,
     HEALTH_PREVIEW_RUNS,
     HEALTH_STALE_DAYS,
-    MS_PER_DAY
+    MS_PER_DAY,
+    NEWLINE
 } from '../constants.js';
-import { FIX_END, FIX_SEPARATOR, LIST_SEPARATOR } from './constants.js';
+import { LIST_SEPARATOR } from './constants.js';
 import type { AuditLine, DoctorCheck, HealthChecksFn } from '../models.js';
 
 // Pure: the checks of `art doctor` that read the audit trail. They are warnings, never a failure.
@@ -51,16 +52,14 @@ const warning = (
     id: DoctorCheck['id'],
     message: string,
     ids: readonly string[],
-    fix: (id: string) => string
+    fixFor: (id: string) => string
 ): DoctorCheck => ({
     id,
     status: 'warn',
     message: `${message}: ${ids.join(LIST_SEPARATOR)}`,
-    fix: `${ids.map(fix).join(FIX_SEPARATOR)}${FIX_END}`
+    // One fix per line, each naming its command, even when the sentence is the same for all
+    fix: ids.map((id) => `${id}: ${fixFor(id)}`).join(NEWLINE)
 });
-
-/** A fix that says the same for every command still names the command it is for. */
-const named = (id: string, text: string): string => `${id}: ${text}`;
 
 /**
  * The health of the commands from the audit trail. A command that no longer exists is ignored (when
@@ -109,7 +108,7 @@ export const healthChecks: HealthChecksFn = ({ history, loaded, now }) => {
                       'history-failing',
                       `Failed in each of their last ${HEALTH_FAILING_RUNS} runs`,
                       failing,
-                      (id) => `Run art history ${id} to see the errors`
+                      (id) => `Run art history ${id} to see the errors.`
                   )
               ]
             : []),
@@ -119,11 +118,8 @@ export const healthChecks: HealthChecksFn = ({ history, loaded, now }) => {
                       'history-previewed',
                       'Only ever previewed, never run for real',
                       previewed,
-                      (id) =>
-                          named(
-                              id,
-                              'Run it with --yes when the plan looks right, or delete it if it is not needed'
-                          )
+                      () =>
+                          'Run it with --yes when the plan looks right, or delete it if it is not needed.'
                   )
               ]
             : []),
@@ -133,7 +129,7 @@ export const healthChecks: HealthChecksFn = ({ history, loaded, now }) => {
                       'history-stale',
                       `Not run for over ${HEALTH_STALE_DAYS} days`,
                       stale,
-                      (id) => named(id, 'Delete the file if the command is no longer used')
+                      () => 'Delete the file if the command is no longer used.'
                   )
               ]
             : [])

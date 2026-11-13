@@ -79,7 +79,7 @@ describe('healthChecks: failing', () => {
             id: 'history-failing',
             status: 'warn',
             message: expect.stringContaining('build'),
-            fix: 'Run art history build to see the errors.'
+            fix: 'build: Run art history build to see the errors.'
         });
     });
 
@@ -125,7 +125,7 @@ describe('healthChecks: failing', () => {
             expect.objectContaining({
                 id: 'history-failing',
                 message: expect.stringMatching(/build.*db reset/),
-                fix: 'Run art history build to see the errors; Run art history db reset to see the errors.'
+                fix: 'build: Run art history build to see the errors.\ndb reset: Run art history db reset to see the errors.'
             })
         ]);
     });
@@ -191,13 +191,13 @@ describe('healthChecks: stale', () => {
 });
 
 describe('healthChecks: a fix that names its command', () => {
-    test('each stale command has its own part of the fix, joined with a semicolon and ended by one period', () => {
+    test('each stale command has its own part of the fix, one per line', () => {
         const old = new Date(NOW - (HEALTH_STALE_DAYS + 1) * MS_PER_DAY).toISOString();
 
         const checks = checksOf([line({ time: old }), line({ time: old, command: 'db reset' })]);
 
         expect(checks[0]?.fix).toBe(
-            'build: Delete the file if the command is no longer used; db reset: Delete the file if the command is no longer used.'
+            'build: Delete the file if the command is no longer used.\ndb reset: Delete the file if the command is no longer used.'
         );
     });
 
@@ -213,7 +213,7 @@ describe('healthChecks: a fix that names its command', () => {
         ];
 
         expect(checksOf(entries, { loaded: destructive })[0]?.fix).toMatch(
-            /^db reset: .*; db wipe: .*\.$/
+            /^db reset: .*\.\ndb wipe: .*\.$/
         );
     });
 });

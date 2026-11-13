@@ -9,6 +9,7 @@ import { makeProject } from '../test/project.js';
 import { createSink } from '../test/sink.js';
 import { createTempFolders } from '../test/temp.js';
 import type { Envelope } from '../test/models.js';
+import { DOCTOR_FIX_INDENT } from './constants.js';
 import { cli } from './index.js';
 
 const folders = createTempFolders();
@@ -363,5 +364,51 @@ describe('art doctor: the health of the commands, from the audit trail', () => {
         fs.writeFileSync(path.join(root, 'commands', 'history.js'), 'export default 1;\n');
 
         expect(statusOf((await art(['doctor', '--json'], root)).out, 'words')).toBe('warn');
+    });
+});
+
+describe('art doctor: a fix with one line per command', () => {
+    const failed = (command: string) => ({
+        time: '2026-11-12T12:00:00.000Z',
+        command,
+        argv: [],
+        ran: true,
+        dryRun: false,
+        yes: false,
+        exitCode: 1,
+        ms: 5
+    });
+
+    const projectWithTwoFailing = (): string => {
+        const root = newProject();
+
+        fs.writeFileSync(
+            path.join(root, 'commands', 'other.js'),
+            "import { defineCommand } from '@zjaaal/artemis';\nexport default defineCommand({ description: 'Other', run: () => ({}) });\n"
+        );
+
+        const file = path.join(root, 'state', 'audit.jsonl');
+        const lines = ['hello', 'other'].flatMap((id) => [failed(id), failed(id), failed(id)]);
+
+        fs.mkdirSync(path.dirname(file), { recursive: true });
+        fs.writeFileSync(file, `${lines.map((line) => JSON.stringify(line)).join('\n')}\n`);
+
+        return root;
+    };
+
+    test('text prints each fix on its own indented line', async () => {
+        const { out } = await art(['doctor'], projectWithTwoFailing());
+
+        expect(out).toContain(
+            `${DOCTOR_FIX_INDENT}fix: hello: Run art history hello to see the errors.\n${DOCTOR_FIX_INDENT}other: Run art history other to see the errors.`
+        );
+    });
+
+    test('--json holds the lines separated by a newline', async () => {
+        const { out } = await art(['doctor', '--json'], projectWithTwoFailing());
+
+        expect(checksOf(out).find((check) => check.id === 'history-failing')?.fix).toBe(
+            'hello: Run art history hello to see the errors.\nother: Run art history other to see the errors.'
+        );
     });
 });

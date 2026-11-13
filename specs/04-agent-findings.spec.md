@@ -198,15 +198,15 @@ type ExecDetachedResult = { pid: number | null; skipped: boolean };
 
 Doctor loads the commands (it already does) and reads `audit.jsonl`. A **real run** is a line with `ran: true` and `dryRun: false`. Only real runs count toward "failing", so usage errors, refused confirmations and dry runs never make a command look broken or break a failing streak. Commands in the history that no longer exist produce nothing. Every check uses an injected `now`.
 
-Each kind is **one check**, whatever the number of commands: its message names every command it applies to, and its `fix` names each one. `DoctorCheckId` gains the four ids below, and `DOCTOR_ID_WIDTH` grows to fit the longest.
+Each kind is **one check**, whatever the number of commands: its message names every command it applies to, and its `fix` has one line per command (the lines are separated by `\n` in `--json`, and text prints each on its own indented line). `DoctorCheckId` gains the four ids below, and `DOCTOR_ID_WIDTH` grows to fit the longest.
 
 | Check id | Status | When | Message and `fix` |
 | --- | --- | --- | --- |
 | `history` | `ok` | no audit file | "no history yet" |
 | `history` | `ok` | there is history and none of the checks below apply | "no problems in the last <n> runs" |
-| `history-failing` | `warn` | some command's last `HEALTH_FAILING_RUNS` (3) real runs all have a non-zero `exitCode` | names them; fix: `Run art history <id> to see the errors.` for each |
-| `history-previewed` | `warn` | some `destructive` command has at least `HEALTH_PREVIEW_RUNS` (3) dry runs (`ran: true`, `dryRun: true`) and no real run | "only ever previewed", names them; fix: `Run it with --yes when the plan looks right, or delete it if it is not needed.` |
-| `history-stale` | `warn` | some command with history has its newest line older than `HEALTH_STALE_DAYS` (60) | names them; fix: `Delete the file if the command is no longer used.` |
+| `history-failing` | `warn` | some command's last `HEALTH_FAILING_RUNS` (3) real runs all have a non-zero `exitCode` | names them; fix: one line per command, `<id>: Run art history <id> to see the errors.` |
+| `history-previewed` | `warn` | some `destructive` command has at least `HEALTH_PREVIEW_RUNS` (3) dry runs (`ran: true`, `dryRun: true`) and no real run | "only ever previewed", names them; fix: one line per command, `<id>: Run it with --yes when the plan looks right, or delete it if it is not needed.` |
+| `history-stale` | `warn` | some command with history has its newest line older than `HEALTH_STALE_DAYS` (60) | names them; fix: one line per command, `<id>: Delete the file if the command is no longer used.` |
 
 - A command with no lines gets no check.
 - The "no real run" rule only sees the retained file.

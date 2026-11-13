@@ -1,6 +1,6 @@
 import path from 'node:path';
 
-import { AUDIT_FILE_NAME, EXIT_CODE, JSON_EXTENSION } from '../constants.js';
+import { AUDIT_FILE_NAME, EXIT_CODE, JSON_EXTENSION, NEWLINE } from '../constants.js';
 import { parseAuditText } from '../audit/audit.js';
 import { now } from '../edges/clock.js';
 import { discover } from '../discover/discover.js';
@@ -185,7 +185,11 @@ async function gatherFacts(cwd: string, clock: () => number): Promise<DoctorFact
 
 const checkLine = (check: DoctorCheck, style: Style): string => {
     const paint = { ok: style.green, warn: style.yellow, fail: style.red }[check.status];
-    const fix = check.fix ? `\n${DOCTOR_FIX_INDENT}fix: ${check.fix}` : '';
+
+    // A fix with several lines (one per command) keeps each on its own indented line
+    const fix = check.fix
+        ? `\n${DOCTOR_FIX_INDENT}fix: ${check.fix.split(NEWLINE).join(`${NEWLINE}${DOCTOR_FIX_INDENT}`)}`
+        : '';
 
     return `${paint(DOCTOR_STATUS_LABEL[check.status])}  ${check.id.padEnd(DOCTOR_ID_WIDTH)} ${check.message}${fix}`;
 };
