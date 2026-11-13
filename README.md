@@ -10,7 +10,7 @@
   <img alt="License MIT" src="https://img.shields.io/badge/license-MIT-lightgrey">
 </p>
 
-> **Agents:** run `art help --agents` (or read [AGENTS.md](AGENTS.md)); it is the short version of this file.
+> **Agents:** start with `art help --json --brief`; `art help --agents` prints the calling contract and `art help --authoring` how to write a command (or read [AGENTS.md](AGENTS.md)), the short version of this file.
 
 Artemis is a small framework for the commands a project's people and AI agents run over and over. One file in `commands/` is one command. Every command gets, without extra code, the parts that hand-written scripts usually skip: `--help`, one JSON result, exit codes that mean something, a confirmation before anything destructive, and a dry run that does nothing.
 
@@ -181,18 +181,19 @@ If you want to decide the commands folder, the streams or the exit code yourself
 
 ## For agents
 
-Everything an agent needs to add a command and call one is in [AGENTS.md](AGENTS.md): `art help --agents` prints it, with a global or a local install. Start from `art help --json --brief` (ids and one-line descriptions, `destructive` and `dryRun` marked), then `art help <command> --json` for the one you need. The short version:
+Everything an agent needs to call a command and to write one is in [AGENTS.md](AGENTS.md). An agent that only calls commands starts from `art help --json --brief` (ids, descriptions and how to call each one, `destructive` and `dryRun` marked; `art help --search "<words>"` finds the best few for a goal), then `art help <command> --json` for the one it needs; `art help --agents` prints that contract, with a global or a local install. To write a command or set a project up, `art help --authoring`. The short version:
 
 - **Find, then call.** `help --json --brief`, then one command in full. Call with `--json` to get one object back, branch on the exit code, and read `hint` when `ok` is `false`.
 - **Safety is data.** A `destructive` command needs `--yes` when nobody can answer, and fails before it runs otherwise. Where `dryRun` is marked, `--dry-run` shows the `plan` first.
 - **The next step is in the result.** When a result has `next`, those are the commands to run next.
 - **Quiet runs.** `--quiet` hides warnings and child output; `--log <file>` keeps everything in a file and names it in the envelope, and a failed child comes back with its `tail`.
-- **`art skill`** writes a short `SKILL.md` from your commands, and **`art doctor`** says why a stale install runs.
+- **A failed call says what is valid.** A usage error's `hint` is the command's usage and the global flags, and a failed child can come back with the `errorLines` its `errorPattern` matched.
+- **`art history`** shows the recorded runs of your commands, **`art skill`** writes a short `SKILL.md` from them, and **`art doctor`** says why a stale install runs and which commands keep failing.
 
 ## Documentation
 
 - [Commands](https://github.com/zJaaal/artemis/blob/main/docs/commands.md): how files become commands, and `defineCommand` in full.
-- [Using the CLI](https://github.com/zJaaal/artemis/blob/main/docs/cli.md): global flags, help, the JSON contract, exit codes, `art state`, prompts, `art skill` and `art doctor`.
+- [Using the CLI](https://github.com/zJaaal/artemis/blob/main/docs/cli.md): global flags, help, the JSON contract, exit codes, `art state`, `art history`, prompts, `art skill` and `art doctor`.
 - [`run(argv, options)`](https://github.com/zJaaal/artemis/blob/main/docs/run.md): full control of your own bin file, and testing your commands.
 - Kits, opt-in pieces imported from their own subpath: [Store](https://github.com/zJaaal/artemis/blob/main/docs/kits/store.md), [Worktrees](https://github.com/zJaaal/artemis/blob/main/docs/kits/worktrees.md), [Terminal](https://github.com/zJaaal/artemis/blob/main/docs/kits/terminal.md).
 - [Upgrading](https://github.com/zJaaal/artemis/blob/main/docs/upgrading.md): to 1.1, and from 0.1.

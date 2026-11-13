@@ -116,7 +116,7 @@ export default defineCommand({
 const { code, output } = await ctx.exec('docker', ['compose', 'up', '-d'], { cwd: '/srv/app' });
 ```
 
-`args` is an array and nothing in it is interpreted (no shell), so a value with spaces or `$(...)` reaches the child as one unchanged string. Options: `cwd`, `env` (default: the process environment), `capture` (return the output instead of showing it), `readOnly` (the call changes nothing, so it runs even under `--dry-run`, captured), `reject` (default `true`: a non-zero exit throws; `false` returns `{ code }`) and `timeoutMs` (SIGTERM, then SIGKILL after 5 s; always throws). It resolves to `{ code, output, skipped }`: `output` is stdout and stderr interleaved, and empty when the output went to the terminal or the call was skipped.
+`args` is an array and nothing in it is interpreted (no shell), so a value with spaces or `$(...)` reaches the child as one unchanged string. Options: `cwd`, `env` (default: the process environment), `capture` (return the output instead of showing it), `readOnly` (the call changes nothing, so it runs even under `--dry-run`, captured), `reject` (default `true`: a non-zero exit throws; `false` returns `{ code }`), `timeoutMs` (SIGTERM, then SIGKILL after 5 s; always throws) and `errorPattern` (below). It resolves to `{ code, output, skipped }` (and `errorLines` with `reject: false`, below): `output` is stdout and stderr interleaved, and empty when the output went to the terminal or the call was skipped.
 
 How the child's output travels is the first row that applies:
 
@@ -131,6 +131,20 @@ How the child's output travels is the first row that applies:
 `--log` is a copy of every piped row, not a mode of its own. Piping loses the child's colors and progress bars, so text mode keeps the child on your terminal unless something needs the bytes (`--json`, `--quiet`, `--log` or `capture`): a person who runs with `--log` gives them up for that run.
 
 A child that exits non-zero fails the command (exit `1`) with "<command> exited with code N", and the failure envelope carries `tail`, the last 40 lines of the child (each cut at 500 characters). In text mode, when the output was hidden (`--quiet` or `capture`), the tail is printed under the error so a person sees why. A missing executable is "<command> was not found". Output comes back in `output` only to a call that passes `capture` or `readOnly`; every other call returns `''`, so a child that runs for hours does not grow Artemis's memory. Every child a command started is killed when its `run` ends, concurrent ones included. Only the child itself is signalled: a process it started (a dev server behind `npm run dev`) keeps running and keeps its port (under `--json`, `--quiet`, `--log` or `capture` its output pipe stays open and is read and thrown away while Artemis runs; once Artemis exits the pipe closes, and a grandchild that writes then may die), so run the program itself (not `npm run dev`) or stop it in its own way: a `timeoutMs` signals only the child too. A SIGTERM sent to Artemis alone is not forwarded to its children: signal the process group.
+
+**`errorPattern`** keeps the lines of a failed child that match a `RegExp`, next to `tail`. The whole output is read as it streams (the same cleaned lines `tail` sees, from stdout and stderr), so a build that printed its one error line long before the last 40 still gets it: the first 20 matches, each cut at 500 characters, go into the error as `errorLines`, out in the envelope right after `tail`, and in text under "Error lines" (before the tail, when the output was hidden). With `reject: false`, a non-zero exit returns `{ code, output, skipped, errorLines }`. When nothing matches, or the child succeeded, there is no `errorLines`. It **pipes** a child that would have shown itself on the terminal (the child's output still reaches stdout and stderr, but it loses its colors and progress bars), and a pattern with the `g` or `y` flag is a `TypeError`, because those make `test` remember where it was.
+
+```js
+await ctx.exec('mvn', ['package'], { errorPattern: /\[ERROR\]/ });
+```
+
+**`detached`** starts a child meant to outlive the command, such as a dev server:
+
+```js
+const { pid } = await ctx.exec('npm', ['run', 'dev'], { detached: true, logFile: '.logs/dev.log' });
+```
+
+It takes only `cwd`, `env`, `detached: true` and a `logFile` that is not empty (anything else, or a `logFile` without `detached`, is a `TypeError`, found even under `--dry-run`). The child is spawned in its own process group with no stdin, its stdout and stderr appended to `logFile` (relative to the child's folder; its folders are created), and the call resolves to `{ pid, skipped: false }` as soon as it has started. Its output goes only to that file: never to the terminal, `--log` or `tail`. Artemis does not track it and never kills it when `run` ends, so the command records the `pid` (the [store kit](kits/store.md) is the place) and offers its own stop command. A missing folder, a program that is not there and a log file that cannot be opened are errors like any other. Under `--dry-run` it is planned (`start npm run dev in the background, output in .logs/dev.log`) and resolves to `{ pid: null, skipped: true }`.
 
 `tail`, `--log` and the lines of a plan hold what was passed or printed, as it is. A secret passed as an argument shows up there; pass secrets through `env`, which is never shown.
 

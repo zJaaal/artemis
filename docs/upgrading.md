@@ -2,6 +2,20 @@
 
 # Upgrading
 
+## Upgrading to 1.2
+
+`1.2.0` changes the shape of `help --json`, so a reader that indexes it has to change (a minor release, not a major one: Artemis has no outside users yet):
+
+- **Keys that hold their default are left out** of every manifest entry: `aliases` and `examples` when empty, `destructive` and `dryRun` when `false`, `required` when `false`, `default`, `choices` and `short` when there are none, `multiple` when `false`. Read a missing key as its default. `id`, `description`, `usage`, `args` and `flags` are always there.
+- **`usage` has a new format**, the same everywhere: the id, the args and the flags spelled out (`db prune [target] [--older-than <value>] [--all]`), with no bin and no `[flags]`. Text help puts the bin in front.
+- **The brief listing** has `usage` on each command, a `commands` count on each topic (a topic with no description has no `description` key), `builtins` as a list of ids, `globalFlags` and `search`. Above 40 commands its top level shows topics, not commands.
+- **`history` is a word of the shipped `art`.** A command or topic called `history` is hidden there, with a warning (and reported by `art doctor`): rename it.
+- **`help --agents` prints only the calling contract.** `help --authoring` prints the rest (writing a command and running the CLI).
+- **A usage error has a `hint`** with the command's usage and the global flags, and an unknown command a better one.
+- **`audit.jsonl`** in the state folder records every run of a project command through the shipped `art`. `"artemis": { "audit": false }` turns it off, and `art init` adds it to `.gitignore`. A published tool does not write one.
+
+**New:** `help --search`, `help --authoring`, `art history`, `ctx.exec` with `detached` and `errorPattern`, the pointer `art init` adds to `AGENTS.md`, a "Writing a command" section in the generated skill, and command health in `art doctor`.
+
 ## Upgrading to 1.1
 
 `1.1.0` reserves names and adds a limit, so a project that used them has to change (a minor release, not a major one: Artemis has no outside users yet):
