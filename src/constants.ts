@@ -198,6 +198,9 @@ export const DRY_RUN_NOTE = 'Says what it would do and changes nothing.';
 export const BRIEF_MORE_SUFFIX = 'help <command> --json';
 /** Above this many commands the top-level brief listing shows topics instead of commands. */
 export const BRIEF_FOLD_THRESHOLD = 40;
+/** The labels of the `more` line of the text listing: one command in full, or a topic to open. */
+export const BRIEF_COMMAND_LABEL = 'One command in full:';
+export const BRIEF_TOPIC_LABEL = 'One topic in full:';
 export const BRIEF_TOPIC_MORE_SUFFIX = 'help <topic> --json --brief';
 export const BRIEF_SEARCH_SUFFIX = 'help --search <words> --json';
 export const BRIEF_FLAG = '--brief';

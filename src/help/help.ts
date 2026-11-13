@@ -8,6 +8,8 @@ import {
     BRIEF_FOLD_THRESHOLD,
     SEARCH_NO_MATCH_TEXT,
     BRIEF_SEARCH_SUFFIX,
+    BRIEF_COMMAND_LABEL,
+    BRIEF_TOPIC_LABEL,
     BRIEF_TOPIC_MORE_SUFFIX,
     GLOBAL_FLAGS_TEXT,
     DESTRUCTIVE_NOTE,
@@ -454,6 +456,10 @@ const topicRows = (topics: readonly BriefTopic[]): TableRow[] =>
         ])
     ]);
 
+/** What the `more` line points at: a topic listing when folded, one command otherwise. */
+const moreLabel = (more: string): string =>
+    more.endsWith(BRIEF_TOPIC_MORE_SUFFIX) ? BRIEF_TOPIC_LABEL : BRIEF_COMMAND_LABEL;
+
 /**
  * `help --brief` as text: the same listing as the JSON, one line per command. The built-in words
  * are ids in the JSON, so their descriptions come from `builtins`.
@@ -481,7 +487,7 @@ export const briefHelp = (
         sections.push(section('Built-in', table(rows, style), style));
     }
 
-    sections.push(style.dim(`One command in full: ${brief.more}`));
+    sections.push(style.dim(`${moreLabel(brief.more)} ${brief.more}`));
 
     return sections.join(SECTION_SEPARATOR);
 };
@@ -503,7 +509,7 @@ export const searchText = (result: SearchResult, bin: string, style: Style): str
     result.matches.length
         ? [
               section('Commands', table(briefRows(result.matches), style), style),
-              style.dim(`One command in full: ${result.more}`)
+              style.dim(`${BRIEF_COMMAND_LABEL} ${result.more}`)
           ].join(SECTION_SEPARATOR)
         : `${SEARCH_NO_MATCH_TEXT} Run ${bin} help ${BRIEF_FLAG}.`;
 

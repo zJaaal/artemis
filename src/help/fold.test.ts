@@ -95,6 +95,21 @@ describe('help --brief: folding', () => {
         expect(result.out).not.toContain('topic3 run4');
     });
 
+    test('the text of a folded listing says it is a topic that opens, not a command', async () => {
+        const result = await art(['help', '--brief'], { commandsDir: bigProject() });
+
+        expect(result.out).toContain('One topic in full: art help <topic> --json --brief');
+        expect(result.out).not.toContain('One command in full');
+    });
+
+    test('the text of an unfolded listing says one command in full', async () => {
+        const result = await art(['help', '--brief'], {
+            commandsDir: projectOf(BRIEF_FOLD_THRESHOLD)
+        });
+
+        expect(result.out).toContain('One command in full: art help <command> --json');
+    });
+
     test('the text of a folded listing ends with how to open a topic', async () => {
         const result = await art(['help', '--brief'], { commandsDir: bigProject() });
 
