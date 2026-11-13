@@ -3,6 +3,8 @@ import {
     ANSI_RESET,
     GLOBAL_FLAGS,
     BRIEF_MORE_SUFFIX,
+    BRIEF_SEARCH_SUFFIX,
+    GLOBAL_FLAGS_TEXT,
     DESTRUCTIVE_NOTE,
     DRY_RUN_NOTE,
     ID_SEPARATOR,
@@ -347,31 +349,47 @@ const topicPrefixes = (id: string): string[] => {
     return words.map((_, index) => words.slice(0, index + 1).join(ID_SEPARATOR));
 };
 
-const briefCommand = (command: Manifest['commands'][number]): BriefCommand => ({
+const briefCommand = (command: ManifestCommand): BriefCommand => ({
     id: command.id,
     description: command.description,
+    usage: command.usage,
     ...(command.destructive ? { destructive: true as const } : {}),
     ...(command.dryRun ? { dryRun: true as const } : {})
 });
 
+/** How many commands sit under each topic id, nested topics included: one pass over the commands. */
+const countByTopic = (commands: readonly ManifestCommand[]): Map<string, number> => {
+    const counts = new Map<string, number>();
+
+    commands
+        .flatMap((command) => topicPrefixes(command.id))
+        .forEach((topicId) => counts.set(topicId, (counts.get(topicId) ?? 0) + 1));
+
+    return counts;
+};
+
 /**
- * The brief manifest: ids and one-line descriptions, and `destructive` and `dryRun` only when true,
- * because they are the two facts an agent must not miss before calling. Topics are listed at any
- * depth, by full id, when they hold a command of the listing.
+ * The brief manifest: ids, one-line descriptions and how to call each (`usage`), and `destructive`
+ * and `dryRun` only when true, because they are the two facts an agent must not miss before calling.
+ * Topics are listed at any depth, by full id, with the number of commands under them.
  */
 export const briefManifest: BriefManifestFn = (everything, topicId) => {
     const commands = everything.commands.filter(
         (command) => topicId === undefined || isWithin(command.id, topicId)
     );
 
-    const withCommands = new Set(commands.flatMap((command) => topicPrefixes(command.id)));
+    const counts = countByTopic(commands);
 
     const topics: BriefTopic[] = everything.topics
         .filter(
             (topic) =>
-                withCommands.has(topic.id) && (topicId === undefined || isWithin(topic.id, topicId))
+                counts.has(topic.id) && (topicId === undefined || isWithin(topic.id, topicId))
         )
-        .map((topic) => ({ id: topic.id, description: topic.description }));
+        .map((topic) => ({
+            id: topic.id,
+            ...(topic.description ? { description: topic.description } : {}),
+            commands: counts.get(topic.id) ?? 0
+        }));
 
     return {
         bin: everything.bin,
@@ -379,10 +397,10 @@ export const briefManifest: BriefManifestFn = (everything, topicId) => {
         commands: commands.map(briefCommand),
         ...(everything.builtins === undefined || topicId !== undefined
             ? {}
-            : {
-                  builtins: everything.builtins.map(({ id, description }) => ({ id, description }))
-              }),
-        more: `${everything.bin} ${BRIEF_MORE_SUFFIX}`
+            : { builtins: everything.builtins.map((builtin) => builtin.id) }),
+        globalFlags: GLOBAL_FLAGS_TEXT,
+        more: `${everything.bin} ${BRIEF_MORE_SUFFIX}`,
+        search: `${everything.bin} ${BRIEF_SEARCH_SUFFIX}`
     };
 };
 
@@ -396,21 +414,27 @@ const briefRows = (commands: BriefCommand[]): TableRow[] =>
         ])
     ]);
 
-/** `help --brief` as text: the same listing as the JSON, one line per command. */
-export const briefHelp = (brief: BriefManifest, style: Style): string => {
+const topicRows = (topics: readonly BriefTopic[]): TableRow[] =>
+    topics.map((topic) => [
+        topic.id,
+        withNotes(topic.description, [
+            `${topic.commands} ${topic.commands === 1 ? 'command' : 'commands'}`
+        ])
+    ]);
+
+/**
+ * `help --brief` as text: the same listing as the JSON, one line per command. The built-in words
+ * are ids in the JSON, so their descriptions come from `builtins`.
+ */
+export const briefHelp = (
+    brief: BriefManifest,
+    style: Style,
+    builtins: readonly Builtin[] = []
+): string => {
     const sections: string[] = [];
 
     if (brief.topics.length) {
-        sections.push(
-            section(
-                'Topics',
-                table(
-                    brief.topics.map((topic) => [topic.id, topic.description]),
-                    style
-                ),
-                style
-            )
-        );
+        sections.push(section('Topics', table(topicRows(brief.topics), style), style));
     }
 
     if (brief.commands.length) {
@@ -418,7 +442,9 @@ export const briefHelp = (brief: BriefManifest, style: Style): string => {
     }
 
     if (brief.builtins?.length) {
-        const rows: TableRow[] = brief.builtins.map((builtin) => [builtin.id, builtin.description]);
+        const rows: TableRow[] = builtins
+            .filter((builtin) => brief.builtins?.includes(builtin.id))
+            .map((builtin) => [builtin.id, builtin.description]);
 
         sections.push(section('Built-in', table(rows, style), style));
     }

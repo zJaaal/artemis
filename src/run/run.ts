@@ -283,7 +283,7 @@ function showBriefFor(session: Session, words: string[]): void {
 
         const brief = briefManifest(everything);
 
-        printResult(session.io, shown(session, briefHelp(brief, style), brief));
+        printResult(session.io, shown(session, briefHelp(brief, style, builtins), brief));
 
         return;
     }
@@ -307,7 +307,7 @@ function showBriefFor(session: Session, words: string[]): void {
 
     const brief = briefManifest(everything, target.topic.id);
 
-    printResult(session.io, shown(session, briefHelp(brief, style), brief));
+    printResult(session.io, shown(session, briefHelp(brief, style, builtins), brief));
 }
 
 /**

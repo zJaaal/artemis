@@ -44,6 +44,14 @@ export const GLOBAL_FLAGS = {
     }
 } as const satisfies Record<string, FlagDefinition>;
 
+/** The value a flag takes, as a usage line writes it: only `--log` takes one, a file. */
+const GLOBAL_FLAG_VALUE = ' <file>';
+
+/** The global flags as one line, long names in their declared order: what a brief listing and a usage hint state once. */
+export const GLOBAL_FLAGS_TEXT: string = Object.entries(GLOBAL_FLAGS)
+    .map(([name, flag]) => `--${name}${flag.type === 'string' ? GLOBAL_FLAG_VALUE : ''}`)
+    .join(' ');
+
 export const RESERVED_FLAGS: readonly string[] = Object.keys(GLOBAL_FLAGS);
 
 /** The global flags as typed on a command line: `--json`, `-y`, ... */
@@ -172,6 +180,7 @@ export const DRY_RUN_NOTE = 'Says what it would do and changes nothing.';
 
 /** The tail of the line a brief manifest ends with: how to get one command in full. */
 export const BRIEF_MORE_SUFFIX = 'help <command> --json';
+export const BRIEF_SEARCH_SUFFIX = 'help --search <words> --json';
 export const BRIEF_FLAG = '--brief';
 export const AGENTS_FLAG = '--agents';
 

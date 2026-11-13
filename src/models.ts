@@ -794,20 +794,26 @@ export type CreateTailFn = (maxLines: number, maxChars: number) => TailRing;
 export type BriefCommand = {
     id: string;
     description: string;
+    usage: string;
     destructive?: true;
     dryRun?: true;
 };
 
-export type BriefTopic = { id: string; description: string };
+/** A topic of the brief listing: `commands` is how many commands sit under it, nested topics included. */
+export type BriefTopic = { id: string; description?: string; commands: number };
 
 /** `help --json --brief`: ids and one-line descriptions, and how to get one command in full. */
 export type BriefManifest = {
     bin: string;
     topics: BriefTopic[];
     commands: BriefCommand[];
-    /** Only on the shipped binary, as in the full manifest. Never marked destructive. */
-    builtins?: { id: string; description: string }[];
+    /** The ids of the words of the shipped binary, as in the full manifest. Absent on a published tool's CLI. */
+    builtins?: string[];
+    /** The global flags, stated once. */
+    globalFlags: string;
     more: string;
+    /** How to search the commands by intent. */
+    search: string;
 };
 
 /** The brief manifest of everything, or of one topic when `topicId` is given. */

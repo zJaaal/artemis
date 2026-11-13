@@ -2,34 +2,51 @@ import { describe, expect, test } from 'vitest';
 
 import { EXIT_CODE } from '../constants.js';
 import { BUILTINS } from '../cli/constants.js';
-import type { BriefManifest } from '../models.js';
+import { GLOBAL_FLAGS_TEXT } from '../constants.js';
+import type { BriefManifest, Manifest, ManifestCommand } from '../models.js';
+import { BRIEF_FIXTURE_MAX_BYTES } from '../test/constants.js';
+import { briefManifest } from './help.js';
 import { art, envelope } from '../test/art.js';
 
 const briefOf = async (...argv: string[]): Promise<BriefManifest> =>
     envelope(await art(['help', ...argv, '--json', '--brief'], { builtins: BUILTINS }))
         .result as BriefManifest;
 
-const FULL_ONLY_KEYS = ['usage', 'args', 'flags', 'examples', 'aliases'];
+const FULL_ONLY_KEYS = ['args', 'flags', 'examples', 'aliases'];
 
 describe('help --brief: the JSON', () => {
-    test('has only the bin, topics, commands, builtins and the way to get more', async () => {
+    test('has the bin, topics, commands, builtins, global flags and the ways to get more', async () => {
         expect(Object.keys(await briefOf())).toEqual([
             'bin',
             'topics',
             'commands',
             'builtins',
-            'more'
+            'globalFlags',
+            'more',
+            'search'
         ]);
     });
 
-    test('has no globalFlags', async () => {
-        expect(await briefOf()).not.toHaveProperty('globalFlags');
+    test('states the global flags once, as a line', async () => {
+        expect((await briefOf()).globalFlags).toBe(GLOBAL_FLAGS_TEXT);
     });
 
-    test('a command entry has only id and description when it marks nothing', async () => {
+    test('the global flags line is the long names in declared order, with a file for --log', () => {
+        expect(GLOBAL_FLAGS_TEXT).toBe('--help --json --yes --dry-run --quiet --log <file>');
+    });
+
+    test('search says how to search by intent', async () => {
+        expect((await briefOf()).search).toBe('art help --search <words> --json');
+    });
+
+    test('a command entry has only id, description and usage when it marks nothing', async () => {
         const hello = (await briefOf()).commands.find((command) => command.id === 'hello');
 
-        expect(hello).toEqual({ id: 'hello', description: 'Greet someone' });
+        expect(hello).toEqual({
+            id: 'hello',
+            description: 'Greet someone',
+            usage: 'hello [name] [--shout]'
+        });
     });
 
     test('no command entry has a key of the full manifest', async () => {
@@ -44,6 +61,7 @@ describe('help --brief: the JSON', () => {
         expect(wipe).toEqual({
             id: 'wipe',
             description: 'Delete the data of an instance',
+            usage: 'wipe',
             destructive: true,
             dryRun: true
         });
@@ -61,10 +79,14 @@ describe('help --brief: the JSON', () => {
         expect(math?.description).toMatch(/Arithmetic/);
     });
 
-    test('builtins have only an id and a description', async () => {
-        const keys = ((await briefOf()).builtins ?? []).flatMap((builtin) => Object.keys(builtin));
+    test('builtins are a list of ids', async () => {
+        expect((await briefOf()).builtins).toEqual(BUILTINS.map((builtin) => builtin.id));
+    });
 
-        expect(new Set(keys)).toEqual(new Set(['id', 'description']));
+    test('a topic has the number of commands under it', async () => {
+        const math = (await briefOf()).topics.find((topic) => topic.id === 'math');
+
+        expect(math?.commands).toBe(2);
     });
 
     test('more says how to get one command in full', async () => {
@@ -129,5 +151,55 @@ describe('help: a command with markers', () => {
         expect(run.code).toBe(EXIT_CODE.OK);
         expect(run.out).toMatch(/Usage/i);
         expect(run.out).not.toMatch(/Destructive|Supports --dry-run/);
+    });
+});
+
+describe('briefManifest: topics and size', () => {
+    const entry = (id: string): ManifestCommand => ({
+        id,
+        description: id,
+        usage: id,
+        args: [],
+        flags: []
+    });
+
+    const everything: Manifest = {
+        bin: 'art',
+        topics: [
+            { id: 'db', description: '' },
+            { id: 'ci', description: 'Continuous integration' }
+        ],
+        commands: [entry('db reset'), entry('db seed'), entry('ci run')],
+        globalFlags: []
+    };
+
+    test('a topic with no description has no description key', () => {
+        const db = briefManifest(everything).topics.find((topic) => topic.id === 'db');
+
+        expect(db).toEqual({ id: 'db', commands: 2 });
+    });
+
+    test('a topic with a description keeps it, with its count', () => {
+        const ci = briefManifest(everything).topics.find((topic) => topic.id === 'ci');
+
+        expect(ci).toEqual({ id: 'ci', description: 'Continuous integration', commands: 1 });
+    });
+
+    test('the brief listing of the fixture project stays under its byte limit', async () => {
+        const result = await art(['help', '--json', '--brief'], { builtins: BUILTINS });
+
+        expect(Buffer.byteLength(result.out)).toBeLessThan(BRIEF_FIXTURE_MAX_BYTES);
+    });
+});
+
+describe('help --brief: the text of the topics', () => {
+    test('a topic line has its description and its count', async () => {
+        expect((await art(['help', '--brief'])).out).toMatch(/math\s+Arithmetic.*\(2 commands\)/);
+    });
+
+    test('the built-in words keep their descriptions in text', async () => {
+        const out = (await art(['help', '--brief'], { builtins: BUILTINS })).out;
+
+        expect(out).toMatch(/Built-in\n\s+init\s+Make the current folder a project/);
     });
 });
