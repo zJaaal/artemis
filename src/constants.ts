@@ -73,6 +73,8 @@ export const TOPIC_FILE = '_topic.js';
 
 /** Words of a command id are joined with this ("uve config set"); "uve:config:set" also works. */
 export const ID_SEPARATOR = ' ';
+/** Written after the closing bracket of a repeatable flag in a usage line. */
+export const USAGE_REPEAT = '...';
 export const ALIAS_SEPARATOR = ':';
 
 /** Node appends a paragraph about "--" to unknown option errors; the first sentence is the useful part. */

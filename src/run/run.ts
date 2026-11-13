@@ -120,7 +120,7 @@ function parseNested(
     argv: string[]
 ): ParsedCommandLine {
     try {
-        const nested = parse(target.definition, argv, usage(session.bin, target));
+        const nested = parse(target.definition, argv, usage(target));
 
         if (nested.global.help) {
             throw new CommandError(
@@ -138,7 +138,7 @@ function parseNested(
         }
 
         throw new CommandError(`ctx.invoke("${id}"): ${error.message}`, {
-            hint: error.usage ? `Usage: ${error.usage}` : error.hint,
+            hint: error.usage ? `Usage: ${session.bin} ${error.usage}` : error.hint,
             cause: error
         });
     }
@@ -361,7 +361,7 @@ function showHelpFor(session: Session, words: string[]): void {
             shown(
                 session,
                 builtinHelp(session.bin, builtin, session.style),
-                describeBuiltins(session.bin, [builtin])[0]
+                describeBuiltins([builtin])[0]
             )
         );
 
@@ -459,7 +459,7 @@ async function dispatch(session: Session, argv: string[]): Promise<number> {
     const parsed = parse(
         target.entry.definition,
         [...leading, ...target.rest],
-        usage(session.bin, target.entry)
+        usage(target.entry)
     );
 
     if (parsed.global.help) {
@@ -470,7 +470,7 @@ async function dispatch(session: Session, argv: string[]): Promise<number> {
 
     if (lacksDryRun(target.entry, parsed.global)) {
         throw new UsageError(noDryRunMessage(target.entry), {
-            usage: usage(session.bin, target.entry),
+            usage: usage(target.entry),
             hint: `Drop --dry-run, or read "${session.bin} help ${target.entry.id}" for what it supports.`
         });
     }
@@ -524,6 +524,7 @@ export const run: RunCliFn = async (argv, options) => {
             style: world.style,
             json: wantsJson,
             commandId: state.commandId,
+            bin: options.bin,
             log: scope.log?.path
         });
     } finally {

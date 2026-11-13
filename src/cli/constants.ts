@@ -118,6 +118,7 @@ export const SKILL_WRITE_HINT = 'Give --write the path of a file, in a folder th
 export const BUILTINS: readonly Builtin[] = [
     {
         id: INIT_WORD,
+        usage: INIT_USAGE_LINE,
         description: 'Make the current folder a project',
         args: [],
         flags: {},
@@ -125,6 +126,7 @@ export const BUILTINS: readonly Builtin[] = [
     },
     {
         id: STATE_WORD,
+        usage: STATE_USAGE_LINE,
         description: 'List, show or reset the documents the app keeps',
         args: [{ name: 'doc', description: 'The document to show or reset' }],
         flags: {
@@ -137,6 +139,7 @@ export const BUILTINS: readonly Builtin[] = [
     },
     {
         id: SKILL_WORD,
+        usage: SKILL_USAGE_LINE,
         description: 'Write a short SKILL.md for agents, from the commands of this project',
         args: [],
         flags: {
@@ -149,6 +152,7 @@ export const BUILTINS: readonly Builtin[] = [
     },
     {
         id: DOCTOR_WORD,
+        usage: DOCTOR_USAGE_LINE,
         description: 'Check the install and the project, and say how to fix each problem',
         args: [],
         flags: {},

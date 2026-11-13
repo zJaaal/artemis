@@ -1,4 +1,4 @@
-import { EXIT_CODE, FAILURE_CODES } from '../constants.js';
+import { EXIT_CODE, FAILURE_CODES, ID_SEPARATOR } from '../constants.js';
 import { isCommandError, isExecError, isUsageError } from '../errors/errors.js';
 import type {
     ErrorReport,
@@ -59,7 +59,7 @@ const toJson = (report: ErrorReport, { commandId, log }: ReportContext): string 
         tail: report.tail
     });
 
-function toText(report: ErrorReport, { style }: ReportContext): string {
+function toText(report: ErrorReport, { style, bin }: ReportContext): string {
     const lines = [`${style.red('Error:')} ${report.message}`];
 
     if (report.hint) {
@@ -71,7 +71,10 @@ function toText(report: ErrorReport, { style }: ReportContext): string {
     }
 
     if (report.usage) {
-        lines.push('', `${style.bold('Usage')}  ${report.usage}`);
+        lines.push(
+            '',
+            `${style.bold('Usage')}  ${bin === undefined ? '' : `${bin}${ID_SEPARATOR}`}${report.usage}`
+        );
     }
 
     if (report.stack) {

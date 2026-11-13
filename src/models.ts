@@ -432,7 +432,8 @@ export type TableRow = readonly [name: string, text: string | undefined];
 
 /** What a help listing shows: topics and the commands under them. */
 export type HelpChildren = { topics: TopicEntry[]; commands: CommandEntry[] };
-export type UsageFn = (bin: string, entry: CommandEntry) => string;
+/** The usage of a project command: its id, args and flags, with no bin and no global flags. */
+export type UsageFn = (entry: CommandEntry) => string;
 export type RootHelpFn = (
     bin: string,
     registry: Registry,
@@ -506,6 +507,8 @@ export type Manifest = {
 export type Builtin = {
     id: string;
     description: string;
+    /** Its fixed usage line, with no bin: a built-in is not a command file, so it writes its own. */
+    usage: string;
     args: readonly ArgDefinition[];
     flags: FlagDefinitions;
     examples: readonly string[];
@@ -810,7 +813,7 @@ export type BriefManifest = {
 /** The brief manifest of everything, or of one topic when `topicId` is given. */
 export type BriefManifestFn = (everything: Manifest, topicId?: string) => BriefManifest;
 
-export type DescribeBuiltinsFn = (bin: string, builtins: readonly Builtin[]) => ManifestCommand[];
+export type DescribeBuiltinsFn = (builtins: readonly Builtin[]) => ManifestCommand[];
 
 export type ManifestFn = (
     bin: string,
@@ -916,6 +919,8 @@ export type ReportContext = {
     style: Style;
     json: boolean;
     commandId: string | undefined;
+    /** The name usage lines show. Only `run()` sets it: a usage line is printed with the bin in front when it is. */
+    bin?: string | undefined;
     /** The absolute path of the `--log` file, when one was opened. */
     log?: string | undefined;
 };

@@ -10,7 +10,8 @@ import {
     SECTION_SEPARATOR,
     STYLE_CODES,
     TABLE_GAP,
-    TABLE_INDENT
+    TABLE_INDENT,
+    USAGE_REPEAT
 } from '../constants.js';
 import type {
     ArgDefinition,
@@ -60,26 +61,33 @@ export const createStyle: CreateStyleFn = (enabled) => ({
     cyan: wrap(STYLE_CODES.cyan, enabled)
 });
 
-const argToken = (arg: ArgDefinition): string => (arg.required ? `<${arg.name}>` : `[${arg.name}]`);
+const CHOICE_SEPARATOR = '|';
 
-/** `art uve config set [url] [flags]` */
-const usageOf = (
-    bin: string,
-    id: string,
-    args: readonly ArgDefinition[],
-    flags: FlagDefinitions
-): string => {
-    const parts = [bin, id, ...args.map(argToken)];
+/** `<name>` for a required arg, `[name]` for an optional one; an arg with choices shows them instead of its name. */
+const argToken = (arg: ArgDefinition): string => {
+    const label = arg.choices ? arg.choices.join(CHOICE_SEPARATOR) : arg.name;
 
-    if (Object.keys(flags).length > 0) {
-        parts.push('[flags]');
-    }
-
-    return parts.join(ID_SEPARATOR);
+    return arg.required ? `<${label}>` : `[${label}]`;
 };
 
-export const usage: UsageFn = (bin, entry) =>
-    usageOf(bin, entry.id, entry.definition.args, entry.definition.flags);
+/** `[--all]`, `[--older-than <value>]`, `[--mode <a|b>]`, and `...` after the bracket when repeatable. */
+function flagToken(name: string, flag: FlagDefinition): string {
+    const value = flag.choices ? flag.choices.join(CHOICE_SEPARATOR) : 'value';
+    const body = flag.type === 'string' ? `--${name} <${value}>` : `--${name}`;
+
+    return `[${body}]${flag.multiple ? USAGE_REPEAT : ''}`;
+}
+
+/** `uve config set [url] [--force]`: the id, then each arg, then each command flag. No bin, no global flags. */
+const usageOf = (id: string, args: readonly ArgDefinition[], flags: FlagDefinitions): string =>
+    [
+        id,
+        ...args.map(argToken),
+        ...Object.entries(flags).map(([name, flag]) => flagToken(name, flag))
+    ].join(ID_SEPARATOR);
+
+export const usage: UsageFn = (entry) =>
+    usageOf(entry.id, entry.definition.args, entry.definition.flags);
 
 function table(rows: TableRow[], style: Style): string {
     const width = Math.max(0, ...rows.map(([name]) => name.length));
@@ -220,7 +228,7 @@ export const topicHelp: TopicHelpFn = (_bin, registry, topic, style) =>
 /** The help of one word: its description, usage, arguments, flags, aliases and examples. */
 function subjectHelp(bin: string, subject: HelpSubject, style: Style): string {
     const { description, args, flags, aliases, examples } = subject;
-    const sections = [description, `${style.bold('Usage')}  ${subject.usage}`];
+    const sections = [description, `${style.bold('Usage')}  ${bin}${ID_SEPARATOR}${subject.usage}`];
 
     if (subject.destructive) {
         sections.push(`${style.bold('Destructive')}  ${DESTRUCTIVE_NOTE}`);
@@ -254,7 +262,7 @@ function subjectHelp(bin: string, subject: HelpSubject, style: Style): string {
 }
 
 export const commandHelp: CommandHelpFn = (bin, entry, style) =>
-    subjectHelp(bin, { ...entry.definition, usage: usage(bin, entry) }, style);
+    subjectHelp(bin, { ...entry.definition, usage: usage(entry) }, style);
 
 /** The help of a word the binary handles itself (`init`, `state`), laid out like a command's. */
 export const builtinHelp: BuiltinHelpFn = (bin, builtin, style) =>
@@ -262,7 +270,6 @@ export const builtinHelp: BuiltinHelpFn = (bin, builtin, style) =>
         bin,
         {
             ...builtin,
-            usage: usageOf(bin, builtin.id, builtin.args, builtin.flags),
             aliases: []
         },
         style
@@ -311,18 +318,12 @@ const describeWord = (word: {
     ...(word.dryRun ? { dryRun: true as const } : {})
 });
 
-const describeCommand = (bin: string, entry: CommandEntry): ManifestCommand =>
-    describeWord({ ...entry.definition, id: entry.id, usage: usage(bin, entry) });
+const describeCommand = (entry: CommandEntry): ManifestCommand =>
+    describeWord({ ...entry.definition, id: entry.id, usage: usage(entry) });
 
 /** The words of the shipped binary, described like commands so a caller reads both the same way. */
-export const describeBuiltins: DescribeBuiltinsFn = (bin, builtins) =>
-    builtins.map((builtin) =>
-        describeWord({
-            ...builtin,
-            usage: usageOf(bin, builtin.id, builtin.args, builtin.flags),
-            aliases: []
-        })
-    );
+export const describeBuiltins: DescribeBuiltinsFn = (builtins) =>
+    builtins.map((builtin) => describeWord({ ...builtin, aliases: [] }));
 
 /**
  * Everything help shows, as data: what an agent reads to know which commands exist and how to call
@@ -331,9 +332,9 @@ export const describeBuiltins: DescribeBuiltinsFn = (bin, builtins) =>
 export const manifest: ManifestFn = (bin, registry, builtins): Manifest => ({
     bin,
     topics: [...registry.topics.values()],
-    commands: [...registry.commands.values()].map((entry) => describeCommand(bin, entry)),
+    commands: [...registry.commands.values()].map(describeCommand),
     globalFlags: describeFlags(GLOBAL_FLAGS),
-    ...(builtins === undefined ? {} : { builtins: describeBuiltins(bin, builtins) })
+    ...(builtins === undefined ? {} : { builtins: describeBuiltins(builtins) })
 });
 
 const isWithin = (id: string, topicId: string): boolean =>
