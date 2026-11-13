@@ -164,7 +164,7 @@ type ExecDetachedResult = { pid: number | null; skipped: boolean };
 - **Fields:**
   - `time`: when the run started, `now()` as an ISO string.
   - `command`: the resolved id, also when an alias was typed.
-  - `argv`: the tokens after the command id, with every global flag and its value removed and `--` kept.
+  - `argv`: the tokens after the command id, with every global flag token and its value removed (`--yes`, `-y`, `--log x`) and `--` kept; a group of short flags that mixes global and command letters (`-fy`) is kept as typed, and `yes`/`dryRun` say what the parser read. On a usage error only whole global tokens are removed.
   - `ran`: `true` when the command's `run` started. A usage error, a refused confirmation (no `--yes` with nobody to answer), a declined one and a `--log` file that cannot be opened are all `ran: false`.
   - `dryRun`: `--dry-run` was passed. `yes`: `--yes` was passed.
   - `exitCode`: the exit code `run()` returns (a refused or declined confirmation is `1`).
