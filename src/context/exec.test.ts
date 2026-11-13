@@ -1,7 +1,17 @@
 import { describe, expect, test } from 'vitest';
 
-import { EXEC_TAIL_LINE_CHARS, EXEC_TAIL_LINES } from '../constants.js';
-import { createErrorLines, createTail, pickExecMode, timeoutText } from './exec.js';
+import {
+    EXEC_ERROR_LINE_BUFFER_CHARS,
+    EXEC_TAIL_LINE_CHARS,
+    EXEC_TAIL_LINES
+} from '../constants.js';
+import {
+    createErrorLines,
+    createLineReader,
+    createTail,
+    pickExecMode,
+    timeoutText
+} from './exec.js';
 
 const noFlags = { capture: false, quiet: false, json: false, log: false, errorPattern: false };
 
@@ -28,10 +38,13 @@ describe('pickExecMode: an errorPattern', () => {
 });
 
 describe('createErrorLines', () => {
+    const feed = (found: ReturnType<typeof createErrorLines>, text: string): void =>
+        found.push('stdout', text);
+
     test('keeps the lines that match, in order', () => {
         const found = createErrorLines(/error/, 20, 500);
 
-        ['ok', 'error: one', 'fine', 'error: two'].forEach(found.add);
+        feed(found, 'ok\nerror: one\nfine\nerror: two\n');
 
         expect(found.lines()).toEqual(['error: one', 'error: two']);
     });
@@ -39,15 +52,15 @@ describe('createErrorLines', () => {
     test('keeps only the first maxLines matches', () => {
         const found = createErrorLines(/x/, 2, 500);
 
-        ['x1', 'x2', 'x3'].forEach(found.add);
+        feed(found, 'x1\nx2\nx3\n');
 
         expect(found.lines()).toEqual(['x1', 'x2']);
     });
 
-    test('cuts each line at maxChars', () => {
+    test('cuts each kept line at maxChars', () => {
         const found = createErrorLines(/x/, 2, 5);
 
-        found.add('xxxxxxxxxx');
+        feed(found, 'xxxxxxxxxx\n');
 
         expect(found.lines()).toEqual(['xxxxx']);
     });
@@ -55,38 +68,63 @@ describe('createErrorLines', () => {
     test('has nothing when nothing matches', () => {
         const found = createErrorLines(/x/, 2, 5);
 
-        found.add('abc');
+        feed(found, 'abc\n');
 
         expect(found.lines()).toEqual([]);
     });
-});
 
-describe('createTail: the line listener', () => {
-    test('hears every cleaned line, also the ones the tail no longer keeps', () => {
-        const heard: string[] = [];
-        const tail = createTail(1, 500, (line) => heard.push(line));
+    test('matches a long line split across chunks whole, before it is cut', () => {
+        const found = createErrorLines(/^x+END$/, 2, 5);
 
-        tail.push('stdout', 'one\ntwo\nthree\n');
+        feed(found, 'x'.repeat(EXEC_TAIL_LINE_CHARS * 4));
+        feed(found, 'END\n');
 
-        expect(heard).toEqual(['one', 'two', 'three']);
+        expect(found.lines()).toEqual(['xxxxx']);
     });
 
-    test('hears a line before it is cut', () => {
-        const heard: string[] = [];
-        const tail = createTail(5, 3, (line) => heard.push(line));
+    test('a line that never ends is bounded by EXEC_ERROR_LINE_BUFFER_CHARS', () => {
+        const found = createErrorLines(/END$/, 2, 5);
 
-        tail.push('stdout', 'abcdef\n');
+        feed(found, 'x'.repeat(EXEC_ERROR_LINE_BUFFER_CHARS * 2));
+        feed(found, 'END\n');
 
-        expect(heard).toEqual(['abcdef']);
+        expect(found.lines()).toEqual([]);
+    });
+
+    test('reads the line still being written when the output ends', () => {
+        const found = createErrorLines(/last/, 2, 50);
+
+        feed(found, 'first\nlast words');
+
+        expect(found.lines()).toEqual(['last words']);
+    });
+});
+
+describe('createLineReader', () => {
+    const read = (maxChars: number, ...chunks: string[]): string[] => {
+        const lines: string[] = [];
+        const reader = createLineReader(maxChars, (line) => lines.push(line));
+
+        chunks.forEach((chunk) => reader.push('stdout', chunk));
+        reader.flush();
+
+        return lines;
+    };
+
+    test('hears every cleaned line', () => {
+        expect(read(500, 'one\ntwo\nthree\n')).toEqual(['one', 'two', 'three']);
+    });
+
+    test('cuts a line at maxChars', () => {
+        expect(read(3, 'abcdef\n')).toEqual(['abc']);
     });
 
     test('does not hear blank lines', () => {
-        const heard: string[] = [];
-        const tail = createTail(5, 500, (line) => heard.push(line));
+        expect(read(500, '\n  \nx\n')).toEqual(['x']);
+    });
 
-        tail.push('stdout', '\n  \nx\n');
-
-        expect(heard).toEqual(['x']);
+    test('joins a line split across chunks', () => {
+        expect(read(500, 'ab', 'cd\n')).toEqual(['abcd']);
     });
 });
 

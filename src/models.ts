@@ -930,13 +930,23 @@ export type TailRing = {
     lines: () => string[];
 };
 
-/** Called with each cleaned line a child printed (CR handled, blank lines dropped), before it is cut. */
-export type LineListener = (line: string) => void;
+export type CreateTailFn = (maxLines: number, maxChars: number) => TailRing;
 
-export type CreateTailFn = (maxLines: number, maxChars: number, onLine?: LineListener) => TailRing;
+/** Splits a child's output into cleaned lines, per stream, each bounded by `maxChars`. */
+export type LineReader = {
+    push: (stream: ChildStream, chunk: string) => void;
+    /** Closes the lines still being written. */
+    flush: () => void;
+};
+
+export type CreateLineReaderFn = (maxChars: number, onLine: (line: string) => void) => LineReader;
 
 /** The first lines of a child's output that match a pattern, each cut. */
-export type ErrorLineCollector = { add: LineListener; lines: () => string[] };
+export type ErrorLineCollector = {
+    push: (stream: ChildStream, chunk: string) => void;
+    /** Closes the lines still being written and returns the matches. */
+    lines: () => string[];
+};
 export type CreateErrorLinesFn = (
     pattern: RegExp,
     maxLines: number,

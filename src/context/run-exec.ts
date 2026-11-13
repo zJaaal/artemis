@@ -201,7 +201,7 @@ async function runChild(
             ? undefined
             : createErrorLines(options.errorPattern, EXEC_ERROR_LINES, EXEC_TAIL_LINE_CHARS);
 
-    const tail = createTail(EXEC_TAIL_LINES, EXEC_TAIL_LINE_CHARS, matcher?.add);
+    const tail = createTail(EXEC_TAIL_LINES, EXEC_TAIL_LINE_CHARS);
     // Only a caller that asked for the output gets it: a dev server under --log would grow this for hours
     const collect = options.capture === true || readOnly;
     let output = '';
@@ -223,6 +223,7 @@ async function runChild(
 
             if (mode.keep) {
                 tail.push(stream, chunk);
+                matcher?.push(stream, chunk);
             }
         }
     });
@@ -231,7 +232,7 @@ async function runChild(
 
     try {
         const outcome = await child.done;
-        const errorLines = outcome.code === 0 ? [] : (matcher?.lines() ?? []);
+        const errorLines = matcher?.lines() ?? [];
 
         const error = failure(
             run,
@@ -250,7 +251,8 @@ async function runChild(
             code: outcome.code,
             output,
             skipped: false,
-            ...(errorLines.length ? { errorLines } : {})
+            // Lines are for a child that failed: a success (code 0) that printed a matching line has none
+            ...(outcome.code !== 0 && errorLines.length ? { errorLines } : {})
         };
     } finally {
         run.children.delete(child);

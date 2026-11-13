@@ -132,6 +132,8 @@ export const EXEC_TAIL_LINES = 40;
 export const EXEC_TAIL_LINE_CHARS = 500;
 /** How many lines matching `errorPattern` a failed child keeps: the first ones. */
 export const EXEC_ERROR_LINES = 20;
+/** The longest line `errorPattern` reads whole: a line that never ends (a progress bar) must not grow without limit. */
+export const EXEC_ERROR_LINE_BUFFER_CHARS = 64 * 1024;
 export const EXEC_PATTERN_STATEFUL_FLAGS = ['g', 'y'] as const;
 export const EXEC_PATTERN_STATEFUL =
     'ctx.exec: errorPattern cannot have the g or y flag, they make test() remember where it was';

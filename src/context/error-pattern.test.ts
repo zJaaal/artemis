@@ -103,6 +103,41 @@ describe('ctx.exec errorPattern: a failed child', () => {
     });
 });
 
+describe('ctx.exec errorPattern: a timeout that exits 0', () => {
+    // The child catches SIGTERM and exits 0: Artemis still stopped it for taking too long
+    const POLITE =
+        "process.on('SIGTERM', () => process.exit(0)); console.log('error: slow'); setInterval(() => {}, 1000)";
+
+    test('keeps the matching lines, though the exit code is 0', async () => {
+        const run = await art([
+            'exec',
+            POLITE,
+            '--pattern',
+            '^error',
+            '--timeout',
+            '300',
+            '--json'
+        ]);
+
+        expect(failure(run.out)).toMatchObject({
+            ok: false,
+            error: expect.stringMatching(/took longer than/),
+            errorLines: ['error: slow']
+        });
+    });
+});
+
+describe('ctx.exec errorPattern: a long line that arrives in pieces', () => {
+    const LONG = EXEC_TAIL_LINE_CHARS * 4;
+    const PIECES = `process.stdout.write('x'.repeat(${LONG})); setTimeout(() => { process.stdout.write('FATAL\\n'); process.exit(1) }, 150)`;
+
+    test('is matched whole, and only the kept line is cut', async () => {
+        const run = await art(['exec', PIECES, '--pattern', `^x{${LONG}}FATAL$`, '--json']);
+
+        expect(failure(run.out).errorLines).toEqual(['x'.repeat(EXEC_TAIL_LINE_CHARS)]);
+    });
+});
+
 describe('ctx.exec errorPattern: what does not fail', () => {
     test('a successful child has no errorLines, even when lines match', async () => {
         const run = await art(['exec', noisy([5], 0, 10), '--pattern', '^error', '--json']);

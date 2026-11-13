@@ -2,6 +2,7 @@ import {
     CARRIAGE_RETURN,
     EXEC_DETACHED_KEYS,
     EXEC_DETACHED_NEEDS_LOGFILE,
+    EXEC_ERROR_LINE_BUFFER_CHARS,
     EXEC_LOGFILE_WITHOUT_DETACHED,
     EXEC_PIPED_HIDDEN,
     EXEC_PIPED_SHOWN,
@@ -15,6 +16,7 @@ import type {
     AssertExecOptionsFn,
     ChildStream,
     CreateErrorLinesFn,
+    CreateLineReaderFn,
     CreateTailFn,
     DetachedPlannedLineFn,
     ExecDetachedOptions,
@@ -44,30 +46,22 @@ export const pickExecMode: PickExecModeFn = ({ capture, quiet, json, log, errorP
 };
 
 /**
- * Keeps the last `maxLines` lines a child printed, each cut at `maxChars`. Lines are split per
- * stream, so a half-written line of one stream never glues onto the other. Blank lines are not kept:
- * the tail is for reading why a child failed, and they cost tokens.
+ * Splits what a child printed into lines, per stream, so a half-written line of one stream never
+ * glues onto the other. A carriage return puts the cursor back at the start of the line (progress
+ * bars rewrite it), so only what follows the last one is the line. Blank lines are dropped. Every
+ * line, and the half-written one while it grows, is bounded by `maxChars`: a progress line that
+ * never ends must not grow without limit.
  */
-export const createTail: CreateTailFn = (maxLines, maxChars, onLine) => {
-    const kept: string[] = [];
+export const createLineReader: CreateLineReaderFn = (maxChars, onLine) => {
     const open: Record<ChildStream, string> = { stdout: '', stderr: '' };
 
-    // A carriage return puts the cursor back at the start of the line: progress bars rewrite it, so
-    // only what follows the last one is what the terminal shows (and what the tail is worth)
     const lastState = (text: string): string => text.slice(text.lastIndexOf('\r') + 1);
 
-    const add = (line: string): void => {
+    const emit = (line: string): void => {
         const clean = lastState(line.replace(CARRIAGE_RETURN, ''));
 
-        if (clean.trim() === '') {
-            return;
-        }
-
-        onLine?.(clean);
-        kept.push(clean.slice(0, maxChars));
-
-        if (kept.length > maxLines) {
-            kept.shift();
+        if (clean.trim() !== '') {
+            onLine(clean.slice(0, maxChars));
         }
     };
 
@@ -78,17 +72,39 @@ export const createTail: CreateTailFn = (maxLines, maxChars, onLine) => {
             const partial = parts.pop() ?? '';
             const trailing = CARRIAGE_RETURN.test(partial) ? '\r' : '';
 
-            // The half-written line is bounded too: a progress bar that never ends a line must not grow
             open[stream] =
                 `${lastState(partial.slice(0, partial.length - trailing.length)).slice(0, maxChars)}${trailing}`;
 
-            parts.forEach(add);
+            parts.forEach(emit);
         },
-        lines: () => {
-            add(open.stdout);
-            add(open.stderr);
+        flush: () => {
+            emit(open.stdout);
+            emit(open.stderr);
             open.stdout = '';
             open.stderr = '';
+        }
+    };
+};
+
+/**
+ * Keeps the last `maxLines` lines a child printed, each cut at `maxChars`: the tail is for reading
+ * why a child failed, and blank lines cost tokens, so they are not kept.
+ */
+export const createTail: CreateTailFn = (maxLines, maxChars) => {
+    const kept: string[] = [];
+
+    const reader = createLineReader(maxChars, (line) => {
+        kept.push(line);
+
+        if (kept.length > maxLines) {
+            kept.shift();
+        }
+    });
+
+    return {
+        push: reader.push,
+        lines: () => {
+            reader.flush();
 
             return [...kept];
         }
@@ -96,20 +112,28 @@ export const createTail: CreateTailFn = (maxLines, maxChars, onLine) => {
 };
 
 /**
- * Collects the first `maxLines` lines that match a pattern, each cut at `maxChars`. It sees every
- * line of the output as it streams, so a line far above the last 40 is found too. The pattern is
- * not stateful (no `g` or `y` flag), so `test` gives the same answer for the same line.
+ * Collects the first `maxLines` lines that match a pattern, each cut at `maxChars` after matching.
+ * It has its own reader, whose lines are bounded by `EXEC_ERROR_LINE_BUFFER_CHARS` and not cut at
+ * `maxChars`, so a long line split across chunks is matched whole. It sees every line as it streams,
+ * so a line far above the last 40 is found too. The pattern is not stateful (no `g` or `y` flag), so
+ * `test` gives the same answer for the same line.
  */
 export const createErrorLines: CreateErrorLinesFn = (pattern, maxLines, maxChars) => {
     const kept: string[] = [];
 
+    const reader = createLineReader(EXEC_ERROR_LINE_BUFFER_CHARS, (line) => {
+        if (kept.length < maxLines && pattern.test(line)) {
+            kept.push(line.slice(0, maxChars));
+        }
+    });
+
     return {
-        add: (line) => {
-            if (kept.length < maxLines && pattern.test(line)) {
-                kept.push(line.slice(0, maxChars));
-            }
-        },
-        lines: () => [...kept]
+        push: reader.push,
+        lines: () => {
+            reader.flush();
+
+            return [...kept];
+        }
     };
 };
 
