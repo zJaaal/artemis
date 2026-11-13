@@ -5,6 +5,7 @@ import path from 'node:path';
 
 import {
     ERROR_CODE,
+    DETACHED_NOT_STARTED,
     EXEC_DETACHED_LOG_MODE,
     EXEC_DETACHED_STDIN,
     EXEC_DRAIN_MS,
@@ -25,6 +26,7 @@ import type {
     SpawnOutcome
 } from '../models.js';
 import { codeOf } from '../utils/error-code.js';
+import { isFolder } from './files.js';
 import { messageOf } from '../utils/error-message.js';
 
 // Edge: the only place a child process starts for `ctx.exec`. It never uses a shell, so nothing in
@@ -195,17 +197,20 @@ function openDetachedLog(logFile: string, cwd: string | undefined): number {
     }
 }
 
-const NOT_STARTED = { pid: undefined, notFound: false, cwdMissing: false } as const;
-
 /**
  * Starts a child that outlives the call: its own process group, no stdin, stdout and stderr appended
  * to a file, and the parent lets go of it (`unref`), so Artemis can exit while it runs. It resolves
- * once the child has spawned (with its pid) or could not start. A folder that does not exist fails
+ * once the child has spawned (with its pid) or could not start. A folder that does not exist (or is a file) fails
  * before any folder of the log is created.
  */
 export const spawnDetached: SpawnDetachedFn = (request) => {
-    if (request.cwd !== undefined && !fs.existsSync(request.cwd)) {
-        return Promise.resolve({ ...NOT_STARTED, cwdMissing: true, startError: undefined });
+    // A folder that is not there, or is a file: either way there is no folder to run in
+    if (request.cwd !== undefined && !isFolder(request.cwd)) {
+        return Promise.resolve({
+            ...DETACHED_NOT_STARTED,
+            cwdMissing: true,
+            startError: undefined
+        });
     }
 
     const descriptor = openDetachedLog(request.logFile, request.cwd);
@@ -213,7 +218,7 @@ export const spawnDetached: SpawnDetachedFn = (request) => {
     return new Promise((resolve) => {
         const fail = (startError: string | undefined, notFound: boolean): void => {
             fs.closeSync(descriptor);
-            resolve({ ...NOT_STARTED, notFound, startError });
+            resolve({ ...DETACHED_NOT_STARTED, notFound, startError });
         };
 
         try {
@@ -240,7 +245,7 @@ export const spawnDetached: SpawnDetachedFn = (request) => {
             child.once('spawn', () => {
                 child.unref();
                 fs.closeSync(descriptor);
-                resolve({ ...NOT_STARTED, pid: child.pid, startError: undefined });
+                resolve({ ...DETACHED_NOT_STARTED, pid: child.pid, startError: undefined });
             });
         } catch (error) {
             // `spawn` throws at once for a few errors (a cwd that is a file, a null byte in an argument)

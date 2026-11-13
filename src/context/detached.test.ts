@@ -116,6 +116,19 @@ describe('ctx.exec detached: through a command', () => {
         });
     });
 
+    test('a folder that is a file is the missing-folder error naming it', async () => {
+        const file = path.join(folders.make('artemis-detached-'), 'plain.txt');
+
+        fs.writeFileSync(file, 'x');
+
+        const run = await art(['exec-detached', SILENT_JOB, logOf(), '--cwd', file, '--json']);
+
+        expect(envelope(run)).toMatchObject({
+            ok: false,
+            error: `The folder ${file} does not exist`
+        });
+    });
+
     test('under --dry-run it is planned and nothing starts', async () => {
         const log = logOf();
         const run = await art(['exec-detached', SILENT_JOB, log, '--dry-run', '--json']);

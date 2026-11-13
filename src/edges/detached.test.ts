@@ -143,6 +143,18 @@ describe('spawnDetached', () => {
         expect([outcome.cwdMissing, fs.existsSync(path.join(root, 'typo'))]).toEqual([true, false]);
     });
 
+    test('a folder that is a file is reported as a missing folder, not as a log problem', async () => {
+        const root = folders.make('artemis-det-');
+        const file = path.join(root, 'plain.txt');
+
+        fs.writeFileSync(file, 'x');
+
+        expect(await start(SILENT_JOB, 'a.log', file)).toMatchObject({
+            pid: undefined,
+            cwdMissing: true
+        });
+    });
+
     test('a log file that cannot be opened is a CommandError naming the file', async () => {
         const root = folders.make('artemis-det-');
 
