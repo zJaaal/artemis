@@ -220,6 +220,17 @@ export const UNKNOWN_COMMAND_MAX_IDS = 3;
 /** What a usage hint says after the usage line, before the global flags. */
 export const USAGE_HINT_GLOBAL = 'Global:';
 export const AGENTS_FLAG = '--agents';
+export const AUTHORING_FLAG = '--authoring';
+/** The sections of the shipped AGENTS.md, found by their exact heading line. A missing one is a bug in the package. */
+export const AGENTS_CALLING_HEADING = '## Calling a command (the contract an agent relies on)';
+export const AGENTS_ADDING_HEADING = '## Adding a command (for an agent writing its own tooling)';
+export const AGENTS_RUNNING_HEADING = '## Running the CLI';
+/** What `help --agents` must stay under, in bytes: it is what a calling agent reads up front. */
+export const AGENTS_DOC_MAX_BYTES = 5 * 1024;
+/** Starts a section of AGENTS.md. */
+export const MARKDOWN_SECTION_START = '## ';
+export const MARKDOWN_FENCE = '```';
+export const SECTION_JOINER = '\n\n';
 
 export const NO_COMMAND = null;
 

@@ -19,11 +19,17 @@ import {
     TABLE_INDENT,
     UNKNOWN_COMMAND_MAX_IDS,
     BRIEF_LISTING_FLAGS,
+    AGENTS_ADDING_HEADING,
+    AGENTS_CALLING_HEADING,
+    AGENTS_RUNNING_HEADING,
+    AUTHORING_FLAG,
+    SECTION_JOINER,
     SEARCH_CLASH_FLAGS,
     SEARCH_EXAMPLE,
     SEARCH_FLAG
 } from '../constants.js';
 import { discover } from '../discover/discover.js';
+import { markdownSection } from '../help/markdown.js';
 import { readSearch, wordsOf } from '../help/search.js';
 import { CommandError, UsageError, isUsageError } from '../errors/errors.js';
 import {
@@ -339,14 +345,21 @@ function showBriefFor(session: Session, words: string[]): void {
 }
 
 /**
- * `help --agents`: the AGENTS.md of the running copy, as it is. It reads the running copy and never
- * the project's, so it works with a global `art` and no local install. It documents Artemis, not the
- * tool, so a published tool's CLI has it too. It takes no topic or command.
+ * `help --agents` and `help --authoring`: parts of the AGENTS.md of the running copy. `--agents` is
+ * the calling contract and points at `--authoring`; `--authoring` is how to write a command and how
+ * to set a project up. It reads the running copy and never the project's, so it works with a global
+ * `art` and no local install. It documents Artemis, not the tool, so a published tool's CLI has it
+ * too. Neither takes a topic or command, and they do not go with each other, `--brief` or `--search`.
  */
-function showAgents(session: Session, words: string[], brief: boolean): void {
-    if (words.length || brief) {
-        throw new UsageError(`${AGENTS_FLAG} takes no ${brief ? BRIEF_FLAG : 'topic or command'}`, {
-            hint: `Run "${session.bin} help ${AGENTS_FLAG}" on its own.`
+function showAgentsDoc(session: Session, words: string[], rest: string[]): void {
+    const flag = rest.includes(AGENTS_FLAG) ? AGENTS_FLAG : AUTHORING_FLAG;
+    const other = flag === AGENTS_FLAG ? AUTHORING_FLAG : AGENTS_FLAG;
+    const clash = [other, BRIEF_FLAG].find((token) => beforeTerminator(rest).includes(token));
+    const subject = clash ?? (words.length ? 'topic or command' : undefined);
+
+    if (subject !== undefined) {
+        throw new UsageError(`${flag} takes no ${subject}`, {
+            hint: `Run "${session.bin} help ${flag}" on its own.`
         });
     }
 
@@ -358,9 +371,30 @@ function showAgents(session: Session, words: string[], brief: boolean): void {
         });
     }
 
+    const headings =
+        flag === AGENTS_FLAG
+            ? [AGENTS_CALLING_HEADING]
+            : [AGENTS_ADDING_HEADING, AGENTS_RUNNING_HEADING];
+
+    const sections = headings.map((heading) => markdownSection(agents.markdown, heading));
+    const missing = headings.find((_, index) => sections[index] === undefined);
+
+    if (missing !== undefined) {
+        throw new CommandError(`${AGENTS_FILE} has no "${missing}" section`, {
+            hint: `Reinstall ${PACKAGE_NAME}.`
+        });
+    }
+
+    const body = sections.join(SECTION_JOINER);
+
+    const markdown =
+        flag === AGENTS_FLAG
+            ? `${body}${SECTION_JOINER}To write a command or set up a project: ${session.bin} help ${AUTHORING_FLAG}`
+            : body;
+
     session.state.commandId = HELP_WORD;
 
-    printResult(session.io, shown(session, agents.markdown.trimEnd(), agents));
+    printResult(session.io, shown(session, markdown, { file: agents.file, markdown }));
 }
 
 /** The flags of `help` that mean something else than a search, and cannot go with one. */
@@ -533,8 +567,8 @@ async function dispatch(session: Session, argv: string[]): Promise<number> {
 
         if (searched.present) {
             showSearch(session, searched, rest);
-        } else if (rest.includes(AGENTS_FLAG)) {
-            showAgents(session, helpWords, rest.includes(BRIEF_FLAG));
+        } else if (rest.includes(AGENTS_FLAG) || rest.includes(AUTHORING_FLAG)) {
+            showAgentsDoc(session, helpWords, rest);
         } else if (rest.includes(BRIEF_FLAG)) {
             showBriefFor(session, helpWords);
         } else {

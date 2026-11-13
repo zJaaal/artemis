@@ -719,6 +719,9 @@ export type ParseSkillWordsFn = (words: readonly string[]) => SkillWords;
 export type SkillCommandFn = (words: string[], options: CliOptions, cwd: string) => Promise<number>;
 
 /** Reads the AGENTS.md that ships beside the running copy; undefined when it is not there. */
+/** The lines of a markdown section, from its exact heading to the next `## ` heading (headings inside code fences do not count); undefined when the heading is missing. */
+export type MarkdownSectionFn = (markdown: string, heading: string) => string | undefined;
+
 export type ReadAgentsFn = () => { file: string; markdown: string } | undefined;
 
 export type ReadRunningPackageFn = () => RunningPackage;
