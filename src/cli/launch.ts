@@ -21,13 +21,21 @@ import { resolveWorld } from '../run/world.js';
 import { messageOf } from '../utils/error-message.js';
 import { hasLogFlag, splitLeadingFlags } from '../resolve/resolve.js';
 import { jsonRequested, quietRequested } from '../utils/terminator.js';
-import { BUILTINS, DOCTOR_WORD, INIT_WORD, SKILL_WORD, STATE_WORD } from './constants.js';
+import {
+    BUILTINS,
+    DOCTOR_WORD,
+    HISTORY_WORD,
+    INIT_WORD,
+    SKILL_WORD,
+    STATE_WORD
+} from './constants.js';
+import { historyCommand } from './history-command.js';
 import { skillCommand } from './skill-command.js';
 import { doctorCommand } from './doctor-command.js';
 import { initCommand } from './init-command.js';
 import { assertLeadingFlags } from './state.js';
 import { stateCommand } from './state-command.js';
-import { findProject, noProjectError, resolveSettings } from './settings.js';
+import { findProject, noProjectError, resolveAuditFile, resolveSettings } from './settings.js';
 import { flagWithoutCommand } from '../utils/flag-without-command.js';
 import { versionWarning } from './version-warning.js';
 
@@ -110,7 +118,8 @@ const SHIPPED_WORDS: readonly ShippedWord[] = [
     { word: INIT_WORD, run: initCommand },
     { word: STATE_WORD, run: (words, host, cwd) => stateCommand(words, host, cwd) },
     { word: SKILL_WORD, run: skillCommand },
-    { word: DOCTOR_WORD, run: doctorCommand }
+    { word: DOCTOR_WORD, run: doctorCommand },
+    { word: HISTORY_WORD, run: historyCommand }
 ];
 
 /** Prints the one-line version warning to stderr, when the running Artemis is not the project's. */
@@ -197,6 +206,8 @@ export const launch: CliFn = async (options = {}) => {
         ...host,
         ...found.settings,
         cwd,
-        ...(route === 'shipped' ? { builtins: BUILTINS } : {})
+        ...(route === 'shipped'
+            ? { builtins: BUILTINS, auditFile: resolveAuditFile(found.project) }
+            : {})
     });
 };

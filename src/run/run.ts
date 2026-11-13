@@ -1,6 +1,8 @@
 import { createContext } from '../context/context.js';
 import { createExec } from '../context/run-exec.js';
 import { readAgents } from '../edges/agents-file.js';
+import { appendAuditLine } from '../edges/audit-file.js';
+import { now } from '../edges/clock.js';
 import { openLogFile } from '../edges/log-file.js';
 import { workingDirectory } from '../edges/system.js';
 import {
@@ -17,6 +19,7 @@ import {
     DRY_RUN_EMPTY,
     DRY_RUN_HEADER,
     TABLE_INDENT,
+    AUDIT_WRITE_WARNING,
     UNKNOWN_COMMAND_MAX_IDS,
     BRIEF_LISTING_FLAGS,
     AGENTS_ADDING_HEADING,
@@ -28,6 +31,7 @@ import {
     SEARCH_EXAMPLE,
     SEARCH_FLAG
 } from '../constants.js';
+import { buildAuditLine } from '../audit/audit.js';
 import { discover } from '../discover/discover.js';
 import { markdownSection } from '../help/markdown.js';
 import { readSearch, wordsOf } from '../help/search.js';
@@ -47,6 +51,7 @@ import {
     usage
 } from '../help/help.js';
 import type {
+    AuditEdges,
     Builtin,
     ChildHandle,
     CommandEntry,
@@ -59,6 +64,7 @@ import type {
     Registry,
     Resolution,
     RunCliFn,
+    RunOptions,
     RunScope,
     RunState,
     Session,
@@ -77,6 +83,7 @@ import {
     suggest
 } from '../resolve/resolve.js';
 import { printResult } from './report.js';
+import { messageOf } from '../utils/error-message.js';
 import { flagWithoutCommand } from '../utils/flag-without-command.js';
 import { beforeTerminator, jsonRequested, quietRequested } from '../utils/terminator.js';
 
@@ -280,6 +287,9 @@ async function execute(
     });
 
     try {
+        // From here on the command is running: a refused or declined confirmation never got this far
+        session.state.audit.ran = true;
+
         const result = await entry.definition.run({ args: parsed.args, flags: parsed.flags, ctx });
 
         return { result, next };
@@ -593,6 +603,8 @@ async function dispatch(session: Session, argv: string[]): Promise<number> {
     }
 
     session.state.commandId = target.entry.id;
+    session.state.audit.tokens = [...leading, ...target.rest];
+    session.state.audit.recordable = true;
 
     const parsed = parse(
         target.entry.definition,
@@ -601,6 +613,8 @@ async function dispatch(session: Session, argv: string[]): Promise<number> {
     );
 
     if (parsed.global.help) {
+        // Reading the help of a command is not running it
+        session.state.audit.recordable = false;
         showHelpFor(session, target.entry.id.split(ID_SEPARATOR));
 
         return EXIT_CODE.OK;
@@ -631,6 +645,59 @@ async function dispatch(session: Session, argv: string[]): Promise<number> {
     return EXIT_CODE.OK;
 }
 
+/** The append and the clock of a run: the real ones, unless a test gave others. */
+const auditEdgesOf = (options: RunOptions): AuditEdges => ({
+    append: appendAuditLine,
+    now,
+    ...options.audit
+});
+
+/**
+ * Writes the audit line of a run, the last thing it does: after the result is printed and the log
+ * is closed, so a slow disk never delays it. It records a resolved project command only, and only
+ * when `run()` was given a file. A failed write is a warning, never a change of the result.
+ */
+function recordAudit(
+    options: RunOptions,
+    world: World,
+    state: RunState,
+    outcome: {
+        startedAt: number;
+        code: number;
+        error: unknown;
+        plan: readonly string[];
+        quiet: boolean;
+    }
+): void {
+    const { commandId, audit } = state;
+
+    if (options.auditFile === undefined || !audit.recordable || commandId === undefined) {
+        return;
+    }
+
+    const edges = auditEdgesOf(options);
+
+    const line = buildAuditLine({
+        commandId,
+        draft: audit,
+        startedAt: outcome.startedAt,
+        endedAt: edges.now(),
+        exitCode: outcome.code,
+        plan: outcome.plan,
+        error: outcome.error === undefined ? undefined : messageOf(outcome.error)
+    });
+
+    try {
+        edges.append(options.auditFile, JSON.stringify(line));
+    } catch (error) {
+        if (!outcome.quiet) {
+            world.io.stderr.write(
+                `${world.style.yellow('warning:')} ${AUDIT_WRITE_WARNING} ${options.auditFile}: ${messageOf(error)}\n`
+            );
+        }
+    }
+}
+
 /**
  * Runs a command line and resolves to the exit code; it never calls process.exit, so it can be
  * embedded and tested. Exit codes: 0 success, 1 the command failed, 2 the command line was wrong.
@@ -640,8 +707,16 @@ async function dispatch(session: Session, argv: string[]): Promise<number> {
 export const run: RunCliFn = async (argv, options) => {
     const world: World = { ...resolveWorld(options), bin: options.bin, cwd: options.cwd };
     const wantsJson = jsonRequested(argv);
-    const state: RunState = { commandId: undefined };
+
+    const state: RunState = {
+        commandId: undefined,
+        audit: { recordable: false, tokens: [], ran: false }
+    };
+
     const scope: RunScope = { plan: [] };
+    const startedAt = auditEdgesOf(options).now();
+    let code: number = EXIT_CODE.FAILED;
+    let failed: unknown;
 
     try {
         const registry = await discover(options.commandsDir);
@@ -652,12 +727,16 @@ export const run: RunCliFn = async (argv, options) => {
             );
         }
 
-        return await dispatch(
+        code = await dispatch(
             { ...world, registry, wantsJson, state, builtins: options.builtins, scope },
             argv
         );
+
+        return code;
     } catch (error) {
-        return reportError(error, {
+        failed = error;
+
+        code = reportError(error, {
             io: world.io,
             style: world.style,
             json: wantsJson,
@@ -665,6 +744,8 @@ export const run: RunCliFn = async (argv, options) => {
             bin: options.bin,
             log: scope.log?.path
         });
+
+        return code;
     } finally {
         scope.log?.close();
 
@@ -674,5 +755,13 @@ export const run: RunCliFn = async (argv, options) => {
                 `${world.style.yellow('warning:')} the log file ${scope.log.path} is incomplete: ${scope.log.failure()}\n`
             );
         }
+
+        recordAudit(options, world, state, {
+            startedAt,
+            code,
+            error: failed,
+            plan: scope.plan,
+            quiet: quietRequested(argv)
+        });
     }
 };

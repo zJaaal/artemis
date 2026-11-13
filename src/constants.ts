@@ -309,3 +309,18 @@ export const VERSION_MAJOR_MINOR = 2;
 export const VERSION_MAJOR_INDEX = 0;
 export const VERSION_MINOR_INDEX = 1;
 export const VERSION_PATCH_INDEX = 2;
+
+// ---------------------------------------------------------------------------------------------
+// The audit trail
+// ---------------------------------------------------------------------------------------------
+
+/** One line per run of a project command, appended here under the state folder. */
+export const AUDIT_FILE_NAME = 'audit.jsonl';
+/** What the file becomes when it passes `AUDIT_MAX_BYTES`: one old file, replaced each time. */
+export const AUDIT_ROTATED_FILE_NAME = 'audit.1.jsonl';
+export const AUDIT_MAX_BYTES = 1024 * 1024;
+export const AUDIT_CONFIG_KEY = 'audit';
+export const AUDIT_WRITE_WARNING = 'could not write the audit trail';
+export const NEWLINE = '\n';
+export const YES_FLAG_TOKENS: readonly string[] = ['--yes', '-y'];
+export const DRY_RUN_FLAG_TOKEN = '--dry-run';

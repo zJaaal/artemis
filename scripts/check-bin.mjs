@@ -138,6 +138,15 @@ try {
 
     console.log('ok   the installed art and artemis run the commands of the project they are in');
 
+    // Every run of a project command leaves one line in the audit trail, and `art history` returns it.
+    const history = json(execute(art, ['history', 'hello', '--json'], project)).result;
+
+    assert.ok(history.entries.length >= 1, 'art history returns the runs of hello');
+    assert.equal(history.entries[0].command, 'hello');
+    assert.equal(history.entries[0].exitCode, 0);
+    assert.ok(fs.existsSync(path.join(project, 'state', 'audit.jsonl')), 'in state/audit.jsonl');
+    console.log('ok   every run of a project command leaves a line that art history returns');
+
     // A detached child is still running after `art` has exited, and its output went to its log file.
     const background = json(execute(art, ['background', '--json'], project)).result;
 
@@ -302,7 +311,7 @@ export default defineCommand({
 
     assert.deepEqual(
         builtins.map((builtin) => builtin.id),
-        ['init', 'state', 'skill', 'doctor'],
+        ['init', 'state', 'skill', 'doctor', 'history'],
         'help --json lists the built-in words'
     );
 

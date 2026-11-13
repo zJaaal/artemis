@@ -969,6 +969,10 @@ export type RunOptions = {
     builtins?: readonly Builtin[] | undefined;
     /** The folder a relative `--log` path is resolved against. Default: the current folder of the process. */
     cwd?: string | undefined;
+    /** The absolute path of the audit trail. Without it `run()` records nothing; the shipped `art` passes it. */
+    auditFile?: string | undefined;
+    /** The audit trail's edges, for a test: the append and the clock. */
+    audit?: Partial<AuditEdges> | undefined;
 };
 
 export type RunCliFn = (argv: string[], options: RunOptions) => Promise<number>;
@@ -987,7 +991,10 @@ export type SystemProcess = {
 export type CurrentProcessFn = () => SystemProcess;
 
 /** The options that describe the host a run happens in; `run()` and `cli()` both take them. */
-export type HostOptions = Pick<RunOptions, 'stdout' | 'stderr' | 'interactive' | 'color' | 'env'>;
+export type HostOptions = Pick<
+    RunOptions,
+    'stdout' | 'stderr' | 'interactive' | 'color' | 'env' | 'audit'
+>;
 
 /** What a run resolved from the host options and the process, before any command is looked at. */
 export type Environment = { io: IO; style: Style; canPrompt: boolean };
@@ -997,7 +1004,59 @@ export type World = Environment & { bin: string; cwd?: string | undefined };
 export type ResolveWorldFn = (options: HostOptions) => Environment;
 
 /** The id of the command a run is about, filled in as the command line is understood. */
-export type RunState = { commandId: string | undefined };
+export type RunState = {
+    commandId: string | undefined;
+    /** What the audit trail needs, filled in as the command line is understood. */
+    audit: AuditDraft;
+};
+
+/**
+ * What a run knows about itself for its audit line. `recordable` is set once a project command is
+ * resolved and its words are about to be parsed; `--help` takes it back. `tokens` are the words
+ * after the command id, global flags still in them. `ran` is set when the command's `run` starts.
+ */
+export type AuditDraft = { recordable: boolean; tokens: string[]; ran: boolean };
+
+/** One line of the audit trail. `plan` only on a dry run, `error` only on a failure. */
+export type AuditLine = {
+    time: string;
+    command: string;
+    argv: string[];
+    ran: boolean;
+    dryRun: boolean;
+    yes: boolean;
+    exitCode: number;
+    ms: number;
+    plan?: string[];
+    error?: string;
+};
+
+/** What `buildAuditLine` is made from. */
+export type AuditFacts = {
+    commandId: string;
+    draft: AuditDraft;
+    startedAt: number;
+    endedAt: number;
+    exitCode: number;
+    plan: readonly string[];
+    error: string | undefined;
+};
+
+/** Appends one line to the audit file, rotating it first when it is full. Throws when it cannot write. */
+export type AppendAuditFn = (file: string, line: string) => void;
+
+export type StripGlobalFlagsFn = (tokens: readonly string[]) => string[];
+export type BuildAuditLineFn = (facts: AuditFacts) => AuditLine;
+
+/** The lines of an audit file that could be read, in file order, and how many could not. */
+export type AuditRead = { entries: AuditLine[]; skipped: number };
+export type ParseAuditTextFn = (text: string) => AuditRead;
+
+/** Where the audit line goes, and the clock. Edges, injected so a test fakes them. */
+export type AuditEdges = {
+    append: (file: string, line: string) => void;
+    now: () => number;
+};
 
 /** What one run collects across the commands it invokes: the dry-run plan. */
 export type RunScope = {
@@ -1063,6 +1122,8 @@ export type ArtemisConfig = {
     bin?: string;
     /** Where the store kit keeps its documents, relative to the folder of that package.json. Default "state". Read by `art state` and `defineStore({ project })`. */
     stateDir?: string;
+    /** `false` turns the audit trail off. Default true. */
+    audit?: boolean;
 };
 
 /** The folder holding the nearest qualifying package.json, and what that file says. */
@@ -1102,6 +1163,9 @@ export type FindProjectFn = (
 
 /** The folder the store kit keeps its documents in (absolute). Throws a CommandError when the "artemis" key has a bad shape. */
 export type ResolveStateDirFn = (project: Project) => string;
+
+/** Where the audit trail goes (absolute), or undefined when the project turned it off. */
+export type ResolveAuditFileFn = (project: Project) => string | undefined;
 
 /** What to say when no project is found from a folder upwards. */
 export type NoProjectErrorFn = (start: string, route: CliRoute) => CommandError;
@@ -1307,3 +1371,28 @@ export type FlagWithoutCommandFn = (
     bin: string | undefined,
     subject?: string
 ) => UsageError;
+
+// ---------------------------------------------------------------------------------------------
+// `art history`
+// ---------------------------------------------------------------------------------------------
+
+/** What the words after `history` ask for. */
+export type HistoryWords = {
+    /** The words of the command id to filter by, joined by spaces; none shows every command. */
+    command: string[];
+    limit: number;
+    json: boolean;
+    help: boolean;
+    quiet: boolean;
+};
+
+export type ParseHistoryWordsFn = (words: readonly string[]) => HistoryWords;
+
+/** The newest runs first: those of one command id when given, at most `limit`. */
+export type SelectHistoryFn = (
+    entries: readonly AuditLine[],
+    selection: { commandId: string | undefined; limit: number }
+) => AuditLine[];
+
+export type HistoryLineFn = (entry: AuditLine) => string;
+export type HistoryCommandFn = (words: string[], host: CliOptions, cwd: string) => Promise<number>;

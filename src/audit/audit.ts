@@ -1,0 +1,114 @@
+import {
+    DRY_RUN_FLAG_TOKEN,
+    GLOBAL_FLAG_TOKENS,
+    LOG_FLAG,
+    LOG_FLAG_PREFIX,
+    NEWLINE,
+    TERMINATOR,
+    YES_FLAG_TOKENS
+} from '../constants.js';
+import type {
+    AuditLine,
+    BuildAuditLineFn,
+    ParseAuditTextFn,
+    StripGlobalFlagsFn
+} from '../models.js';
+import { isRecord } from '../utils/is-record.js';
+
+// Pure: the audit line of a run, and the lines of an audit file read back.
+
+/** Whether a flag token is a global flag that stands alone (not `--log`, which takes a value). */
+const isStandalone = (token: string): boolean =>
+    token !== LOG_FLAG && GLOBAL_FLAG_TOKENS.includes(token);
+
+/**
+ * The words of a command without its global flags: `--json`, `-y`, `--log <file>`, `--log=<file>`
+ * and the like are removed, with the value of `--log`. After `--` everything is a plain argument,
+ * and `--` itself stays.
+ */
+export const stripGlobalFlags: StripGlobalFlagsFn = (tokens) => {
+    const kept: string[] = [];
+
+    for (let index = 0; index < tokens.length; index++) {
+        const token = tokens[index] ?? '';
+
+        if (token === TERMINATOR) {
+            kept.push(...tokens.slice(index));
+
+            break;
+        }
+
+        if (token === LOG_FLAG) {
+            index++;
+        } else if (!isStandalone(token) && !token.startsWith(LOG_FLAG_PREFIX)) {
+            kept.push(token);
+        }
+    }
+
+    return kept;
+};
+
+/** The words before `--`: a flag typed after it is a plain argument. */
+const beforeTerminator = (tokens: readonly string[]): readonly string[] => {
+    const end = tokens.indexOf(TERMINATOR);
+
+    return end === -1 ? tokens : tokens.slice(0, end);
+};
+
+/** The audit line of a run: what was asked, whether the command ran, how it ended and how long it took. */
+export const buildAuditLine: BuildAuditLineFn = (facts) => {
+    const { draft, plan, error } = facts;
+    const flags = beforeTerminator(draft.tokens);
+    const dryRun = flags.includes(DRY_RUN_FLAG_TOKEN);
+
+    return {
+        time: new Date(facts.startedAt).toISOString(),
+        command: facts.commandId,
+        argv: stripGlobalFlags(draft.tokens),
+        ran: draft.ran,
+        dryRun,
+        yes: YES_FLAG_TOKENS.some((token) => flags.includes(token)),
+        exitCode: facts.exitCode,
+        ms: facts.endedAt - facts.startedAt,
+        ...(dryRun ? { plan: [...plan] } : {}),
+        ...(error === undefined ? {} : { error })
+    };
+};
+
+/** Whether a parsed line has what every reader needs: when, which command, whether it ran. */
+const isAuditLine = (value: unknown): value is AuditLine =>
+    isRecord(value) &&
+    typeof value.time === 'string' &&
+    typeof value.command === 'string' &&
+    typeof value.ran === 'boolean' &&
+    typeof value.exitCode === 'number';
+
+/** The lines of an audit file, in file order. A line that is not one is skipped and counted. */
+export const parseAuditText: ParseAuditTextFn = (text) => {
+    const entries: AuditLine[] = [];
+    let skipped = 0;
+
+    text.split(NEWLINE)
+        .filter((line) => line.trim() !== '')
+        .forEach((line) => {
+            const parsed = parseJson(line);
+
+            if (isAuditLine(parsed)) {
+                entries.push(parsed);
+            } else {
+                skipped++;
+            }
+        });
+
+    return { entries, skipped };
+};
+
+/** The value of a line of JSON, or undefined when it is not JSON. */
+function parseJson(line: string): unknown {
+    try {
+        return JSON.parse(line);
+    } catch {
+        // A half-written or hand-edited line is skipped and counted by the reader, never an error
+        return undefined;
+    }
+}

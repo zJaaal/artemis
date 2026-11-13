@@ -288,7 +288,8 @@ describe('help: the binary’s own words', () => {
             'init',
             'state',
             'skill',
-            'doctor'
+            'doctor',
+            'history'
         ]);
     });
 

@@ -114,6 +114,32 @@ export const SKILL_SHADOW_WARNING =
 export const SKILL_OVERWRITE_HINT_PREFIX = 'Pass --yes to overwrite';
 export const SKILL_WRITE_HINT = 'Give --write the path of a file, in a folder that can be created.';
 
+/** `history` shows what the audit trail recorded: the newest runs of project commands first. */
+export const HISTORY_WORD = 'history';
+export const HISTORY_USAGE_LINE = `${HISTORY_WORD} [command words]... [--limit <n>] [--json] [--quiet]`;
+export const HISTORY_DEFAULT_LIMIT = 20;
+export const HISTORY_HELP = `Usage: ${HISTORY_USAGE_LINE}
+
+Shows the runs of project commands that the audit trail recorded, the newest first: when, which command, whether it was a dry run or its exit code, and its arguments. The command words filter to one command (its id, or an alias); --limit says how many to show (default ${HISTORY_DEFAULT_LIMIT}).
+
+The trail is audit.jsonl in the state folder ("artemis".stateDir in package.json, default "state"), and "artemis": { "audit": false } turns it off.`;
+
+export const HISTORY_FLAGS = {
+    json: '--json',
+    help: '--help',
+    helpShort: '-h',
+    quiet: '--quiet',
+    limit: '--limit'
+} as const;
+
+export const HISTORY_SHADOW_WARNING =
+    'This project has a command or topic called "history", and the history word of this binary hides it: it cannot be run through here. Rename it.';
+export const HISTORY_LIMIT_HINT =
+    'Give --limit a whole number of runs, 1 or more: history --limit 5';
+export const NOTHING_RECORDED = 'Nothing recorded yet.';
+export const HISTORY_DRY_RUN_TEXT = 'dry run';
+export const HISTORY_LIMIT_PREFIX = `${HISTORY_FLAGS.limit}=`;
+
 /** The words of the shipped binary that help lists under "Built-in" and `help --json` under "builtins". */
 export const BUILTINS: readonly Builtin[] = [
     {
@@ -157,6 +183,21 @@ export const BUILTINS: readonly Builtin[] = [
         args: [],
         flags: {},
         examples: [DOCTOR_WORD]
+    },
+    {
+        id: HISTORY_WORD,
+        usage: HISTORY_USAGE_LINE,
+        description: 'Show the recorded runs of project commands, newest first',
+        args: [
+            { name: 'command', description: 'Only this command, by id or alias (several words)' }
+        ],
+        flags: {
+            limit: {
+                type: 'string',
+                description: `How many runs to show (default ${HISTORY_DEFAULT_LIMIT})`
+            }
+        },
+        examples: [HISTORY_WORD, `${HISTORY_WORD} db reset`, `${HISTORY_WORD} --limit 5 --json`]
     }
 ];
 
