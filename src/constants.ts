@@ -333,6 +333,7 @@ export const AUDIT_CONFIG_KEY = 'audit';
 export const AUDIT_WRITE_WARNING = 'could not write the audit trail';
 export const NEWLINE = '\n';
 export const POSIX_SEPARATOR = '/';
+export const PARENT_FOLDER = '..';
 export const YES_FLAG_TOKENS: readonly string[] = ['--yes', '-y'];
 export const DRY_RUN_FLAG_TOKEN = '--dry-run';
 

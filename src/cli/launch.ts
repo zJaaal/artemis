@@ -36,6 +36,7 @@ import { initCommand } from './init-command.js';
 import { assertLeadingFlags } from './state.js';
 import { stateCommand } from './state-command.js';
 import { findProject, noProjectError, resolveAuditFile, resolveSettings } from './settings.js';
+import { pointsOutside } from '../utils/points-outside.js';
 import { flagWithoutCommand } from '../utils/flag-without-command.js';
 import { versionWarning } from './version-warning.js';
 
@@ -62,13 +63,6 @@ const folderOfRoot: FolderOfRootFn = (root) => {
     const target = pathOfRoot(root);
 
     return isFolder(target) ? target : path.dirname(target);
-};
-
-/** Whether the commands folder is already outside the project, so pointing it at a parent is no news. */
-const pointsOutside = (commandsDir: string, projectRoot: string): boolean => {
-    const relative = path.relative(projectRoot, commandsDir);
-
-    return relative === '..' || relative.startsWith(`..${path.sep}`) || path.isAbsolute(relative);
 };
 
 /**

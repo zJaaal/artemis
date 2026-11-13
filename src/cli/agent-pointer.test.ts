@@ -87,6 +87,10 @@ describe('gitignoreLine', () => {
         expect(gitignoreLine('/work', '/elsewhere/state')).toBeUndefined();
     });
 
+    test('a state folder whose name only starts with two dots is inside the project', () => {
+        expect(gitignoreLine('/work', '/work/..state')).toBe('/..state/audit*.jsonl');
+    });
+
     test('a sibling folder that only starts like the project is outside it', () => {
         expect(gitignoreLine('/work/app', '/work/app-state')).toBeUndefined();
     });
