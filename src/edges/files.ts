@@ -9,6 +9,7 @@ import { isRecord } from '../utils/is-record.js';
 import { codeOf } from '../utils/error-code.js';
 
 import type {
+    AppendTextFn,
     CreateExclusiveFn,
     IsFolderFn,
     ListDirectoryFn,
@@ -72,6 +73,10 @@ export const makeDirectory: MakeDirectoryFn = (dir) => {
 
 export const writeText: WriteTextFn = (file, text) => {
     fs.writeFileSync(file, text);
+};
+
+export const appendText: AppendTextFn = (file, text) => {
+    fs.appendFileSync(file, text);
 };
 
 /** Removing a file that is not there is not an error: the goal is that it is gone. */

@@ -442,14 +442,14 @@ export default defineCommand({
     const skill = execute(art, ['skill'], agentic).out;
 
     assert.match(skill, /^---\nname: art\n/);
-    assert.ok(skill.includes('`art help --agents`'), 'the skill names help --agents');
+    assert.ok(skill.includes('`art help --authoring`'), 'the skill names help --authoring');
 
     assert.ok(
         skill.includes('- `art wipe`: Delete the data (`--dry-run`)'),
         'and lists the destructive commands'
     );
 
-    console.log('ok   art skill is built from the manifest and points at help --agents');
+    console.log('ok   art skill is built from the manifest and points at help --authoring');
 
     // The packed AGENTS.md, from a project with no local copy: it must name nothing the package does not ship.
     const agents = json(execute(art, ['help', '--agents', '--json'], agentic)).result;

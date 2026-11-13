@@ -169,6 +169,12 @@ export const DEPENDENCY_FIELDS = ['dependencies', 'devDependencies'] as const;
 export const DOCTOR_COMMAND_HINT = 'Run art doctor.';
 export const VERSION_WARNING_LABEL = 'warning:';
 /** `art skill`: how many examples the generated skill lists at most, and the file `help --agents` prints. */
+/** The destructive commands the generated skill lists before it says how many more there are. */
+export const SKILL_MAX_DESTRUCTIVE = 20;
+/** The most bytes the "Writing a command" section may take, with the default bin and commands folder. */
+export const SKILL_AUTHORING_MAX_BYTES = 900;
+/** The most bytes the generated skill of the fixture project may take. */
+export const SKILL_MAX_BYTES = 4 * 1024;
 export const SKILL_MAX_EXAMPLES = 10;
 export const AGENTS_FILE = 'AGENTS.md';
 export const LINE_BREAKS = /\s*[\r\n]+\s*/g;
@@ -322,6 +328,7 @@ export const AUDIT_MAX_BYTES = 1024 * 1024;
 export const AUDIT_CONFIG_KEY = 'audit';
 export const AUDIT_WRITE_WARNING = 'could not write the audit trail';
 export const NEWLINE = '\n';
+export const POSIX_SEPARATOR = '/';
 export const YES_FLAG_TOKENS: readonly string[] = ['--yes', '-y'];
 export const DRY_RUN_FLAG_TOKEN = '--dry-run';
 
@@ -336,3 +343,21 @@ export const HEALTH_PREVIEW_RUNS = 3;
 /** A command whose newest run is older than this many days is reported. */
 export const HEALTH_STALE_DAYS = 60;
 export const MS_PER_DAY = 24 * 60 * 60 * 1000;
+
+// ---------------------------------------------------------------------------------------------
+// `art init`: the agent pointer and the gitignore line
+// ---------------------------------------------------------------------------------------------
+
+export const AGENTS_DOC_FILE = 'AGENTS.md';
+export const CLAUDE_DOC_FILE = 'CLAUDE.md';
+export const GITIGNORE_FILE = '.gitignore';
+/** A file that already has this text already has the pointer, whatever its bin. */
+export const POINTER_MARKER = 'help --json --brief';
+/** The line of CLAUDE.md that imports AGENTS.md: the pointer is then already read. */
+export const AGENTS_IMPORT = /^@AGENTS\.md\b/m;
+/** What a new AGENTS.md starts with, before the pointer. */
+export const NEW_AGENTS_TITLE = '# AGENTS.md';
+/** The most bytes the pointer may take with the default bin. */
+export const INIT_POINTER_MAX_BYTES = 400;
+export const CRLF_EOL = '\r\n';
+export const LF_EOL = '\n';

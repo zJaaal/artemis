@@ -1,13 +1,25 @@
 import path from 'node:path';
 
-import { CONFIG_KEY, DEFAULT_COMMANDS_FOLDER, MANIFEST_FILE } from '../constants.js';
 import {
+    AGENTS_DOC_FILE,
+    CLAUDE_DOC_FILE,
+    CONFIG_KEY,
+    DEFAULT_BIN_NAME,
+    DEFAULT_COMMANDS_FOLDER,
+    DEFAULT_STATE_FOLDER,
+    GITIGNORE_FILE,
+    MANIFEST_FILE
+} from '../constants.js';
+import {
+    appendText,
     createExclusive,
     isFolder,
     listDirectory,
     makeDirectory,
     pathExists,
     readManifest,
+    readTextIfExists,
+    realPathOrResolve,
     writeText
 } from '../edges/files.js';
 import { CommandError } from '../errors/errors.js';
@@ -18,8 +30,10 @@ import type {
     InitPlan,
     InitProjectFn,
     InitStep,
+    PointerInput,
     PackageNameForFn,
-    PlanInitFn
+    PlanInitFn,
+    TextFile
 } from '../models.js';
 import {
     CRLF,
@@ -37,8 +51,9 @@ import {
     SHADOW_WARNING,
     TYPE_WARNING
 } from './constants.js';
+import { gitignoreLine, planPointer } from './agent-pointer.js';
 import { shadowsWord } from './shadow.js';
-import { resolveSettings } from './settings.js';
+import { resolveSettings, resolveStateDir } from './settings.js';
 
 /** The indentation a package.json already uses, so editing it does not reformat the whole file. */
 export const detectIndent: DetectIndentFn = (text) =>
@@ -150,6 +165,10 @@ export const planInit: PlanInitFn = (input) => {
         plan.warnings.push(SHADOW_WARNING);
     }
 
+    if (input.pointer) {
+        plan.steps.push(...planPointer(input.pointer));
+    }
+
     return plan;
 };
 
@@ -169,6 +188,12 @@ function applyStep(step: InitStep): void {
         return;
     }
 
+    if (step.mode === 'append') {
+        appendText(step.path, step.text);
+
+        return;
+    }
+
     if (!createExclusive(step.path, step.text)) {
         throw new CommandError(`${step.path} already exists`, {
             hint: 'init never overwrites a file. Move it, or run init in another folder.'
@@ -183,6 +208,31 @@ function assertCommandsDirIsUsable(commandsDir: string): void {
             hint: `Move it, or set "${CONFIG_KEY}": { "commandsDir" } in ${MANIFEST_FILE} to another folder.`
         });
     }
+}
+
+/** A text file of the folder, with the file it really is; undefined when it is not there. */
+function readTextFile(file: string): TextFile | undefined {
+    const text = readTextIfExists(file);
+
+    return text === undefined ? undefined : { path: file, real: realPathOrResolve(file), text };
+}
+
+/** What the agent pointer and the gitignore line are decided from: the files of the folder, and the settings. */
+function readPointerInput(
+    dir: string,
+    manifest: Record<string, unknown> | undefined
+): PointerInput {
+    const project = manifest ? { root: dir, manifest } : undefined;
+    const stateDir = project ? resolveStateDir(project) : path.join(dir, DEFAULT_STATE_FOLDER);
+
+    return {
+        dir,
+        bin: project ? resolveSettings(project, 'shipped').bin : DEFAULT_BIN_NAME,
+        agents: readTextFile(path.join(dir, AGENTS_DOC_FILE)),
+        claude: readTextFile(path.join(dir, CLAUDE_DOC_FILE)),
+        gitignore: readTextFile(path.join(dir, GITIGNORE_FILE)),
+        gitignoreLine: gitignoreLine(dir, stateDir)
+    };
 }
 
 /**
@@ -213,14 +263,18 @@ export const initProject: InitProjectFn = (dir) => {
         commandsDir,
         commandsDirExists,
         commandsDirIsEmpty: commandsDirExists && listDirectory(commandsDir).length === 0,
-        shadowsCommand: shadowsWord(commandsDir, INIT_WORD)
+        shadowsCommand: shadowsWord(commandsDir, INIT_WORD),
+        pointer: readPointerInput(dir, manifest)
     });
 
     plan.steps.forEach(applyStep);
 
+    const isAppend = (step: InitStep): boolean => step.kind === 'file' && step.mode === 'append';
+
     return {
         root: dir,
-        created: plan.steps.map((step) => step.path),
+        created: plan.steps.filter((step) => !isAppend(step)).map((step) => step.path),
+        changed: plan.steps.filter(isAppend).map((step) => step.path),
         kept: plan.kept,
         warnings: plan.warnings
     };

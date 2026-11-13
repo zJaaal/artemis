@@ -429,6 +429,8 @@ export type ProcessIdFn = () => number;
 export type ErrorCodeFn = (error: unknown) => string | undefined;
 export type GitRootFn = (cwd: string) => string | null;
 export type WriteTextFn = (file: string, text: string) => void;
+/** Adds text to the end of a file that exists. */
+export type AppendTextFn = (file: string, text: string) => void;
 export type RemoveFileFn = (file: string) => void;
 /** Replaces a file with this text so that nobody ever reads it half written. */
 export type WriteAtomicFn = (file: string, text: string) => void;
@@ -758,7 +760,8 @@ export type DoctorCommandFn = (
 export type SkillPackage = { name: string | undefined; description: string | undefined };
 
 /** The `SKILL.md` a manifest and a package give: short, fixed and never stale. */
-export type BuildSkillFn = (manifest: Manifest, pkg: SkillPackage) => string;
+/** `commandsDir` is the commands folder relative to the project, written with forward slashes. */
+export type BuildSkillFn = (manifest: Manifest, pkg: SkillPackage, commandsDir: string) => string;
 
 /** What the words after `skill` ask for. */
 export type SkillWords = {
@@ -1259,13 +1262,36 @@ export type InitInput = {
     commandsDirIsEmpty: boolean;
     /** Whether a command or topic named `init` is already there, which the `init` word would hide. */
     shadowsCommand: boolean;
+    /** What the agent pointer and the gitignore line need; without it `init` writes neither. */
+    pointer?: PointerInput;
 };
+
+/** A text file of the folder: where it is, the file it really is (links followed), and what it holds. */
+export type TextFile = { path: string; real: string; text: string };
+
+/** What the pointer and the gitignore line are decided from. */
+export type PointerInput = {
+    dir: string;
+    /** The name the pointer tells an agent to run: the `bin` setting, default `art`. */
+    bin: string;
+    agents: TextFile | undefined;
+    claude: TextFile | undefined;
+    gitignore: TextFile | undefined;
+    /** The `.gitignore` line for the audit files; undefined when the state folder is outside the project. */
+    gitignoreLine: string | undefined;
+};
+
+export type PointerText = (bin: string) => string;
+export type AppendedTextFn = (existing: string, addition: string) => string;
+export type PlanPointerFn = (input: PointerInput) => InitStep[];
+export type GitignoreLineFn = (dir: string, stateDir: string) => string | undefined;
 
 /** One thing `init` does. It never overwrites a file that exists. */
 export type InitStep =
     | { kind: 'folder'; path: string }
     /** `create` fails if the file appears in the meantime; `update` is the one deliberate rewrite, of package.json. */
-    | { kind: 'file'; mode: 'create' | 'update'; path: string; text: string };
+    /** `append` adds `text` to the end of a file that exists, and changes nothing else in it. */
+    | { kind: 'file'; mode: 'create' | 'update' | 'append'; path: string; text: string };
 
 export type InitPlan = {
     steps: InitStep[];
@@ -1277,7 +1303,14 @@ export type InitPlan = {
 /** Pure: decides what to create, from what the folder already has. */
 export type PlanInitFn = (input: InitInput) => InitPlan;
 
-export type InitResult = { root: string; created: string[]; kept: string[]; warnings: string[] };
+/** `created` are the files made new (or the package.json that gained its key), `changed` the files text was appended to. */
+export type InitResult = {
+    root: string;
+    created: string[];
+    changed: string[];
+    kept: string[];
+    warnings: string[];
+};
 
 /** Reads the folder, plans, and does it. Throws a CommandError for a package.json it cannot use. */
 export type InitProjectFn = (dir: string) => InitResult;

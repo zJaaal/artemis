@@ -9,14 +9,15 @@ import { wordHelp } from './word-help.js';
 
 const KNOWN_WORDS: readonly string[] = Object.values(INIT_FLAGS);
 
-function describeResult({ created, kept, warnings }: InitResult): string {
+function describeResult({ created, changed, kept, warnings }: InitResult): string {
     const lines = [
         ...created.map((file) => `Created ${file}`),
+        ...changed.map((file) => `Changed ${file} (text added at the end)`),
         ...kept.map((file) => `Kept    ${file} (already there)`),
         ...warnings.map((warning) => `Warning: ${warning}`)
     ];
 
-    return created.length
+    return created.length || changed.length
         ? lines.join('\n')
         : ['Already a project: nothing to create.', ...lines].join('\n');
 }

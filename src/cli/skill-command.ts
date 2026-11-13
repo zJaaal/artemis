@@ -1,6 +1,6 @@
 import path from 'node:path';
 
-import { EXIT_CODE, NOT_INTERACTIVE_MESSAGE } from '../constants.js';
+import { EXIT_CODE, NOT_INTERACTIVE_MESSAGE, POSIX_SEPARATOR } from '../constants.js';
 import { createPrompter } from '../context/context.js';
 import { discover } from '../discover/discover.js';
 import { isFolder, makeDirectory, pathExists, readManifest, writeText } from '../edges/files.js';
@@ -72,10 +72,14 @@ export const skillCommand: SkillCommandFn = async (words, options, cwd) => {
     const registry = await discover(commandsDir);
     const { name, description } = project.manifest;
 
-    const markdown = buildSkill(manifest(bin, registry), {
-        name: isNonEmptyText(name) ? name : undefined,
-        description: isNonEmptyText(description) ? description : undefined
-    });
+    const markdown = buildSkill(
+        manifest(bin, registry),
+        {
+            name: isNonEmptyText(name) ? name : undefined,
+            description: isNonEmptyText(description) ? description : undefined
+        },
+        path.relative(project.root, commandsDir).split(path.sep).join(POSIX_SEPARATOR)
+    );
 
     if (parsed.write === undefined) {
         printResult(io, {
