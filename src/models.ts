@@ -322,6 +322,29 @@ export type UsageErrorOptions = {
 /** The words of a text for search and suggestions: lowercase, without short and stop words. */
 export type WordsOfFn = (text: string) => string[];
 
+/** What `--search` took from the words after `help`: whether it was typed, its value, and the topic words left. */
+export type SearchRead = { present: boolean; query: string | undefined; words: string[] };
+export type ReadSearchFn = (tokens: readonly string[]) => SearchRead;
+
+/** Words of the commands by word and by long-enough prefix, each pointing at the commands that have it. */
+export type WordIndex = { whole: Map<string, Set<number>>; prefixed: Map<string, Set<number>> };
+
+export type SearchCommandsFn = (input: {
+    commands: readonly ManifestCommand[];
+    topics: readonly TopicEntry[];
+    query: string;
+    topicId?: string | undefined;
+}) => ManifestCommand[];
+
+/** The result of `help --search`: the query as typed, the best commands as brief entries, how to read one in full. */
+export type SearchResult = { query: string; matches: BriefCommand[]; more: string };
+
+export type SearchResultFn = (
+    everything: Manifest,
+    query: string,
+    topicId?: string
+) => SearchResult;
+
 // ---------------------------------------------------------------------------------------------
 // Parsing
 // ---------------------------------------------------------------------------------------------

@@ -204,6 +204,17 @@ export const SEARCH_STOP_WORDS: readonly string[] = [
     'on',
     'an'
 ];
+export const SEARCH_FLAG = '--search';
+/** The flags of `help` that cannot go with a search. */
+export const SEARCH_CLASH_FLAGS: readonly string[] = ['--brief', '--agents', '--authoring'];
+export const SEARCH_FLAG_PREFIX = `${SEARCH_FLAG}=`;
+/** A query word matches a longer command word it is a prefix of, when it has at least this many characters. */
+export const SEARCH_PREFIX_MIN = 4;
+/** Added once to the score of a command when a query word matches a word of its id. */
+export const SEARCH_ID_BONUS = 1;
+export const SEARCH_MAX_MATCHES = 5;
+export const SEARCH_NO_MATCH_TEXT = 'No command matches.';
+export const SEARCH_EXAMPLE = 'reset database';
 /** The most ids "did you mean one of" names. */
 export const UNKNOWN_COMMAND_MAX_IDS = 3;
 /** What a usage hint says after the usage line, before the global flags. */

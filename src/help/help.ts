@@ -3,7 +3,9 @@ import {
     ANSI_RESET,
     GLOBAL_FLAGS,
     BRIEF_MORE_SUFFIX,
+    BRIEF_FLAG,
     BRIEF_FOLD_THRESHOLD,
+    SEARCH_NO_MATCH_TEXT,
     BRIEF_SEARCH_SUFFIX,
     BRIEF_TOPIC_MORE_SUFFIX,
     GLOBAL_FLAGS_TEXT,
@@ -17,6 +19,8 @@ import {
     TABLE_INDENT,
     USAGE_REPEAT
 } from '../constants.js';
+import { isWithin, topicPrefixes } from '../utils/topics.js';
+import { searchCommands } from './search.js';
 import type {
     ArgDefinition,
     BriefCommand,
@@ -41,6 +45,8 @@ import type {
     TopicEntry,
     TopicManifestFn,
     Registry,
+    SearchResult,
+    SearchResultFn,
     RootHelpFn,
     StyleFn,
     Style,
@@ -342,17 +348,7 @@ export const manifest: ManifestFn = (bin, registry, builtins): Manifest => ({
     ...(builtins === undefined ? {} : { builtins: describeBuiltins(builtins) })
 });
 
-const isWithin = (id: string, topicId: string): boolean =>
-    id === topicId || id.startsWith(`${topicId}${ID_SEPARATOR}`);
-
-/** Every topic id above a command id: `dotcms db seed` sits under `dotcms` and `dotcms db`. */
-const topicPrefixes = (id: string): string[] => {
-    const words = id.split(ID_SEPARATOR).slice(0, -1);
-
-    return words.map((_, index) => words.slice(0, index + 1).join(ID_SEPARATOR));
-};
-
-const briefCommand = (command: ManifestCommand): BriefCommand => ({
+export const briefCommand = (command: ManifestCommand): BriefCommand => ({
     id: command.id,
     description: command.description,
     usage: command.usage,
@@ -502,6 +498,27 @@ export const briefHelp = (
 
     return sections.join(SECTION_SEPARATOR);
 };
+
+/** The result of `help --search`: the best commands for a query, as brief entries. */
+export const searchResult: SearchResultFn = (everything, query, topicId) => ({
+    query,
+    matches: searchCommands({
+        commands: everything.commands,
+        topics: everything.topics,
+        query,
+        topicId
+    }).map(briefCommand),
+    more: `${everything.bin} ${BRIEF_MORE_SUFFIX}`
+});
+
+/** `help --search` as text: the matches as `help --brief` prints commands, best first, or that none matches. */
+export const searchText = (result: SearchResult, bin: string, style: Style): string =>
+    result.matches.length
+        ? [
+              section('Commands', table(briefRows(result.matches), style), style),
+              style.dim(`One command in full: ${result.more}`)
+          ].join(SECTION_SEPARATOR)
+        : `${SEARCH_NO_MATCH_TEXT} Run ${bin} help ${BRIEF_FLAG}.`;
 
 /**
  * The manifest of one topic: the topic and its sub-topics, and every command under it. It keeps the

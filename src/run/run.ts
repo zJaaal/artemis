@@ -18,10 +18,13 @@ import {
     DRY_RUN_HEADER,
     TABLE_INDENT,
     UNKNOWN_COMMAND_MAX_IDS,
-    BRIEF_LISTING_FLAGS
+    BRIEF_LISTING_FLAGS,
+    SEARCH_CLASH_FLAGS,
+    SEARCH_EXAMPLE,
+    SEARCH_FLAG
 } from '../constants.js';
 import { discover } from '../discover/discover.js';
-import { wordsOf } from '../help/search.js';
+import { readSearch, wordsOf } from '../help/search.js';
 import { CommandError, UsageError, isUsageError } from '../errors/errors.js';
 import {
     briefHelp,
@@ -31,6 +34,8 @@ import {
     describeBuiltins,
     manifest,
     rootHelp,
+    searchResult,
+    searchText,
     topicHelp,
     topicManifest,
     usage
@@ -44,6 +49,7 @@ import type {
     HelpOutput,
     InvokeFn,
     ParsedCommandLine,
+    SearchRead,
     Registry,
     Resolution,
     RunCliFn,
@@ -66,7 +72,6 @@ import {
 } from '../resolve/resolve.js';
 import { printResult } from './report.js';
 import { flagWithoutCommand } from '../utils/flag-without-command.js';
-import { isFlagToken } from '../utils/flag-token.js';
 import { beforeTerminator, jsonRequested, quietRequested } from '../utils/terminator.js';
 
 /** What `printResult` takes for this run: text, or under --json the data wrapped in the success envelope. */
@@ -358,6 +363,79 @@ function showAgents(session: Session, words: string[], brief: boolean): void {
     printResult(session.io, shown(session, agents.markdown.trimEnd(), agents));
 }
 
+/** The flags of `help` that mean something else than a search, and cannot go with one. */
+const flagsClashingWith = (tokens: readonly string[]): string[] =>
+    SEARCH_CLASH_FLAGS.filter((flag) => beforeTerminator(tokens).includes(flag));
+
+/**
+ * `help --search <words>`: the best few commands for an intent, in the whole project or inside one
+ * topic. Builtins are never searched. It is help, so it never changes the exit code but for a wrong
+ * command line.
+ */
+function showSearch(session: Session, searched: SearchRead, rest: string[]): void {
+    const { bin, registry, style } = session;
+    const [clash] = flagsClashingWith(rest);
+
+    if (clash !== undefined) {
+        throw new UsageError(`${SEARCH_FLAG} cannot go with ${clash}`, {
+            hint: `Run "${bin} help ${SEARCH_FLAG} <words>" on its own, or "${bin} help ${clash}" without a search.`
+        });
+    }
+
+    const { query, words } = searched;
+
+    if (query === undefined) {
+        throw new UsageError(`${SEARCH_FLAG} needs the words to search for`, {
+            hint: `Quote them: ${bin} help ${SEARCH_FLAG} "${SEARCH_EXAMPLE}" --json`
+        });
+    }
+
+    if (!wordsOf(query).length) {
+        throw new UsageError(`Nothing to search for in "${query}"`, {
+            hint: `Search with words from what the command does, for example: ${bin} help ${SEARCH_FLAG} "${SEARCH_EXAMPLE}" --json`
+        });
+    }
+
+    const topicId = searchScope(session, words);
+    const result = searchResult(manifest(bin, registry), query, topicId);
+
+    session.state.commandId = HELP_WORD;
+
+    printResult(session.io, shown(session, searchText(result, bin, style), result));
+}
+
+/** The topic a search is limited to: none for the whole project; a command or a built-in is not a scope. */
+function searchScope(session: Session, words: string[]): string | undefined {
+    if (!words.length) {
+        return undefined;
+    }
+
+    const named = words.join(ID_SEPARATOR);
+
+    if (builtinNamed(session, words)) {
+        throw new UsageError(`${SEARCH_FLAG} does not search the built-in word ${named}`, {
+            hint: `Built-in words are listed by "${session.bin} help ${BRIEF_FLAG} --json".`
+        });
+    }
+
+    const target = resolve(session.registry, words);
+
+    if (target.kind === 'unknown') {
+        throw unknownCommand(session, target.name);
+    }
+
+    if (target.kind === 'command') {
+        throw new UsageError(
+            `${SEARCH_FLAG} searches the project or a topic, and ${named} is a command`,
+            {
+                hint: `Run "${session.bin} help ${named} --json" for the whole entry.`
+            }
+        );
+    }
+
+    return target.topic.id;
+}
+
 function showHelpFor(session: Session, words: string[]): void {
     if (!words.length) {
         session.state.commandId = HELP_WORD;
@@ -450,9 +528,12 @@ async function dispatch(session: Session, argv: string[]): Promise<number> {
     if (first === undefined || first === HELP_WORD) {
         assertHelpFlags(session, leading, rest);
 
-        const helpWords = rest.slice(1).filter((token) => !isFlagToken(token));
+        const searched = readSearch(rest.slice(1));
+        const helpWords = searched.words;
 
-        if (rest.includes(AGENTS_FLAG)) {
+        if (searched.present) {
+            showSearch(session, searched, rest);
+        } else if (rest.includes(AGENTS_FLAG)) {
             showAgents(session, helpWords, rest.includes(BRIEF_FLAG));
         } else if (rest.includes(BRIEF_FLAG)) {
             showBriefFor(session, helpWords);
