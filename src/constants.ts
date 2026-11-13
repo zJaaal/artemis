@@ -59,6 +59,8 @@ export const GLOBAL_FLAG_TOKENS: readonly string[] = Object.entries(GLOBAL_FLAGS
     ([name, flag]) => [`--${name}`, ...('short' in flag ? [`-${flag.short}`] : [])]
 );
 
+/** A word of letters after one dash, such as `-fy`: short flags written together. */
+export const SHORT_FLAG_GROUP = /^-[A-Za-z]{2,}$/;
 export const RESERVED_SHORTS: readonly string[] = Object.values(GLOBAL_FLAGS).flatMap((flag) =>
     'short' in flag ? [flag.short] : []
 );
@@ -295,9 +297,9 @@ export const URL_LIKE = /^(file:|[a-z][a-z0-9+.-]*:\/\/)/i;
 
 /** How `ctx.exec` starts a child: stdin ignored and both output streams piped, or everything inherited. */
 export const EXEC_STDIO_PIPED: StdioOptions = ['ignore', 'pipe', 'pipe'];
-/** A detached child: no stdin; stdout and stderr are the log file, whose descriptor is filled in at spawn. */
 /** What a detached call that never started has in common: no pid, and neither a missing program nor a missing folder until said. */
 export const DETACHED_NOT_STARTED = { pid: undefined, notFound: false, cwdMissing: false } as const;
+/** A detached child: no stdin; stdout and stderr are the log file, whose descriptor is filled in at spawn. */
 export const EXEC_DETACHED_STDIN = 'ignore' as const;
 export const EXEC_DETACHED_LOG_MODE = 'a';
 /** The keys a detached call may have: anything else is a `TypeError`. */

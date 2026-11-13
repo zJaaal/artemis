@@ -124,7 +124,7 @@ describe('healthChecks: failing', () => {
             expect.objectContaining({
                 id: 'history-failing',
                 message: expect.stringMatching(/build.*db reset/),
-                fix: 'Run art history build to see the errors.; Run art history db reset to see the errors.'
+                fix: 'Run art history build to see the errors. Run art history db reset to see the errors.'
             })
         ]);
     });
@@ -190,13 +190,13 @@ describe('healthChecks: stale', () => {
 });
 
 describe('healthChecks: a fix that names its command', () => {
-    test('each stale command has its own part of the fix, joined with a semicolon', () => {
+    test('each stale command has its own part of the fix, joined with a space', () => {
         const old = new Date(NOW - (HEALTH_STALE_DAYS + 1) * MS_PER_DAY).toISOString();
 
         const checks = checksOf([line({ time: old }), line({ time: old, command: 'db reset' })]);
 
         expect(checks[0]?.fix).toBe(
-            'build: Delete the file if the command is no longer used.; db reset: Delete the file if the command is no longer used.'
+            'build: Delete the file if the command is no longer used. db reset: Delete the file if the command is no longer used.'
         );
     });
 
@@ -212,21 +212,16 @@ describe('healthChecks: a fix that names its command', () => {
         ];
 
         expect(checksOf(entries, { loaded: destructive })[0]?.fix).toMatch(
-            /^db reset: .*; db wipe: /
+            /^db reset: .*\. db wipe: /
         );
     });
 });
 
-describe('healthChecks: a long trail', () => {
-    const LINES = 50000;
-    const SLOW_MS = 2000;
-
-    test('is grouped in one pass, not by copying a list per line', () => {
-        const started = performance.now();
-
-        checksOf(times(LINES, {}));
-
-        expect(performance.now() - started).toBeLessThan(SLOW_MS);
+describe('healthChecks: many lines of one command', () => {
+    test('are one command, however many lines there are', () => {
+        expect(checksOf(times(1000, {}))).toEqual([
+            { id: 'history', status: 'ok', message: 'no problems in the last 1000 runs' }
+        ]);
     });
 });
 

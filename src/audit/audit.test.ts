@@ -36,6 +36,18 @@ describe('stripGlobalFlags', () => {
         expect(stripGlobalFlags(tokens)).toEqual(['a']);
     });
 
+    test('removes the global letters of a group of short flags and keeps the rest (-fy is -f)', () => {
+        expect(stripGlobalFlags(['-fy'])).toEqual(['-f']);
+    });
+
+    test('removes a group made only of global letters (-yh)', () => {
+        expect(stripGlobalFlags(['a', '-yh'])).toEqual(['a']);
+    });
+
+    test('keeps a group with no global letter (-fo)', () => {
+        expect(stripGlobalFlags(['-fo'])).toEqual(['-fo']);
+    });
+
     test('removes --log and its value', () => {
         expect(stripGlobalFlags(['a', '--log', 'x.log', 'b'])).toEqual(['a', 'b']);
     });

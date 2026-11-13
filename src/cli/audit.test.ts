@@ -215,7 +215,7 @@ describe('the audit trail: flags the parser reads', () => {
 
         await art(['ship', '-fy', '--json'], root);
 
-        expect(trailOf(root)[0]).toMatchObject({ yes: true, argv: ['-fy'] });
+        expect(trailOf(root)[0]).toMatchObject({ yes: true, argv: ['-f'] });
     });
 
     test('a grouped short flag does not turn yes on when it is not there (-f)', async () => {

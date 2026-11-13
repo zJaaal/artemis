@@ -4,6 +4,8 @@ import {
     LOG_FLAG,
     LOG_FLAG_PREFIX,
     NEWLINE,
+    RESERVED_SHORTS,
+    SHORT_FLAG_GROUP,
     TERMINATOR,
     YES_FLAG_TOKENS
 } from '../constants.js';
@@ -21,6 +23,17 @@ import { beforeTerminator } from '../utils/terminator.js';
 /** Whether a flag token is a global flag that stands alone (not `--log`, which takes a value). */
 const isStandalone = (token: string): boolean =>
     token !== LOG_FLAG && GLOBAL_FLAG_TOKENS.includes(token);
+
+/** A group of short flags (`-fy`) without the global ones (`-f`); nothing is left of a group that was only global (`-yh`). */
+const withoutGlobalShorts = (token: string): string[] => {
+    if (!SHORT_FLAG_GROUP.test(token)) {
+        return [token];
+    }
+
+    const letters = [...token.slice(1)].filter((letter) => !RESERVED_SHORTS.includes(letter));
+
+    return letters.length ? [`-${letters.join('')}`] : [];
+};
 
 /**
  * The words of a command without its global flags: `--json`, `-y`, `--log <file>`, `--log=<file>`
@@ -42,7 +55,7 @@ export const stripGlobalFlags: StripGlobalFlagsFn = (tokens) => {
         if (token === LOG_FLAG) {
             index++;
         } else if (!isStandalone(token) && !token.startsWith(LOG_FLAG_PREFIX)) {
-            kept.push(token);
+            kept.push(...withoutGlobalShorts(token));
         }
     }
 
