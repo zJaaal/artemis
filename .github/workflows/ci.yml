@@ -60,15 +60,12 @@ jobs:
               npx -y npm@12.2.1 stage publish --dry-run --access public
           fi
 
-  # Windows has never been tested: this job finds out what breaks there. It cannot fail the run yet
-  # (continue-on-error), and every step runs even when an earlier one failed, so one run shows all
-  # of it. Once it is green, it joins the matrix above.
+  # The same steps as the Linux job on Windows, except the staging dry run (npm 12 only matters for the release).
+  # Git for Windows turns LF into CRLF on checkout by default; the files are LF, as Prettier checks.
   windows:
-    name: Windows (Node 24, not required yet)
+    name: Windows (Node 24)
     runs-on: windows-latest
-    continue-on-error: true
     steps:
-      # Git for Windows turns LF into CRLF on checkout by default; the files are LF, as Prettier checks
       - run: git config --global core.autocrlf false
 
       - uses: actions/checkout@v4
@@ -83,34 +80,16 @@ jobs:
 
       - run: pnpm install --frozen-lockfile
 
-      - name: tsc
-        if: ${{ !cancelled() }}
-        run: pnpm exec tsc --noEmit
+      # tsc, eslint, prettier and vitest (type tests included)
+      - run: pnpm run test:all
 
-      - name: eslint
-        if: ${{ !cancelled() }}
-        run: pnpm exec eslint .
+      - run: pnpm run build
 
-      - name: prettier
-        if: ${{ !cancelled() }}
-        run: pnpm exec prettier --check .
+      - run: pnpm run check-exports
 
-      - name: vitest
-        if: ${{ !cancelled() }}
-        run: pnpm exec vitest run
+      # The packed package, installed globally, runs a project's commands (its .cmd files through cmd.exe)
+      - run: pnpm run check-bin
 
-      - name: build
-        if: ${{ !cancelled() }}
-        run: pnpm run build
+      - run: pnpm run check-lock
 
-      - name: check-exports
-        if: ${{ !cancelled() }}
-        run: pnpm run check-exports
-
-      - name: check-bin
-        if: ${{ !cancelled() }}
-        run: pnpm run check-bin
-
-      - name: check-lock
-        if: ${{ !cancelled() }}
-        run: pnpm run check-lock
+      - run: npm pack --dry-run
