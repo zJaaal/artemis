@@ -4,6 +4,10 @@ What changed in each release, newest first. Breaking entries link to their secti
 
 ## Unreleased
 
+### Added
+
+- `destructive` can be a function of the call's `args` and `flags`, so `start --no-prune` can skip the confirmation that `start` needs.
+
 ## 1.2.0 (2026-11-14)
 
 ### Breaking

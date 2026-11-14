@@ -203,6 +203,8 @@ export const NOTE_SEPARATOR = '; ';
 /** What help says about the two markers of a command definition. */
 export const DESTRUCTIVE_NOTE =
     'Changes or deletes data that cannot be recovered. It asks first; pass --yes to confirm without a question.';
+/** Said after the Destructive line of a command whose `destructive` is a function of the call. */
+export const DESTRUCTIVE_BY_CALL_NOTE = '(depends on the arguments and flags)';
 export const DRY_RUN_NOTE = 'Says what it would do and changes nothing.';
 
 /** The tail of the line a brief manifest ends with: how to get one command in full. */

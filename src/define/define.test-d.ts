@@ -1,7 +1,14 @@
 import { describe, expectTypeOf, test } from 'vitest';
 
 import { defineCommand } from './define.js';
-import type { CommandContext, InferArgs, InferFlags, RunInput } from '../models.js';
+import type {
+    CommandContext,
+    DestructiveFn,
+    InferArgs,
+    InferFlags,
+    NoFlags,
+    RunInput
+} from '../models.js';
 
 describe('inference: args', () => {
     test('a required arg is a string', () => {
@@ -163,6 +170,69 @@ describe('inference: flags', () => {
                 return flags.loud;
             }
         });
+    });
+});
+
+describe('inference: destructive as a function', () => {
+    test('a boolean flag it reads is a boolean or undefined', () => {
+        defineCommand({
+            description: 'x',
+            flags: { 'no-prune': { type: 'boolean' } },
+            destructive: ({ flags }) => {
+                expectTypeOf(flags['no-prune']).toEqualTypeOf<boolean | undefined>();
+
+                return !flags['no-prune'];
+            },
+            run: () => null
+        });
+    });
+
+    test('a required arg it reads is a string', () => {
+        defineCommand({
+            description: 'x',
+            args: [{ name: 'target', required: true }],
+            destructive: ({ args }) => {
+                expectTypeOf(args.target).toEqualTypeOf<string>();
+
+                return args.target === 'db';
+            },
+            run: () => null
+        });
+    });
+
+    test('reading a flag that is not declared is a type error', () => {
+        defineCommand({
+            description: 'x',
+            flags: { keep: { type: 'boolean' } },
+            destructive: ({ flags }) => {
+                expectTypeOf(flags).not.toHaveProperty('other');
+
+                // @ts-expect-error `other` is not declared
+                return flags.other === true;
+            },
+            run: () => null
+        });
+    });
+
+    test('returning something that is not a boolean is a type error', () => {
+        expectTypeOf<DestructiveFn<[], NoFlags>>().returns.toEqualTypeOf<boolean>();
+
+        defineCommand({
+            description: 'x',
+            // @ts-expect-error the function must return a boolean
+            destructive: () => 'yes',
+            run: () => null
+        });
+    });
+
+    test('the definition keeps the function as given', () => {
+        const command = defineCommand({
+            description: 'x',
+            destructive: () => true,
+            run: () => null
+        });
+
+        expectTypeOf(command.destructive).toExtend<boolean | DestructiveFn<[], NoFlags>>();
     });
 });
 

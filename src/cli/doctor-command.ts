@@ -28,6 +28,7 @@ import type {
 } from '../models.js';
 import { failureEnvelope, reportError, successEnvelope } from '../run/report.js';
 import { resolveWorld } from '../run/world.js';
+import { canDestroy } from '../utils/can-destroy.js';
 import { messageOf } from '../utils/error-message.js';
 import {
     DOCTOR_FLAGS,
@@ -80,7 +81,7 @@ async function readCommands(project: Project): Promise<DoctorFacts['commands']> 
             aliases: [...registry.aliases.entries()],
             loaded: [...registry.commands.values()].map((entry) => ({
                 id: entry.id,
-                destructive: entry.definition.destructive
+                destructive: canDestroy(entry.definition.destructive)
             }))
         };
     } catch (error) {
@@ -134,7 +135,7 @@ function readState(project: Project): DoctorFacts['state'] {
 }
 
 /** The audit trail: its lines in file order, or why it could not be read. A line that is not one is not a problem here. */
-function readHistory(project: Project): DoctorHistory {
+function readDoctorHistory(project: Project): DoctorHistory {
     try {
         const text = readTextIfExists(path.join(resolveStateDir(project), AUDIT_FILE_NAME));
 
@@ -178,7 +179,7 @@ async function gatherFacts(cwd: string, clock: () => number): Promise<DoctorFact
         commands,
         hiddenWords: readHiddenWords(commands),
         state: readState(project),
-        history: readHistory(project),
+        history: readDoctorHistory(project),
         now: clock()
     };
 }

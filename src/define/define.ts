@@ -57,6 +57,13 @@ function validateMarker(name: string, value: unknown): void {
     }
 }
 
+/** `destructive` is a marker too, or a function that decides per call: nothing else says anything. */
+function validateDestructive(value: unknown): void {
+    if (typeof value !== 'function') {
+        validateMarker('destructive', value);
+    }
+}
+
 const isReservedShort = (flag: FlagDefinition): boolean =>
     Boolean(flag.short) && RESERVED_SHORTS.includes(flag.short ?? '');
 
@@ -145,7 +152,7 @@ export const defineCommand: DefineCommandFn = (definition) => {
         fail('a run function is required');
     }
 
-    validateMarker('destructive', destructive);
+    validateDestructive(destructive);
     validateMarker('dryRun', dryRun);
     validateArgs(args);
     Object.entries(flags).forEach(([name, flag]) => validateFlag(name, flag));

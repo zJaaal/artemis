@@ -5,7 +5,7 @@ import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 
 import { EXIT_CODE, SKILL_MAX_BYTES } from '../constants.js';
 import { COMMANDS_FIXTURE_DIR } from '../test/constants.js';
-import { makeProject } from '../test/project.js';
+import { commandSource, makeProject, writeCommand } from '../test/project.js';
 import { createSink } from '../test/sink.js';
 import { createTempFolders } from '../test/temp.js';
 import type { Envelope } from '../test/models.js';
@@ -75,6 +75,22 @@ describe('art skill: the Writing a command section and the size', () => {
         const { out } = await art(['skill'], root);
 
         expect(Buffer.byteLength(out)).toBeLessThan(SKILL_MAX_BYTES);
+    });
+});
+
+describe('art skill: a command that is destructive by call', () => {
+    test('is listed with the destructive ones', async () => {
+        const root = newProject();
+
+        writeCommand(
+            path.join(root, 'commands'),
+            'start',
+            commandSource(
+                "destructive: ({ flags }) => !flags.keep, flags: { keep: { type: 'boolean' } }"
+            )
+        );
+
+        expect((await art(['skill'], root)).out).toMatch(/`art start`.*A command of a test/);
     });
 });
 

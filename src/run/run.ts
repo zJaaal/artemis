@@ -72,7 +72,7 @@ import type {
     World
 } from '../models.js';
 import { parse } from '../parse/parse.js';
-import { confirmDestructive } from './destructive.js';
+import { confirmDestructive, resolveDestructive } from './destructive.js';
 import { reportError } from './report.js';
 import { resolveWorld } from './world.js';
 import {
@@ -251,7 +251,7 @@ async function execute(
     await confirmDestructive({
         bin: session.bin,
         id: entry.id,
-        destructive: entry.definition.destructive,
+        destructive: resolveDestructive(entry, parsed),
         supportsDryRun: entry.definition.dryRun,
         dryRun: parsed.global.dryRun,
         yes: parsed.global.yes,

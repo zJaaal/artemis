@@ -227,6 +227,14 @@ export type RunFn<TArgs extends ArgDefinitions, TFlags extends FlagDefinitions> 
     input: RunInput<TArgs, TFlags>
 ) => unknown;
 
+/**
+ * `destructive` as a function of the call: it gets the parsed `args` and `flags` of `run` (typed from the
+ * definition) and says whether this call changes or deletes data.
+ */
+export type DestructiveFn<TArgs extends ArgDefinitions, TFlags extends FlagDefinitions> = (
+    input: Pick<RunInput<TArgs, TFlags>, 'args' | 'flags'>
+) => boolean;
+
 // Trade-off, accepted: the index signature keeps extra fields passing through untouched (the dotCMS
 // `step` convention) but means a typo in a field name is not a type error. Known fields stay typed.
 export type CommandDefinition<
@@ -239,8 +247,11 @@ export type CommandDefinition<
     flags?: TFlags;
     aliases?: readonly string[];
     examples?: readonly string[];
-    /** Changes or deletes data the user cannot get back. It asks in a terminal and needs `--yes` otherwise. Default false. */
-    destructive?: boolean;
+    /**
+     * Changes or deletes data the user cannot get back. It asks in a terminal and needs `--yes` otherwise.
+     * A function decides per call, from the parsed `args` and `flags`. Default false.
+     */
+    destructive?: boolean | DestructiveFn<TArgs, TFlags>;
     /** Honors `ctx.dryRun`: under `--dry-run` it reports what it would do and does none of it. Default false. */
     dryRun?: boolean;
     [extra: string]: unknown;
@@ -255,7 +266,7 @@ export type Command<
     flags: TFlags;
     aliases: readonly string[];
     examples: readonly string[];
-    destructive: boolean;
+    destructive: boolean | DestructiveFn<TArgs, TFlags>;
     dryRun: boolean;
 };
 
@@ -523,7 +534,7 @@ export type HelpSubject = {
     flags: FlagDefinitions;
     aliases: readonly string[];
     examples: readonly string[];
-    destructive?: boolean;
+    destructive?: boolean | DestructiveFn<ArgDefinitions, FlagDefinitions>;
     dryRun?: boolean;
 };
 
@@ -592,6 +603,17 @@ export type DestructiveCall = {
     /** Whether anyone can answer: a terminal, and neither `--yes` nor `--json`. */
     interactive: boolean;
 };
+
+/** What `destructive` is worth: a function counts as destructive, because the reader cannot run it. */
+export type CanDestroyFn = (
+    value: boolean | DestructiveFn<ArgDefinitions, FlagDefinitions> | undefined
+) => boolean;
+
+/** The answer of a `destructive` function for one call, as a boolean, or the bug that it is not one. */
+export type ResolveDestructiveFn = (
+    entry: CommandEntry,
+    parsed: Pick<ParsedCommandLine, 'args' | 'flags'>
+) => boolean;
 
 export type DestructivePlan = 'run' | 'ask' | 'refuse';
 export type PlanDestructiveFn = (call: DestructiveCall) => DestructivePlan;
@@ -1153,7 +1175,7 @@ export type DescribedWord = {
     args: readonly ArgDefinition[];
     flags: FlagDefinitions;
     examples: readonly string[];
-    destructive?: boolean | undefined;
+    destructive?: boolean | DestructiveFn<ArgDefinitions, FlagDefinitions> | undefined;
     dryRun?: boolean | undefined;
 };
 

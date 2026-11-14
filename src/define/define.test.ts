@@ -224,6 +224,20 @@ describe('defineCommand: the destructive and dryRun markers', () => {
         expect([command.destructive, command.dryRun]).toEqual([true, true]);
     });
 
+    test('destructive may be a function, kept as given', () => {
+        const decide = () => true;
+
+        expect(defineCommand({ description: 'x', run, destructive: decide }).destructive).toBe(
+            decide
+        );
+    });
+
+    test('dryRun may not be a function', () => {
+        expect(() => defineLoosely({ description: 'x', run, dryRun: () => true })).toThrow(
+            'defineCommand: dryRun must be true or false'
+        );
+    });
+
     test.each([
         { name: 'destructive', value: 'yes' },
         { name: 'dryRun', value: 1 },
