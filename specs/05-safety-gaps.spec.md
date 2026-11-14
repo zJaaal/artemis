@@ -1,8 +1,8 @@
 # SPEC 05 — Safety gaps: an audit trail at every level, destructive by call, Windows, a scaffold word and a changelog
 
-> **Status:** Draft
+> **Status:** Approved
 > **Depends on:** SPEC 04 (released as `1.2.0`, merged in `fc34904`)
-> **Date:** 2026-11-14
+> **Date:** 2026-11-14 (revised the same day after four clarity rounds)
 > **Source:** the owner's must-haves of 2026-11-14 (after 1.2.0 and the dotCMS tool upgrade), issue #11, and the first Windows CI run (draft PR #18)
 > **Release:** `1.3.0`
 
