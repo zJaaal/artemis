@@ -15,6 +15,7 @@ What changed in each release, newest first. Breaking entries link to their secti
 - `ctx.exec` starts `.cmd` and `.bat` files on Windows (`npm`, `pnpm`, `npx` and everything in `node_modules/.bin`): through `cmd.exe`, with every argument escaped so nothing in it is interpreted.
 - The worktrees kit recognizes a checkout on Windows: paths are the real paths the disk reports (short names expanded) and compare without regard to case.
 - The store's atomic write tries again on Windows when another process has the file open (EPERM, EACCES, EBUSY), instead of failing at once.
+- Stopping a child of `ctx.exec` on Windows ends everything it started too (`taskkill /T /F`), where before a dev server's workers survived.
 
 ## 1.2.0 (2026-11-14)
 

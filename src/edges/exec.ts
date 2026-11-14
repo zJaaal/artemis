@@ -1,4 +1,4 @@
-import { type ChildProcess, spawn } from 'node:child_process';
+import { type ChildProcess, spawn, spawnSync } from 'node:child_process';
 import fs from 'node:fs';
 import { Socket } from 'node:net';
 import path from 'node:path';
@@ -14,7 +14,11 @@ import {
     EXEC_STDIO_INHERITED,
     EXEC_STDIO_PIPED,
     EXIT_CODE,
-    LOG_FILE_HINT
+    LOG_FILE_HINT,
+    TASKKILL_ARGUMENTS,
+    TASKKILL_COMMAND,
+    TASKKILL_PID_FLAG,
+    WINDOWS_PLATFORM
 } from '../constants.js';
 import { CommandError } from '../errors/errors.js';
 import { folderProblem } from './files.js';
@@ -26,6 +30,7 @@ import type {
     SpawnChildFn,
     SpawnDetachedFn,
     SpawnFinish,
+    KillTreeFn,
     SpawnOutcome
 } from '../models.js';
 import { codeOf } from '../utils/error-code.js';
@@ -34,7 +39,7 @@ import { messageOf } from '../utils/error-message.js';
 // Edge: the only place a child process starts for `ctx.exec`. It never uses a shell, so nothing in
 // `args` is interpreted (on Windows a `.cmd` file goes through `cmd.exe` with every argument escaped,
 // see windows-launch.ts), and it never lets the child it started outlive the call that asked for it (a grandchild the child started is
-// its own business: only the direct child is signalled).
+// its own business on every platform but Windows, which has no process groups: there the whole tree is ended).
 
 /** The handle of a child that never started: it is already over, and there is nothing to stop. */
 const notStarted = (error: unknown): ChildHandle => ({
@@ -64,7 +69,26 @@ const noFolder = (cwdProblem: FolderProblem): ChildHandle => ({
     stop: () => Promise.resolve()
 });
 
-/** Starts a child. `done` resolves when it has ended; `stop` ends it politely, then for good. */
+/**
+ * Ends a process and everything it started, with `taskkill /T /F`: the one way on Windows, where there
+ * are no process groups to signal. A child that never started has no pid, so there is nothing to end.
+ */
+export const killTree: KillTreeFn = (pid) => {
+    if (pid === undefined) {
+        return;
+    }
+
+    // ignoreTreeAlreadyGone: taskkill fails when the process ended in the meantime, and then there is nothing left to end
+    spawnSync(TASKKILL_COMMAND, [TASKKILL_PID_FLAG, String(pid), ...TASKKILL_ARGUMENTS], {
+        stdio: 'ignore',
+        windowsHide: true
+    });
+};
+
+/**
+ * Starts a child. `done` resolves when it has ended; `stop` ends it politely, then for good (on
+ * Windows, which has no polite signal, with its whole tree at once).
+ */
 export const spawnChild: SpawnChildFn = (request) => {
     const problem = request.cwd === undefined ? undefined : folderProblem(request.cwd);
 
@@ -187,12 +211,20 @@ export const spawnChild: SpawnChildFn = (request) => {
 
         // A child that already ended on its own, with output still being read, did not end because of this
         stopped ||= !timedOut && !exited;
-        child.kill('SIGTERM');
 
-        killTimer ??= setTimeout(
-            () => child.kill('SIGKILL'),
-            request.killGraceMs ?? EXEC_KILL_GRACE_MS
-        );
+        if (process.platform === WINDOWS_PLATFORM) {
+            // No polite signal for a console process, and no process group: end the whole tree at once
+            killTree(child.pid);
+            // And the child itself, in case taskkill itself could not run
+            child.kill();
+        } else {
+            child.kill('SIGTERM');
+
+            killTimer ??= setTimeout(
+                () => child.kill('SIGKILL'),
+                request.killGraceMs ?? EXEC_KILL_GRACE_MS
+            );
+        }
 
         await done;
     };

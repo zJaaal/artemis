@@ -1,20 +1,21 @@
 import fs from 'node:fs';
 import path from 'node:path';
 
-import { afterEach, describe, expect, test } from 'vitest';
+import { afterEach, describe, expect, test, vi } from 'vitest';
 
-import { FOLDER_PROBLEM } from '../constants.js';
+import { FOLDER_PROBLEM, WINDOWS_PLATFORM } from '../constants.js';
 
 import type { ChildStream, SpawnRequest } from '../models.js';
 import { NO_EXECUTE_MODE, ROOT_UID, UNREADABLE_MODE } from '../test/constants.js';
 import { withMode } from '../test/permissions.js';
 import { createTempFolders } from '../test/temp.js';
-import { spawnChild } from './exec.js';
+import { killTree, spawnChild } from './exec.js';
 
 const folders = createTempFolders();
 
 /** A folder that cannot be read is readable to root, so those tests do not apply there. */
 const isRoot = process.getuid?.() === ROOT_UID;
+const isWindows = process.platform === WINDOWS_PLATFORM;
 
 afterEach(() => folders.cleanUp());
 
@@ -292,10 +293,23 @@ describe('spawnChild: stop', () => {
 
         await child.stop();
 
-        expect(await child.done).toMatchObject({
-            stopped: true,
-            signal: expect.stringMatching(/^SIG/)
+        expect(await child.done).toMatchObject({ stopped: true });
+    });
+
+    test.skipIf(isWindows)('names the signal that ended it', async () => {
+        const child = spawnChild({
+            command: process.execPath,
+            args: ['-e', SILENT_JOB],
+            cwd: undefined,
+            env: undefined,
+            pipe: true,
+            timeoutMs: undefined,
+            onData: () => undefined
         });
+
+        await child.stop();
+
+        expect(await child.done).toMatchObject({ signal: expect.stringMatching(/^SIG/) });
     });
 
     test('is harmless once the child has already ended', async () => {
@@ -314,34 +328,112 @@ describe('spawnChild: stop', () => {
         await expect(child.stop()).resolves.toBeUndefined();
     });
 
-    test('sends SIGKILL after the grace period to a child that ignores SIGTERM', async () => {
-        const script = `process.on('SIGTERM', () => {});
+    test.skipIf(isWindows)(
+        'sends SIGKILL after the grace period to a child that ignores SIGTERM',
+        async () => {
+            const script = `process.on('SIGTERM', () => {});
 process.stdout.write('ready');
 ${SILENT_JOB}`;
 
-        let markReady: () => void = () => undefined;
+            let markReady: () => void = () => undefined;
 
-        const ready = new Promise<void>((resolve) => {
-            markReady = resolve;
-        });
+            const ready = new Promise<void>((resolve) => {
+                markReady = resolve;
+            });
+
+            const child = spawnChild({
+                command: process.execPath,
+                args: ['-e', script],
+                cwd: undefined,
+                env: undefined,
+                pipe: true,
+                timeoutMs: undefined,
+                killGraceMs: SHORT_TIMEOUT_MS,
+                onData: () => markReady()
+            });
+
+            await ready;
+            await child.stop();
+
+            expect(await child.done).toMatchObject({
+                stopped: true,
+                signal: expect.stringMatching(/^SIG/)
+            });
+        }
+    );
+});
+
+/** Whether a process is still there: signal 0 only asks. */
+const isAlive = (pid: number): boolean => {
+    try {
+        process.kill(pid, 0);
+
+        return true;
+    } catch {
+        // ignoreProcessGone: the error of signal 0 is how a process that is gone answers
+        return false;
+    }
+};
+
+const GRANDCHILD_JOB_FOR_TREE = `const grandchild = require('node:child_process').spawn(process.execPath, ['-e', 'setInterval(() => {}, 1000)'], { stdio: 'ignore' }); process.stdout.write(String(grandchild.pid)); setInterval(() => {}, 1000)`;
+const TREE_TIMEOUT_MS = 3000;
+const GONE_POLL_MS = 50;
+const GONE_WITHIN_MS = 5000;
+
+describe('killTree', () => {
+    test('a child that never started has no pid, and there is nothing to end', () => {
+        expect(killTree(undefined)).toBeUndefined();
+    });
+});
+
+describe.skipIf(!isWindows)('spawnChild: stop on Windows ends the whole tree', () => {
+    test('a grandchild the child started is gone after stop', async () => {
+        let grandchildPid = '';
 
         const child = spawnChild({
             command: process.execPath,
-            args: ['-e', script],
+            args: ['-e', GRANDCHILD_JOB_FOR_TREE],
             cwd: undefined,
             env: undefined,
             pipe: true,
             timeoutMs: undefined,
-            killGraceMs: SHORT_TIMEOUT_MS,
-            onData: () => markReady()
+            onData: (chunk) => {
+                grandchildPid += chunk;
+            }
         });
 
-        await ready;
+        await vi.waitFor(() => expect(grandchildPid).not.toBe(''));
+        expect(isAlive(Number(grandchildPid))).toBe(true);
+
         await child.stop();
 
-        expect(await child.done).toMatchObject({
-            stopped: true,
-            signal: expect.stringMatching(/^SIG/)
+        await vi.waitFor(() => expect(isAlive(Number(grandchildPid))).toBe(false), {
+            timeout: GONE_WITHIN_MS,
+            interval: GONE_POLL_MS
+        });
+    });
+
+    test('a timeout ends the tree too', async () => {
+        let grandchildPid = '';
+
+        const child = spawnChild({
+            command: process.execPath,
+            args: ['-e', GRANDCHILD_JOB_FOR_TREE],
+            cwd: undefined,
+            env: undefined,
+            pipe: true,
+            timeoutMs: TREE_TIMEOUT_MS,
+            onData: (chunk) => {
+                grandchildPid += chunk;
+            }
+        });
+
+        expect(await child.done).toMatchObject({ timedOut: true });
+        expect(grandchildPid).not.toBe('');
+
+        await vi.waitFor(() => expect(isAlive(Number(grandchildPid))).toBe(false), {
+            timeout: GONE_WITHIN_MS,
+            interval: GONE_POLL_MS
         });
     });
 });

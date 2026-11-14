@@ -438,3 +438,8 @@ export const CMD_ESCAPED_QUOTE = '$1$1\\"';
 export const ATOMIC_RENAME_RETRIES = 10;
 export const ATOMIC_RENAME_RETRY_MS = 20;
 export const ATOMIC_RENAME_RETRY_CODES: readonly string[] = ['EPERM', 'EACCES', 'EBUSY'];
+
+/** Windows has no process groups and no polite signal: `taskkill /T /F` ends a process and everything it started. */
+export const TASKKILL_COMMAND = 'taskkill';
+export const TASKKILL_ARGUMENTS: readonly string[] = ['/T', '/F'];
+export const TASKKILL_PID_FLAG = '/pid';
