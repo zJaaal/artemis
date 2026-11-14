@@ -41,8 +41,9 @@ jobs:
       # Real processes racing for the registry lock each get their own slot
       - run: pnpm run check-lock
 
-      # What would be published, without publishing it
-      - run: npm publish --dry-run
+      # What would be published, without publishing it. npm pack, not npm publish --dry-run: the npm of
+      # Node 24 asks the registry even on a dry run and refuses a version that is already published.
+      - run: npm pack --dry-run
 
       # The command the release workflow runs, with --dry-run so nothing is staged, and without
       # --provenance: a dry run never signs anything and this workflow has no id-token permission, so
