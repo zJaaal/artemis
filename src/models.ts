@@ -460,6 +460,12 @@ export type CreateExclusiveFn = (file: string, text: string) => boolean;
 /** When a file was last written, in ms since the epoch, or undefined when it is not there. */
 export type ModifiedAtFn = (file: string) => number | undefined;
 export type RealPathFn = (path: string) => string;
+
+/** Whether two paths (already real paths) are one folder: case does not count on Windows, and everywhere else it does. */
+export type SamePathFn = (a: string, b: string, platform: NodeJS.Platform) => boolean;
+
+/** The platform this process runs on (`process.platform`). */
+export type PlatformFn = () => NodeJS.Platform;
 export type WorkingDirectoryFn = () => string;
 export type ProcessIdFn = () => number;
 export type ErrorCodeFn = (error: unknown) => string | undefined;

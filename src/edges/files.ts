@@ -149,10 +149,14 @@ export const createExclusive: CreateExclusiveFn = (file, text) => {
 export const modifiedAt: ModifiedAtFn = (file) =>
     fs.statSync(file, { throwIfNoEntry: false })?.mtimeMs;
 
-/** The real path of a folder; one that does not exist yet has none, so it is resolved as given. */
+/**
+ * The real path of a folder, as the disk says it: `realpathSync.native` expands the short names of
+ * Windows (`RUNNER~1` is `runneradmin`) and returns the case the disk has. One that does not exist
+ * yet has none, so it is resolved as given.
+ */
 export const realPathOrResolve: RealPathFn = (folder) => {
     try {
-        return fs.realpathSync(folder);
+        return fs.realpathSync.native(folder);
     } catch {
         // Nothing to lose: a folder that does not exist yet is used by its resolved path.
         return path.resolve(folder);

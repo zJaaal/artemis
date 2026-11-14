@@ -1,6 +1,7 @@
 import { gitRoot } from './git.js';
-import { workingDirectory } from '../../edges/system.js';
+import { currentPlatform, workingDirectory } from '../../edges/system.js';
 import { CommandError } from '../../errors/errors.js';
+import { samePath } from '../../utils/same-path.js';
 import { MAIN_SLOT } from './constants.js';
 import type { CurrentOptions, KitConfig, WorktreeInstance } from './models.js';
 import { describeInstance } from './instances.js';
@@ -46,11 +47,16 @@ export function rootOf(config: KitConfig, cwd: string): string | null {
 
 /** The instance of a checkout root: the main one, or the registered worktree there. */
 export function instanceAt(config: KitConfig, root: string): WorktreeInstance | undefined {
-    if (root === config.mainRoot) {
+    const platform = currentPlatform();
+
+    if (samePath(root, config.mainRoot, platform)) {
         return mainInstance(config);
     }
 
-    return listInstances(config).find((instance) => !instance.isMain && instance.root === root);
+    return listInstances(config).find(
+        (instance) =>
+            !instance.isMain && instance.root !== null && samePath(instance.root, root, platform)
+    );
 }
 
 const unregisteredHint = (envVar: string | undefined): string =>
