@@ -6,7 +6,13 @@ import { afterEach, describe, expect, test } from 'vitest';
 import { FOLDER_PROBLEM } from '../constants.js';
 
 import { CommandError } from '../errors/errors.js';
-import { NO_EXECUTE_MODE, ROOT_UID, UNREADABLE_MODE } from '../test/constants.js';
+import {
+    NO_EXECUTE_MODE,
+    NO_PERMISSION_BITS,
+    NO_PROCESS_GROUPS,
+    ROOT_UID,
+    UNREADABLE_MODE
+} from '../test/constants.js';
 import { withMode } from '../test/permissions.js';
 import { createTempFolders } from '../test/temp.js';
 import { spawnDetached } from './exec.js';
@@ -125,7 +131,7 @@ describe('spawnDetached', () => {
         expect(fs.existsSync(path.join(cwd, 'out', 'a.log'))).toBe(true);
     });
 
-    test('it runs in its own process group', async () => {
+    test.skipIf(NO_PROCESS_GROUPS)('it runs in its own process group', async () => {
         const { pid } = await start(SILENT_JOB, path.join(folders.make('artemis-det-'), 'a.log'));
 
         expect(() => process.kill(-(pid ?? 0), 0)).not.toThrow();
@@ -165,7 +171,7 @@ describe('spawnDetached', () => {
         });
     });
 
-    test.skipIf(isRoot)(
+    test.skipIf(isRoot || NO_PERMISSION_BITS)(
         'a folder under one that cannot be read is no-access, not a raw error',
         async () => {
             const locked = path.join(folders.make('artemis-det-'), 'locked');
@@ -180,7 +186,7 @@ describe('spawnDetached', () => {
         }
     );
 
-    test.skipIf(isRoot)(
+    test.skipIf(isRoot || NO_PERMISSION_BITS)(
         'a folder with no execute bit is no-access, and no log folder is made',
         async () => {
             const folder = folders.make('artemis-det-');

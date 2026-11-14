@@ -11,7 +11,13 @@ import {
     WINDOWS_PLATFORM
 } from '../constants.js';
 
-import { NO_EXECUTE_MODE, ROOT_UID, UNREADABLE_MODE } from '../test/constants.js';
+import {
+    NO_EXECUTE_MODE,
+    NO_PERMISSION_BITS,
+    REFUSES_RENAME_OVER_OPEN_FILE,
+    ROOT_UID,
+    UNREADABLE_MODE
+} from '../test/constants.js';
 import { withMode } from '../test/permissions.js';
 import { createTempFolders } from '../test/temp.js';
 import { thrownBy } from '../test/thrown.js';
@@ -385,17 +391,20 @@ describe('writeAtomic', () => {
         expect(fs.readdirSync(dir)).toEqual(['doc.json']);
     });
 
-    test('is a different file than the one being replaced until the rename: a reader holding the old one still has it whole', () => {
-        const file = path.join(folders.make('artemis-files-'), 'doc.json');
+    test.skipIf(REFUSES_RENAME_OVER_OPEN_FILE)(
+        'is a different file than the one being replaced until the rename: a reader holding the old one still has it whole',
+        () => {
+            const file = path.join(folders.make('artemis-files-'), 'doc.json');
 
-        fs.writeFileSync(file, 'old');
-        const reader = fs.openSync(file, 'r');
+            fs.writeFileSync(file, 'old');
+            const reader = fs.openSync(file, 'r');
 
-        writeAtomic(file, 'new');
+            writeAtomic(file, 'new');
 
-        expect(fs.readFileSync(reader, 'utf8')).toBe('old');
-        fs.closeSync(reader);
-    });
+            expect(fs.readFileSync(reader, 'utf8')).toBe('old');
+            fs.closeSync(reader);
+        }
+    );
 
     test.skipIf(!isWindows)(
         'a reader in another process that lets go within the retries does not fail the write',
@@ -565,21 +574,29 @@ describe('folderProblem', () => {
         expect(folderProblem(first)).toBeUndefined();
     });
 
-    test.skipIf(isRoot)('a folder with no execute bit is no-access', async () => {
-        const folder = folders.make('artemis-files-');
+    test.skipIf(isRoot || NO_PERMISSION_BITS)(
+        'a folder with no execute bit is no-access',
+        async () => {
+            const folder = folders.make('artemis-files-');
 
-        expect(await withMode(folder, NO_EXECUTE_MODE, () => folderProblem(folder))).toBe(
-            FOLDER_PROBLEM.NO_ACCESS
-        );
-    });
+            expect(await withMode(folder, NO_EXECUTE_MODE, () => folderProblem(folder))).toBe(
+                FOLDER_PROBLEM.NO_ACCESS
+            );
+        }
+    );
 
-    test.skipIf(isRoot)('a folder under one with mode 0 is no-access', async () => {
-        const locked = path.join(folders.make('artemis-files-'), 'locked');
+    test.skipIf(isRoot || NO_PERMISSION_BITS)(
+        'a folder under one with mode 0 is no-access',
+        async () => {
+            const locked = path.join(folders.make('artemis-files-'), 'locked');
 
-        fs.mkdirSync(path.join(locked, 'sub'), { recursive: true });
+            fs.mkdirSync(path.join(locked, 'sub'), { recursive: true });
 
-        expect(
-            await withMode(locked, UNREADABLE_MODE, () => folderProblem(path.join(locked, 'sub')))
-        ).toBe(FOLDER_PROBLEM.NO_ACCESS);
-    });
+            expect(
+                await withMode(locked, UNREADABLE_MODE, () =>
+                    folderProblem(path.join(locked, 'sub'))
+                )
+            ).toBe(FOLDER_PROBLEM.NO_ACCESS);
+        }
+    );
 });

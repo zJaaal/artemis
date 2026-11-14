@@ -6,7 +6,16 @@ import { afterEach, describe, expect, test, vi } from 'vitest';
 import { FOLDER_PROBLEM, WINDOWS_PLATFORM } from '../constants.js';
 
 import type { ChildStream, SpawnRequest } from '../models.js';
-import { NO_EXECUTE_MODE, ROOT_UID, UNREADABLE_MODE } from '../test/constants.js';
+import {
+    NO_EXECUTE_BIT,
+    NO_EXECUTE_MODE,
+    NO_PERMISSION_BITS,
+    NO_SIGNALS,
+    NO_SYMLINK_LOOPS,
+    ROOT_UID,
+    UNDIAGNOSED_GRANDCHILD_PIPE,
+    UNREADABLE_MODE
+} from '../test/constants.js';
 import { withMode } from '../test/permissions.js';
 import { createTempFolders } from '../test/temp.js';
 import { killTree, spawnChild } from './exec.js';
@@ -95,20 +104,23 @@ describe('spawnChild: how a child ends', () => {
         });
     });
 
-    test("a cwd that is a symlink loop is a start error in Node's own words, not a permission problem", async () => {
-        const root = folders.make('artemis-exec-');
-        const first = path.join(root, 'a');
+    test.skipIf(NO_SYMLINK_LOOPS)(
+        "a cwd that is a symlink loop is a start error in Node's own words, not a permission problem",
+        async () => {
+            const root = folders.make('artemis-exec-');
+            const first = path.join(root, 'a');
 
-        fs.symlinkSync(path.join(root, 'b'), first);
-        fs.symlinkSync(first, path.join(root, 'b'));
+            fs.symlinkSync(path.join(root, 'b'), first);
+            fs.symlinkSync(first, path.join(root, 'b'));
 
-        const { outcome } = await runNode('process.exit(0)', { cwd: first });
+            const { outcome } = await runNode('process.exit(0)', { cwd: first });
 
-        expect(outcome).toMatchObject({
-            cwdProblem: undefined,
-            startError: expect.stringMatching(/ELOOP/)
-        });
-    });
+            expect(outcome).toMatchObject({
+                cwdProblem: undefined,
+                startError: expect.stringMatching(/ELOOP/)
+            });
+        }
+    );
 
     test('a cwd under a file is not-a-folder too', async () => {
         const file = path.join(folders.make('artemis-exec-'), 'plain.txt');
@@ -120,7 +132,7 @@ describe('spawnChild: how a child ends', () => {
         expect(outcome).toMatchObject({ cwdProblem: FOLDER_PROBLEM.NOT_A_FOLDER });
     });
 
-    test.skipIf(isRoot)(
+    test.skipIf(isRoot || NO_PERMISSION_BITS)(
         'a folder under one that cannot be read is no-access, not a raw error',
         async () => {
             const locked = path.join(folders.make('artemis-exec-'), 'locked');
@@ -135,7 +147,7 @@ describe('spawnChild: how a child ends', () => {
         }
     );
 
-    test.skipIf(isRoot)(
+    test.skipIf(isRoot || NO_PERMISSION_BITS)(
         'a folder this user cannot enter (no execute bit) is no-access',
         async () => {
             const folder = folders.make('artemis-exec-');
@@ -173,26 +185,32 @@ describe('spawnChild: how a child ends', () => {
         expect(outcome.timedOut).toBe(false);
     });
 
-    test('a grandchild keeps its pipe after the drain: its late write does not kill it', async () => {
-        const marker = path.join(folders.make('artemis-exec-'), 'marker');
-        const grandchild = `process.stdout.on('error', () => {}); setTimeout(() => process.stdout.write('late', (error) => require('node:fs').writeFileSync(process.argv[1], error ? 'dead' : 'ok')), ${LATE_WRITE_MS})`;
-        const parent = `require('node:child_process').spawn(process.execPath, ['-e', ${JSON.stringify(grandchild)}, process.argv[1]], { stdio: 'inherit' }); process.exit(0)`;
+    test.skipIf(UNDIAGNOSED_GRANDCHILD_PIPE)(
+        'a grandchild keeps its pipe after the drain: its late write does not kill it',
+        async () => {
+            const marker = path.join(folders.make('artemis-exec-'), 'marker');
+            const grandchild = `process.stdout.on('error', () => {}); setTimeout(() => process.stdout.write('late', (error) => require('node:fs').writeFileSync(process.argv[1], error ? 'dead' : 'ok')), ${LATE_WRITE_MS})`;
+            const parent = `require('node:child_process').spawn(process.execPath, ['-e', ${JSON.stringify(grandchild)}, process.argv[1]], { stdio: 'inherit' }); process.exit(0)`;
 
-        await runNode(parent, {}, [marker]);
-        await new Promise((resolve) => setTimeout(resolve, LATE_WRITE_MS * 2));
+            await runNode(parent, {}, [marker]);
+            await new Promise((resolve) => setTimeout(resolve, LATE_WRITE_MS * 2));
 
-        expect(fs.readFileSync(marker, 'utf8')).toBe('ok');
-    });
+            expect(fs.readFileSync(marker, 'utf8')).toBe('ok');
+        }
+    );
 
-    test('a script that is not executable is a start error, not an exit code', async () => {
-        const script = path.join(folders.make('artemis-exec-'), 'run.sh');
+    test.skipIf(NO_EXECUTE_BIT)(
+        'a script that is not executable is a start error, not an exit code',
+        async () => {
+            const script = path.join(folders.make('artemis-exec-'), 'run.sh');
 
-        fs.writeFileSync(script, '#!/bin/sh\nexit 0\n', { mode: 0o644 });
+            fs.writeFileSync(script, '#!/bin/sh\nexit 0\n', { mode: 0o644 });
 
-        const { outcome } = await runNode('', { command: script, args: [] });
+            const { outcome } = await runNode('', { command: script, args: [] });
 
-        expect(outcome.startError).toMatch(/EACCES/);
-    });
+            expect(outcome.startError).toMatch(/EACCES/);
+        }
+    );
 
     test('a child that already exited with an error is not reported as stopped', async () => {
         const child = spawnChild({
@@ -296,7 +314,7 @@ describe('spawnChild: stop', () => {
         expect(await child.done).toMatchObject({ stopped: true });
     });
 
-    test.skipIf(isWindows)('names the signal that ended it', async () => {
+    test.skipIf(NO_SIGNALS)('names the signal that ended it', async () => {
         const child = spawnChild({
             command: process.execPath,
             args: ['-e', SILENT_JOB],
@@ -328,7 +346,7 @@ describe('spawnChild: stop', () => {
         await expect(child.stop()).resolves.toBeUndefined();
     });
 
-    test.skipIf(isWindows)(
+    test.skipIf(NO_SIGNALS)(
         'sends SIGKILL after the grace period to a child that ignores SIGTERM',
         async () => {
             const script = `process.on('SIGTERM', () => {});

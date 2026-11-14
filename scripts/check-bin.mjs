@@ -7,6 +7,11 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 
+// The same escaping `ctx.exec` uses, so a `.cmd` file (npm, and the `art.cmd` that a global install makes on
+// Windows) is started through cmd.exe with every argument escaped. This script is not shipped.
+import { cmdArguments, isCmdScript } from '../dist/utils/windows-command.js';
+
+const WINDOWS = process.platform === 'win32';
 const EXIT_FAILED = 1;
 const EXIT_USAGE = 2;
 const NOISY_LINES = 2000;
@@ -29,6 +34,18 @@ export default defineCommand({
 export default defineCommand({
     description: 'Where the framework comes from',
     run: () => ({ framework: import.meta.resolve('@zjaaal/artemis') })
+});
+`,
+    // Runs `npm`, which is a `.cmd` file on Windows: ctx.exec starts it through cmd.exe there.
+    'npm-version.js': `import { defineCommand } from '@zjaaal/artemis';
+
+export default defineCommand({
+    description: 'The version of npm, through ctx.exec',
+    run: async ({ ctx }) => {
+        const { output } = await ctx.exec('npm', ['--version'], { capture: true });
+
+        return { npm: output.trim() };
+    }
 });
 `,
     // Errors with a hint and an exit code: thrown by whichever copy the command file got.
@@ -82,8 +99,26 @@ function makeProject(name, manifest = {}) {
     return folder;
 }
 
+/** How to start a file on this platform: a `.cmd` on Windows goes through cmd.exe, anything else as it is. */
+function launch(file, args, options) {
+    return WINDOWS && isCmdScript(file)
+        ? [
+              process.env.ComSpec ?? 'cmd.exe',
+              cmdArguments(file, args),
+              { ...options, windowsVerbatimArguments: true }
+          ]
+        : [file, args, options];
+}
+
+/** `npm` is `npm.cmd` on Windows. */
+const NPM = WINDOWS ? 'npm.cmd' : 'npm';
+
+function npm(args, options) {
+    return execFileSync(...launch(NPM, args, options));
+}
+
 function execute(file, args, cwd) {
-    const result = spawnSync(file, args, { cwd, encoding: 'utf8' });
+    const result = spawnSync(...launch(file, args, { cwd, encoding: 'utf8' }));
 
     return { code: result.status, out: result.stdout, err: result.stderr };
 }
@@ -91,17 +126,17 @@ function execute(file, args, cwd) {
 const json = (result) => JSON.parse(result.out);
 
 try {
-    const packed = execFileSync('npm', ['pack', '--pack-destination', root, '--json'], {
-        encoding: 'utf8'
-    });
+    const packed = npm(['pack', '--pack-destination', root, '--json'], { encoding: 'utf8' });
 
     const tarball = path.join(root, JSON.parse(packed)[0].filename);
 
     // 1. Installed globally: `art` and `artemis`, in a project that has nothing installed.
-    execFileSync('npm', ['install', '--global', '--prefix', prefix, tarball], { stdio: 'ignore' });
+    npm(['install', '--global', '--prefix', prefix, tarball], { stdio: 'ignore' });
 
-    const art = path.join(prefix, 'bin', 'art');
-    const artemis = path.join(prefix, 'bin', 'artemis');
+    // A global install puts the commands in `<prefix>/bin`, and on Windows `<prefix>` itself as `.cmd` files
+    const binFolder = WINDOWS ? prefix : path.join(prefix, 'bin');
+    const art = path.join(binFolder, WINDOWS ? 'art.cmd' : 'art');
+    const artemis = path.join(binFolder, WINDOWS ? 'artemis.cmd' : 'artemis');
     const project = makeProject('project');
     const deep = path.join(project, 'src', 'deep');
     const marked = path.join(project, 'src', 'marked');
@@ -119,6 +154,13 @@ try {
     assert.deepEqual(json(execute(art, ['hello', '--json'], project)).result, {
         greeting: 'hello'
     });
+
+    // ctx.exec starts `npm` (a `.cmd` file on Windows) from a command run by the packed art
+    assert.match(
+        json(execute(art, ['npm-version', '--json'], project)).result.npm,
+        /^\d+\.\d+\.\d+/,
+        'ctx.exec runs npm'
+    );
 
     assert.deepEqual(json(execute(artemis, ['hello', '--json'], project)).result, {
         greeting: 'hello'
@@ -482,7 +524,7 @@ export default defineCommand({
     );
 
     const listing = JSON.parse(
-        execFileSync('npm', ['pack', '--dry-run', '--json'], {
+        npm(['pack', '--dry-run', '--json'], {
             encoding: 'utf8',
             stdio: ['ignore', 'pipe', 'ignore']
         })
@@ -560,7 +602,7 @@ export default defineCommand({
         "import { cli } from '@zjaaal/artemis/cli';\n\nprocess.exitCode = await cli({ root: import.meta.url });\n"
     );
 
-    execFileSync('npm', ['install', tarball], { cwd: consumer, stdio: 'ignore' });
+    npm(['install', tarball], { cwd: consumer, stdio: 'ignore' });
 
     const own = (args, cwd) => execute(process.execPath, [bin, ...args], cwd);
 
