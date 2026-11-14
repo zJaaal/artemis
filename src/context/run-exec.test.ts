@@ -27,7 +27,8 @@ const isRoot = process.getuid?.() === ROOT_UID;
 afterEach(() => folders.cleanUp());
 
 const HELLO_SCRIPT = "process.stdout.write('hi\\n')";
-const NOISY_FAILURE = "for (let i = 1; i <= 100; i++) console.log('line ' + i); process.exit(1)";
+const NOISY_FAILURE =
+    "for (let i = 1; i <= 100; i++) console.log('line ' + i); process.exitCode = 1";
 const FOREVER_SCRIPT = 'setInterval(() => {}, 1000)';
 const SHORT_TIMEOUT_MS = '100';
 const LONG_LINE_LENGTH = 1000;
@@ -131,7 +132,7 @@ describe('ctx.exec: a child that fails', () => {
     });
 
     test('each tail line is cut at EXEC_TAIL_LINE_CHARS', async () => {
-        const script = `console.log('x'.repeat(${LONG_LINE_LENGTH})); process.exit(1)`;
+        const script = `console.log('x'.repeat(${LONG_LINE_LENGTH})); process.exitCode = 1`;
         const failure = envelope(await art(['exec', script, '--json']));
 
         expect(failure.tail?.[0]).toHaveLength(EXEC_TAIL_LINE_CHARS);

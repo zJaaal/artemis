@@ -11,9 +11,12 @@ import { art, envelope } from '../test/art.js';
 const TOTAL_LINES = 2000;
 const ERROR_AT = 1800;
 
+// The children set process.exitCode instead of calling process.exit after printing: on Linux a
+// child's pipe is a socket, and process.exit drops whatever it has not written yet.
+
 /** A child that prints `total` lines, `error: ...` at the given ones, and exits with `code`. */
 const noisy = (errorAt: number[], code: number, total = TOTAL_LINES): string =>
-    `const at = new Set(${JSON.stringify(errorAt)}); for (let i = 1; i <= ${total}; i++) console.log(at.has(i) ? 'error: line ' + i : 'line ' + i); process.exit(${code})`;
+    `const at = new Set(${JSON.stringify(errorAt)}); for (let i = 1; i <= ${total}; i++) console.log(at.has(i) ? 'error: line ' + i : 'line ' + i); process.exitCode = ${code}`;
 
 const failure = (out: string) =>
     envelope({ code: 0, out, err: '' }) as unknown as {
@@ -48,7 +51,7 @@ describe('ctx.exec errorPattern: a failed child', () => {
     });
 
     test('cuts each kept line at EXEC_TAIL_LINE_CHARS', async () => {
-        const script = `console.log('error: ' + 'x'.repeat(${EXEC_TAIL_LINE_CHARS * 2})); process.exit(1)`;
+        const script = `console.log('error: ' + 'x'.repeat(${EXEC_TAIL_LINE_CHARS * 2})); process.exitCode = 1`;
         const run = await art(['exec', script, '--pattern', '^error', '--json']);
 
         expect(failure(run.out).errorLines?.[0]).toHaveLength(EXEC_TAIL_LINE_CHARS);
@@ -68,7 +71,7 @@ describe('ctx.exec errorPattern: a failed child', () => {
     });
 
     test('reads stderr as well', async () => {
-        const script = "console.error('error: on stderr'); process.exit(1)";
+        const script = "console.error('error: on stderr'); process.exitCode = 1";
         const run = await art(['exec', script, '--pattern', '^error', '--json']);
 
         expect(failure(run.out).errorLines).toEqual(['error: on stderr']);
@@ -129,7 +132,7 @@ describe('ctx.exec errorPattern: a timeout that exits 0', () => {
 
 describe('ctx.exec errorPattern: a long line that arrives in pieces', () => {
     const LONG = EXEC_TAIL_LINE_CHARS * 4;
-    const PIECES = `process.stdout.write('x'.repeat(${LONG})); setTimeout(() => { process.stdout.write('FATAL\\n'); process.exit(1) }, 150)`;
+    const PIECES = `process.stdout.write('x'.repeat(${LONG})); setTimeout(() => { process.stdout.write('FATAL\\n'); process.exitCode = 1 }, 150)`;
 
     test('is matched whole, and only the kept line is cut', async () => {
         const run = await art(['exec', PIECES, '--pattern', `^x{${LONG}}FATAL$`, '--json']);
@@ -194,7 +197,7 @@ describe('ctx.exec errorPattern: text mode', () => {
     });
 
     test('a terminal-mode child is still shown, stream by stream', async () => {
-        const script = "console.log('to stdout'); console.error('to stderr'); process.exit(0)";
+        const script = "console.log('to stdout'); console.error('to stderr'); process.exitCode = 0";
         const run = await art(['exec', script, '--pattern', '^error']);
 
         expect([run.out, run.err]).toEqual(['to stdout\n', 'to stderr\n']);
