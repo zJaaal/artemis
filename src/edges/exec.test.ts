@@ -224,17 +224,33 @@ describe('spawnChild: how a child ends', () => {
     );
 
     test('a child that already exited with an error is not reported as stopped', async () => {
+        let printed = '';
+
+        // writeSync: the line cannot be lost to process.exit, so seeing it means the child is exiting
         const child = spawnChild({
             command: process.execPath,
-            args: ['-e', GRANDCHILD_JOB.replace('process.exit(0)', 'process.exit(2)')],
+            args: [
+                '-e',
+                GRANDCHILD_JOB.replace(
+                    'process.exit(0)',
+                    "require('node:fs').writeSync(1, 'bye\\n'); process.exit(2)"
+                )
+            ],
             cwd: undefined,
             env: undefined,
             pipe: true,
             timeoutMs: undefined,
-            onData: () => undefined
+            onData: (chunk) => {
+                printed += chunk;
+            }
         });
 
-        await new Promise((resolve) => setTimeout(resolve, GAP_MS * 2));
+        // Not a fixed sleep: a slow machine (the Windows runner) can take longer than any gap to start node
+        await vi.waitFor(() => expect(printed).toContain('bye'), {
+            timeout: GRANDCHILD_LIFETIME_MS
+        });
+
+        await new Promise((resolve) => setTimeout(resolve, GAP_MS));
         await child.stop();
 
         expect(await child.done).toMatchObject({ code: 2, stopped: false });
