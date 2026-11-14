@@ -213,10 +213,14 @@ export const noProjectError: NoProjectErrorFn = (start, route) =>
           });
 
 /**
- * Where the audit trail is written (absolute): `audit.jsonl` in the state folder, or nothing when the
- * project turned it off with `"audit": false`. Throws a CommandError when the "artemis" key has a bad shape.
+ * Where the audit trail is written (absolute): `audit.jsonl` in the state folder, or nothing when it
+ * is off. The shipped route records unless the project says `"audit": false`; a published tool (the own
+ * route) records only with `"audit": true`, because its state folder may be inside `node_modules`.
+ * Throws a CommandError when the "artemis" key has a bad shape.
  */
-export const resolveAuditFile: ResolveAuditFileFn = (project) =>
-    readConfig(project)[AUDIT_CONFIG_KEY] === false
-        ? undefined
-        : path.join(resolveStateDir(project), AUDIT_FILE_NAME);
+export const resolveAuditFile: ResolveAuditFileFn = (project, route) => {
+    const audit = readConfig(project)[AUDIT_CONFIG_KEY];
+    const isOn = route === 'own' ? audit === true : audit !== false;
+
+    return isOn ? path.join(resolveStateDir(project), AUDIT_FILE_NAME) : undefined;
+};

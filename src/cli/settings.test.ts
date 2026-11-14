@@ -2,11 +2,17 @@ import path from 'node:path';
 
 import { describe, expect, test } from 'vitest';
 
-import { DEFAULT_BIN_NAME } from '../constants.js';
+import { AUDIT_FILE_NAME, DEFAULT_BIN_NAME } from '../constants.js';
 import { CommandError } from '../errors/errors.js';
 import type { IsFolderFn, ReadManifestFn } from '../models.js';
 import { thrownBy } from '../test/thrown.js';
-import { findProject, resolveBinName, resolveSettings, resolveStateDir } from './settings.js';
+import {
+    findProject,
+    resolveAuditFile,
+    resolveBinName,
+    resolveSettings,
+    resolveStateDir
+} from './settings.js';
 
 /** Manifests by folder: the only "files" the pure code gets to see. Folders in `broken` cannot be read. */
 const manifestsAt =
@@ -531,4 +537,53 @@ describe('resolveStateDir', () => {
             message: '"artemis".stateDir must be a non-empty string (in /work/app/package.json)'
         });
     });
+});
+
+describe('resolveAuditFile', () => {
+    const root = path.resolve('work', 'app');
+    const trail = path.join(root, 'state', AUDIT_FILE_NAME);
+
+    const withAudit = (audit?: boolean) => ({
+        root,
+        manifest: { name: 'app', artemis: audit === undefined ? {} : { audit } }
+    });
+
+    test('shipped route: on when the project says nothing', () => {
+        expect(resolveAuditFile(withAudit(), 'shipped')).toBe(trail);
+    });
+
+    test('shipped route: true is the same as saying nothing', () => {
+        expect(resolveAuditFile(withAudit(true), 'shipped')).toBe(trail);
+    });
+
+    test('shipped route: off with "audit": false', () => {
+        expect(resolveAuditFile(withAudit(false), 'shipped')).toBeUndefined();
+    });
+
+    test('own route: off when the tool says nothing', () => {
+        expect(resolveAuditFile(withAudit(), 'own')).toBeUndefined();
+    });
+
+    test('own route: on only with "audit": true, in the state folder of the tool', () => {
+        expect(resolveAuditFile(withAudit(true), 'own')).toBe(trail);
+    });
+
+    test('own route: off with "audit": false', () => {
+        expect(resolveAuditFile(withAudit(false), 'own')).toBeUndefined();
+    });
+
+    test('own route: follows the stateDir of the tool', () => {
+        const project = { root, manifest: { artemis: { audit: true, stateDir: 'data' } } };
+
+        expect(resolveAuditFile(project, 'own')).toBe(path.join(root, 'data', AUDIT_FILE_NAME));
+    });
+
+    test.each(['own', 'shipped'] as const)(
+        'a value that is not true or false is the invalid-config error on the %s route',
+        (route) => {
+            const project = { root, manifest: { artemis: { audit: 'yes' } } };
+
+            expect(thrownBy(() => resolveAuditFile(project, route))).toBeInstanceOf(CommandError);
+        }
+    );
 });

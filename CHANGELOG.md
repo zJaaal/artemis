@@ -6,6 +6,7 @@ What changed in each release, newest first. Breaking entries link to their secti
 
 ### Added
 
+- A published tool turns the audit trail on with `"artemis": { "audit": true }` and then has the word `history`; `run()` callers get `readHistory` and the documented `auditFile` option.
 - `destructive` can be a function of the call's `args` and `flags`, so `start --no-prune` can skip the confirmation that `start` needs.
 
 ## 1.2.0 (2026-11-14)

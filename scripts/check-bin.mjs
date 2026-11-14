@@ -10,7 +10,7 @@ import path from 'node:path';
 const EXIT_FAILED = 1;
 const EXIT_USAGE = 2;
 const NOISY_LINES = 2000;
-const PACKED_ROOT_FILES = ['README.md', 'LICENSE', 'package.json', 'AGENTS.md'];
+const PACKED_ROOT_FILES = ['README.md', 'LICENSE', 'package.json', 'AGENTS.md', 'CHANGELOG.md'];
 
 const root = fs.mkdtempSync(path.join(os.tmpdir(), 'artemis-bin-'));
 const prefix = path.join(root, 'prefix');
@@ -498,7 +498,7 @@ export default defineCommand({
     );
 
     console.log(
-        'ok   the package holds dist/, README, LICENSE, package.json and AGENTS.md, and nothing else'
+        'ok   the package holds dist/, README, LICENSE, package.json, AGENTS.md and CHANGELOG.md, and nothing else'
     );
 
     // A project that installs another copy than the one that runs: the doctor says so, and the warning is not doubled on it.

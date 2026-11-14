@@ -251,6 +251,18 @@ describe('art history: a word of the shipped binary', () => {
         expect(JSON.parse(result.out)).toMatchObject({ ok: false });
     });
 
+    test('--help works outside a project too: help needs none', async () => {
+        const result = await art(['history', '--help'], folders.make('artemis-nowhere-'));
+
+        expect(result.code).toBe(EXIT_CODE.OK);
+    });
+
+    test('a wrong flag outside a project is a usage error, not a missing project', async () => {
+        const result = await art(['history', '--bogus'], folders.make('artemis-nowhere-'));
+
+        expect(result.code).toBe(EXIT_CODE.USAGE);
+    });
+
     test('a flag before the word that is not global is refused', async () => {
         expect((await art(['--limit', 'history'], newProject())).code).toBe(EXIT_CODE.USAGE);
     });

@@ -9,10 +9,10 @@ import { CommandError } from '../errors/errors.js';
 import type {
     CliFn,
     CliRoute,
+    CliSettings,
     FolderOfRootFn,
     HostOptions,
     Project,
-    SettingsForFn,
     ShippedWord
 } from '../models.js';
 import { reportError } from '../run/report.js';
@@ -24,12 +24,13 @@ import { jsonRequested, quietRequested } from '../utils/terminator.js';
 import {
     BUILTINS,
     DOCTOR_WORD,
+    HISTORY_BUILTINS,
     HISTORY_WORD,
     INIT_WORD,
     SKILL_WORD,
     STATE_WORD
 } from './constants.js';
-import { historyCommand } from './history-command.js';
+import { historyCommand, shippedHistory } from './history-command.js';
 import { skillCommand } from './skill-command.js';
 import { doctorCommand } from './doctor-command.js';
 import { initCommand } from './init-command.js';
@@ -90,8 +91,8 @@ const missingCommandsError = (commandsDir: string, projectRoot: string, route: C
     });
 };
 
-/** The project of a folder and where its commands are, or a CommandError that says what to create. */
-const settingsFor: SettingsForFn = (start, route) => {
+/** The project of a folder, or a CommandError that says what to create. */
+function projectFor(start: string, route: CliRoute): Project {
     // The messages name no binary: it is not known here what the user typed (art, artemis or a tool's name).
     const project = findProject(start, readManifest, isFolder, route);
 
@@ -99,21 +100,26 @@ const settingsFor: SettingsForFn = (start, route) => {
         throw noProjectError(start, route);
     }
 
+    return project;
+}
+
+/** Where a project's commands are, or a CommandError that says what to create. */
+function settingsOf(project: Project, route: CliRoute): CliSettings {
     const settings = resolveSettings(project, route);
 
     if (!isFolder(settings.commandsDir)) {
         throw missingCommandsError(settings.commandsDir, project.root, route);
     }
 
-    return { settings, project };
-};
+    return settings;
+}
 
 const SHIPPED_WORDS: readonly ShippedWord[] = [
     { word: INIT_WORD, run: initCommand },
     { word: STATE_WORD, run: (words, host, cwd) => stateCommand(words, host, cwd) },
     { word: SKILL_WORD, run: skillCommand },
     { word: DOCTOR_WORD, run: doctorCommand },
-    { word: HISTORY_WORD, run: historyCommand }
+    { word: HISTORY_WORD, run: shippedHistory }
 ];
 
 /** Prints the one-line version warning to stderr, when the running Artemis is not the project's. */
@@ -180,28 +186,54 @@ export const launch: CliFn = async (options = {}) => {
         }
     }
 
-    let found;
+    let project: Project;
+    let auditFile: string | undefined;
+    let settings: CliSettings;
+    let isToolHistory: boolean;
 
     try {
         const start = path.resolve(
             root === undefined ? (cwd ?? workingDirectory()) : folderOfRoot(root)
         );
 
-        found = settingsFor(start, route);
+        project = projectFor(start, route);
+        auditFile = resolveAuditFile(project, route);
+        settings = resolveSettings(project, route);
+
+        // A tool that turned auditing on has the word `history`: it needs the project, not commands that load
+        isToolHistory = route === 'own' && auditFile !== undefined && rest[0] === HISTORY_WORD;
+
+        if (!isToolHistory) {
+            settings = settingsOf(project, route);
+        }
     } catch (error) {
         return reportSetupFailure(argv, error, host);
     }
 
+    if (isToolHistory) {
+        try {
+            assertLeadingFlags(leading, HISTORY_WORD);
+
+            return await historyCommand([...leading, ...rest.slice(1)], host, {
+                project,
+                bin: settings.bin,
+                route
+            });
+        } catch (error) {
+            return reportSetupFailure(argv, error, host, HISTORY_WORD);
+        }
+    }
+
     if (route === 'shipped' && !quietRequested(argv)) {
-        warnAboutVersion(found.project, host);
+        warnAboutVersion(project, host);
     }
 
     return run(argv, {
         ...host,
-        ...found.settings,
+        ...settings,
         cwd,
-        ...(route === 'shipped'
-            ? { builtins: BUILTINS, auditFile: resolveAuditFile(found.project) }
-            : {})
+        ...(route === 'shipped' ? { builtins: BUILTINS } : {}),
+        ...(auditFile === undefined ? {} : { auditFile }),
+        ...(route === 'own' && auditFile !== undefined ? { builtins: HISTORY_BUILTINS } : {})
     });
 };

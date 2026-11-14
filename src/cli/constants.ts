@@ -203,6 +203,14 @@ export const BUILTINS: readonly Builtin[] = [
     }
 ];
 
+/** The one word a published tool gets, when it turns auditing on: `history`. */
+export const HISTORY_BUILTINS: readonly Builtin[] = BUILTINS.filter(
+    (builtin) => builtin.id === HISTORY_WORD
+);
+
+/** What a word's help text starts with: a tool's bin goes right after it. */
+export const USAGE_PREFIX = 'Usage: ';
+
 /** Every word the shipped binary handles itself: a project command or topic with one of these names is hidden. */
 export const WORD_NAMES: readonly string[] = BUILTINS.map((builtin) => builtin.id);
 

@@ -1301,8 +1301,11 @@ export type FindProjectFn = (
 /** The folder the store kit keeps its documents in (absolute). Throws a CommandError when the "artemis" key has a bad shape. */
 export type ResolveStateDirFn = (project: Project) => string;
 
-/** Where the audit trail goes (absolute), or undefined when the project turned it off. */
-export type ResolveAuditFileFn = (project: Project) => string | undefined;
+/**
+ * Where the audit trail goes (absolute), or undefined when it is off. The shipped route records unless
+ * the project says `"audit": false`; a project's own bin file (a published tool) only with `"audit": true`.
+ */
+export type ResolveAuditFileFn = (project: Project, route: CliRoute) => string | undefined;
 
 /** What to say when no project is found from a folder upwards. */
 export type NoProjectErrorFn = (start: string, route: CliRoute) => CommandError;
@@ -1335,11 +1338,6 @@ export type CliOptions = HostOptions & {
 };
 
 export type CliFn = (options?: CliOptions) => Promise<number>;
-
-/** Finds the settings for a folder, or throws a CommandError that says what to create or set. */
-/** What a folder's project says: the settings to run with, and the project they came from. */
-export type FoundSettings = { settings: CliSettings; project: Project };
-export type SettingsForFn = (start: string, route: CliRoute) => FoundSettings;
 
 /** The folder a `root` points at: itself when it is a folder, else the folder of the file. */
 export type FolderOfRootFn = (root: string | URL) => string;
@@ -1423,7 +1421,13 @@ export type IsInstalledPackageRootFn = (dir: string) => boolean;
 export type PackageNameForFn = (dir: string) => string;
 
 /** What `<word> --help` prints for a built-in word: its usage text, or under --json its manifest entry. */
-export type WordHelpFn = (word: { id: string; text: string; json: boolean }) => string;
+export type WordHelpFn = (word: {
+    id: string;
+    text: string;
+    json: boolean;
+    /** A tool's own bin: the text's leading `Usage: ` becomes `Usage: <bin> `. The shipped words pass none. */
+    bin?: string | undefined;
+}) => string;
 
 /** `art init [folder] [--json]`. Returns the exit code. */
 export type InitCommandFn = (words: string[], options: CliOptions, cwd: string) => number;
@@ -1562,4 +1566,21 @@ export type SelectHistoryFn = (
 ) => AuditLine[];
 
 export type HistoryLineFn = (entry: AuditLine) => string;
-export type HistoryCommandFn = (words: string[], host: CliOptions, cwd: string) => Promise<number>;
+
+/** What `history` needs to know about where it runs: the project (found by the launcher), the bin to show and the route. */
+export type HistoryContext = { project: Project; bin: string; route: CliRoute };
+
+export type HistoryCommandFn = (
+    words: string[],
+    host: CliOptions,
+    context: HistoryContext
+) => Promise<number>;
+
+/** What `readHistory` takes besides the file: one command id, and how many runs at most. */
+export type ReadHistoryOptions = { command?: string | undefined; limit?: number | undefined };
+
+/** The runs `readHistory` found, newest first, and how many lines of the file were not runs. */
+export type HistoryRead = { entries: AuditLine[]; skipped: number };
+
+/** The recorded runs of an audit file, newest first. A missing file has none. */
+export type ReadHistoryFn = (auditFile: string, options?: ReadHistoryOptions) => HistoryRead;

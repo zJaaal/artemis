@@ -1,22 +1,20 @@
 import path from 'node:path';
 
 import { AUDIT_FILE_NAME, EXIT_CODE } from '../constants.js';
-import { parseAuditText } from '../audit/audit.js';
 import { discover } from '../discover/discover.js';
-import { isFolder, readManifest, readTextIfExists } from '../edges/files.js';
-import { CommandError } from '../errors/errors.js';
-import type { HistoryCommandFn } from '../models.js';
+import { isFolder, readManifest } from '../edges/files.js';
+import type { CliOptions, HistoryCommandFn, ShippedWord } from '../models.js';
 import { findCommand } from '../resolve/resolve.js';
 import { printResult } from '../run/report.js';
 import { resolveWorld } from '../run/world.js';
-import { messageOf } from '../utils/error-message.js';
 import {
     HISTORY_HELP,
     HISTORY_SHADOW_WARNING,
     HISTORY_WORD,
     NOTHING_RECORDED
 } from './constants.js';
-import { historyLine, parseHistoryWords, selectHistory } from './history.js';
+import { historyLine, parseHistoryWords } from './history.js';
+import { readHistory } from './read-history.js';
 import { findProject, noProjectError, resolveSettings, resolveStateDir } from './settings.js';
 import { shadowsWord } from './shadow.js';
 import { wordHelp } from './word-help.js';
@@ -44,30 +42,59 @@ async function commandIdOf(
     }
 }
 
-/** The text of the audit trail, or undefined when nothing was recorded yet. */
-function readAudit(file: string): string | undefined {
-    try {
-        return readTextIfExists(file);
-    } catch (error) {
-        throw new CommandError(`Cannot read the audit trail ${file}: ${messageOf(error)}`, {
-            hint: 'Check the permissions of the state folder, or fix "artemis".stateDir in package.json.'
-        });
-    }
+/** `history --help`: the usage text (a tool's names its bin), or under --json the manifest entry. */
+function writeHelp(host: CliOptions, json: boolean, bin: string | undefined): void {
+    const { io } = resolveWorld(host);
+
+    io.stdout.write(`${wordHelp({ id: HISTORY_WORD, text: HISTORY_HELP, json, bin })}\n`);
 }
 
 /**
  * `history [command words]... [--limit <n>] [--json] [--quiet]`: the runs the audit trail recorded,
- * newest first. Handled by the shipped binary itself, like `state`: it needs a project, but not a
- * commands folder that loads.
+ * newest first. A word of the binary itself, like `state`: it needs a project, but not a commands
+ * folder that loads. The launcher finds the project (from the current folder on the shipped route,
+ * from the bin file of a published tool that turned auditing on) and passes it in.
  */
-export const historyCommand: HistoryCommandFn = async (words, host, cwd) => {
+export const historyCommand: HistoryCommandFn = async (words, host, { project, bin, route }) => {
     const parsed = parseHistoryWords(words);
     const { io } = resolveWorld(host);
 
     if (parsed.help) {
-        io.stdout.write(
-            `${wordHelp({ id: HISTORY_WORD, text: HISTORY_HELP, json: parsed.json })}\n`
-        );
+        writeHelp(host, parsed.json, route === 'own' ? bin : undefined);
+
+        return EXIT_CODE.OK;
+    }
+
+    const { commandsDir } = resolveSettings(project, route);
+
+    if (shadowsWord(commandsDir, HISTORY_WORD) && !parsed.quiet) {
+        io.stderr.write(`Warning: ${HISTORY_SHADOW_WARNING}\n`);
+    }
+
+    const commandId = await commandIdOf(commandsDir, parsed.command);
+    const file = path.join(resolveStateDir(project), AUDIT_FILE_NAME);
+    const { entries, skipped } = readHistory(file, { command: commandId, limit: parsed.limit });
+
+    printResult(io, {
+        json: parsed.json,
+        command: HISTORY_WORD,
+        text: entries.length ? entries.map(historyLine).join(NEWLINE) : NOTHING_RECORDED,
+        result: { entries, skipped }
+    });
+
+    return EXIT_CODE.OK;
+};
+
+/**
+ * `history` on the shipped route: finds the project from the current folder and runs the word with it
+ * and the bin the project shows. The words are read first, so `--help` and a wrong flag are answered
+ * where there is no project too, as they always were.
+ */
+export const shippedHistory: ShippedWord['run'] = (words, host, cwd) => {
+    const parsed = parseHistoryWords(words);
+
+    if (parsed.help) {
+        writeHelp(host, parsed.json, undefined);
 
         return EXIT_CODE.OK;
     }
@@ -78,23 +105,7 @@ export const historyCommand: HistoryCommandFn = async (words, host, cwd) => {
         throw noProjectError(cwd, 'shipped');
     }
 
-    const { commandsDir } = resolveSettings(project, 'shipped');
+    const { bin } = resolveSettings(project, 'shipped');
 
-    if (shadowsWord(commandsDir, HISTORY_WORD) && !parsed.quiet) {
-        io.stderr.write(`Warning: ${HISTORY_SHADOW_WARNING}\n`);
-    }
-
-    const text = readAudit(path.join(resolveStateDir(project), AUDIT_FILE_NAME));
-    const { entries, skipped } = parseAuditText(text ?? '');
-    const commandId = await commandIdOf(commandsDir, parsed.command);
-    const shown = selectHistory(entries, { commandId, limit: parsed.limit });
-
-    printResult(io, {
-        json: parsed.json,
-        command: HISTORY_WORD,
-        text: shown.length ? shown.map(historyLine).join(NEWLINE) : NOTHING_RECORDED,
-        result: { entries: shown, skipped }
-    });
-
-    return EXIT_CODE.OK;
+    return historyCommand(words, host, { project, bin, route: 'shipped' });
 };
