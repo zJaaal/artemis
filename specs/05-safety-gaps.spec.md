@@ -60,7 +60,11 @@ With auditing on, `history` is a word of the tool, exactly as on the shipped `ar
 3. When the trail is on and the first word after the leading global flags is `history`, the word runs now, before `settingsFor`, so it works without a commands folder (as on the shipped route).
 4. Otherwise `settingsFor` runs as today, and `run()` gets `auditFile` and `builtins: [<the history entry of BUILTINS>]` when the trail is on, nothing extra when it is off.
 
-`HistoryCommandFn` changes from `(words, host, cwd)` to `(words, host, context)`, with `context: { project: Project; bin: string; route: CliRoute }` (a `HistoryContext` type in models.ts). It stops finding the project itself; the shipped launcher passes the project it finds from `cwd` today, and the tool launcher the one it found from `root`. `bin` is what usage lines and `--help` show: `HISTORY_USAGE_LINE` and `HISTORY_HELP` lose nothing, and `wordHelp` gains a `bin` parameter (default `art` behavior unchanged on the shipped route) that it puts in front of the usage line, the way text help does for commands.
+`HistoryCommandFn` changes from `(words, host, cwd)` to `(words, host, context)`, with `context: { project: Project; bin: string; route: CliRoute }` (a `HistoryContext` type in models.ts). It stops finding the project itself; the shipped launcher passes the project it finds from `cwd` today, and the tool launcher the one it found from `root`. `bin` is what `--help` shows on a tool: `wordHelp` gains an optional `bin`, and when it is given the text's leading `Usage: ` becomes `Usage: <bin> `. The shipped route passes none, so every shipped word's `--help` text stays exactly as it is today. The JSON form (`--help --json`) does not change.
+
+**On the shipped route,** `SHIPPED_WORDS` entries keep their `run(words, host, cwd)` shape. The `history` entry becomes a small wrapper that finds the project from `cwd` (`findProject(cwd, ..., 'shipped')`), throws the existing `noProjectError` when there is none, and calls `historyCommand(words, host, { project, bin: 'art', route: 'shipped' })`. `init`, `state`, `skill` and `doctor` are untouched. `new` (part 4) uses the same wrapper shape.
+
+**On the tool route,** the `findProject` and `resolveAuditFile` calls of steps 1 and 2 sit inside the same `try` that sends a failure to `reportSetupFailure`, so an invalid `"audit"` value is reported like any other setup failure.
 
 ### `readHistory` for `run()` callers
 
@@ -73,7 +77,7 @@ readHistory(auditFile: string, options?: { command?: string; limit?: number }): 
 - The lines of `auditFile`, newest first, filtered to the command id `command` (an id: aliases are the caller's to resolve, from its own registry), at most `limit` (default `HISTORY_DEFAULT_LIMIT`, 20). The same `entries` and `skipped` as `art history --json`.
 - A missing file is `{ entries: [], skipped: 0 }`. An unreadable one throws the `CommandError` that `art history` throws today. A `limit` that is not a whole number above 0 is a `TypeError`.
 - `AuditLine` (already in models.ts) is exported as a type from `src/index.ts`. New types in models.ts: `ReadHistoryOptions` (`{ command?: string; limit?: number }`), `HistoryRead` (`{ entries: AuditLine[]; skipped: number }`) and `ReadHistoryFn`.
-- It lives in `src/cli/read-history.ts`: the file read through the existing `readTextIfExists` edge, then the pure `parseAuditText` and `selectHistory`.
+- It lives in `src/cli/read-history.ts`: the file read through the existing `readTextIfExists` edge, then the pure `parseAuditText` and `selectHistory`. The private `readHistory` in `doctor-command.ts` is renamed `readDoctorHistory`, so one name means one function.
 - docs/run.md documents `auditFile` and `readHistory`, with a five-line example of a `history` command file built on them.
 
 ## 2. Destructive by call
@@ -94,6 +98,7 @@ export default defineCommand({
 - **`ctx.invoke`** calls the invoked command's function with that command's own parsed `args` and `flags`.
 - **Everywhere a command is described** (help text, `help --json`, the brief listing, `art skill`, doctor's `history-previewed` check), a function counts as `destructive: true`: the command can change or delete data, and the reader cannot run the function. Text help prints the existing Destructive line followed by `(depends on the arguments and flags)`; the manifest stays `destructive: true` (no new key).
 - **Types.** models.ts gains `DestructiveFn<TArgs, TFlags> = (input: { args: <the parsed args type of run>; flags: <the parsed flags type of run> }) => boolean`, using the same generic parameters as `run`'s input, so `define.test-d.ts` can check that `flags['no-prune']` is a `boolean` there and that returning a string is a type error. `destructive` on the definition input and on `Command` becomes `boolean | DestructiveFn<...>`; the output definition keeps the value as given.
+- **Text help.** `HelpSubject.destructive` widens to `boolean | DestructiveFn<...>`: `subjectHelp` prints the Destructive line when `canDestroy` says so, and adds the "(depends on the arguments and flags)" note when the value is a function.
 - **Consumers.** `execute` resolves the value to a boolean (calling the function) and passes that boolean to `confirmDestructive`, whose `call.destructive` stays `boolean`. Every describer (help, manifest, brief, skill, doctor's `loaded`) normalises with one helper, `canDestroy(value) = value !== false`; doctor's `loaded: { destructive: boolean }` keeps its type.
 - **Validation.** `validateMarker` accepts a boolean or a function for `destructive`; `dryRun` stays boolean-only.
 
@@ -113,7 +118,8 @@ The first CI run on `windows-latest` (Node 24) sorted into these. W2, W3 and W5 
   - **shims are escaped twice:** when the file matches `/node_modules[\\/]\.bin[\\/][^\\/]+\.cmd$/i` (an npm `.bin` shim, which hands its arguments to another `cmd.exe`), the metacharacter step runs a second time on each argument.
 - Placement: the escaping is pure, in `src/utils/windows-command.ts`, tested on every platform with each metacharacter, a quote, trailing backslashes and the shim case. The `PATH` × `PATHEXT` lookup reads the disk, so it is an edge, in `src/edges/`, written as one `flatMap` over the candidate paths (no nested loops).
 - The promise "never through a shell" becomes, for Windows `.cmd` files only, "through `cmd.exe` with every argument escaped so nothing is interpreted". docs/commands.md says so.
-- `.exe` and `.com` files spawn directly, as on every other platform. A command not found keeps the existing not-found error.
+- The `.cmd` / `.bat` rule applies to the file that will run, however it was named: a bare name resolved through `PATH`, or a path given with its extension (`node_modules/.bin/tsc.cmd`, which is also what the shim rule below matches). `.exe` and `.com` files spawn directly, as on every other platform. A command not found keeps the existing not-found error.
+- The shell is the call's `env.ComSpec` (the process environment's when the call passes no `env`), falling back to `cmd.exe`, as `cross-spawn` does.
 - The same resolution applies to the detached spawn (`detached: true`).
 
 **W2. The worktrees kit's paths do not match on Windows.** The kit already passes its paths through `realPathOrResolve` (`src/edges/files.ts`), but that uses the JavaScript `fs.realpathSync`, which on Windows neither expands short names (`C:\Users\RUNNER~1\...` is `C:\Users\runneradmin\...`) nor fixes case, and the comparisons that follow are case-sensitive. So the main checkout was "a worktree with no instance yet".
@@ -137,6 +143,7 @@ The first CI run on `windows-latest` (Node 24) sorted into these. W2, W3 and W5 
 **W5. A path under a file is "missing" on Windows, not "not a folder".** Windows reports `ENOENT` where POSIX reports `ENOTDIR` for `a-file/below`. So `folderProblem` says `missing`, and `art state` with a `stateDir` under a file exits 0 with nothing to show instead of exiting 1 with a hint.
 
 - `folderProblem`, on `ENOENT`, walks up the path's ancestors: when the nearest one that exists is not a folder, the answer is `not-a-folder`. This runs on every platform (on POSIX the `ENOTDIR` case already answers it, so nothing changes there).
+- `assertStateFolder` (`src/cli/state-command.ts`) stops testing `pathExists(dir) && !isFolder(dir)` and asks `folderProblem(dir) === 'not-a-folder'` instead, so `art state` sees a `stateDir` under a file on Windows too (its `readdir` gets `ENOENT` there, which `listJsonFiles` rightly reads as "no documents"). `listJsonFiles` does not change.
 - Its tests are the three that fail today: `files.test.ts` "a path under a file is not a folder", `exec.test.ts` "a cwd under a file is not-a-folder too", and both `state-command.test.ts` "a state folder that cannot be read" cases.
 
 ### Tests that assume POSIX
@@ -167,7 +174,14 @@ Created /work/app/commands/db/reset.js
 Next: art db reset --help
 ```
 
-- **Parsing:** with `node:util` `parseArgs` (strict, positionals allowed), as the other words parse theirs: `--description d` and `--description=d` both work, `--arg` and `--flag` are `multiple` strings, and every positional is a word, wherever it stands (`art new x --arg a y` is the words `x y` and the arg `a`). A value that starts with `-` needs the `=` form; that is `parseArgs`'s rule. An unknown flag is a usage error (exit 2).
+- **Parsing:** by hand, in the style of `parseHistoryWords` and `parseStateWords` (a pure `parseNewWords` in `src/cli/new.ts`):
+  - `-h` and `--help` are handled first, as in the other words: the word's help, exit 0.
+  - `--description`, `--arg` and `--flag` take a value, as `--x value` or `--x=value`. The word after one of them is always its value, even when it starts with `-`. A missing value (the flag is last, or `--x=`) is a usage error.
+  - `--arg` and `--flag` can repeat; `--description` given twice is a usage error.
+  - `--destructive`, `--supports-dry-run`, `--json` and `--quiet` stand alone.
+  - Any other word starting with `-` is the other words' usage error, `Unknown option "<word>"` (so `--yes`, `--dry-run` and `--log` are refused this way, exit 2).
+  - Every other word is a command word, wherever it stands (`art new x --arg a y` is the words `x y` and the arg `a`).
+  - Every usage error is a `UsageError` with `usage: NEW_USAGE_LINE`, exit 2.
 - **Words:** one or more, each matching `^[a-z0-9][a-z0-9-]*$`. The first word may not be a word of the shipped binary (`help`, `init`, `state`, `skill`, `doctor`, `history`, `new`): that is a usage error (exit 2) whose hint says the command would be hidden.
 - **`--description`** is required and one line (no newline); missing or empty is a usage error (exit 2).
 - **`--arg <name>`** (repeatable, in order) adds a required argument; **`--flag <name>`** (repeatable) adds a boolean flag. Names match `^[a-z][a-z0-9-]*$`. A flag named after a reserved flag (`help`, `json`, `yes`, `dry-run`, `quiet`, `log`), a duplicate name, or an arg and a flag with one name is a usage error (exit 2). Args and flags get the description `TODO: describe`.
@@ -247,7 +261,7 @@ Branch `spec-05`, cut from `main` at `fc34904`, with the Windows CI commit of PR
 - **Auditing is opt-in for tools,** off by default: a tool installed from npm would otherwise write into `node_modules`. The owner's own case (a tool run from its checkout) turns it on with one key.
 - **`history` comes with the audit on a tool, and wins over a command of that name.** The author asked for it. Without auditing, a tool still reserves nothing.
 - **`run()` gets `readHistory`, not a built-in word:** a `run()` caller owns its bin and its words, and a five-line command file on `readHistory` is its `history`.
-- **`destructive` as a function, not `ctx.yes` or `ctx.confirm`:** the decision stays declarative and before `run`, so the confirmation, the dry-run refusal and the audit line work as they do for `true`, and a command never half-runs before asking. A command that only learns mid-run that it will delete something is not served; no case of it is known.
+- **`destructive` as a function, not `ctx.yes` or `ctx.confirm`:** the decision stays declarative and before `run`, so the confirmation and the dry-run refusal work as they do for `true`, and a command never half-runs before asking. A command that only learns mid-run that it will delete something is not served; no case of it is known.
 - **The manifest says `destructive: true` for a function:** an agent cannot run the function, so it reads "can delete". Passing `--yes` when it was not needed costs nothing.
 - **Windows `.cmd` support is written in Artemis, not taken from `cross-spawn`:** the escaping rules are small and well known, and Artemis keeps one runtime dependency. The rules follow `cross-spawn`'s, and the tests pin each metacharacter.
 - **The word is `new`:** short, and what people type in other tools (`ng new`, `cargo new`). It reserves one more name on the shipped `art`; doctor reports a command that it hides.
