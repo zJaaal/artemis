@@ -59,3 +59,58 @@ jobs:
           else
               npx -y npm@12.2.1 stage publish --dry-run --access public
           fi
+
+  # Windows has never been tested: this job finds out what breaks there. It cannot fail the run yet
+  # (continue-on-error), and every step runs even when an earlier one failed, so one run shows all
+  # of it. Once it is green, it joins the matrix above.
+  windows:
+    name: Windows (Node 24, not required yet)
+    runs-on: windows-latest
+    continue-on-error: true
+    steps:
+      # Git for Windows turns LF into CRLF on checkout by default; the files are LF, as Prettier checks
+      - run: git config --global core.autocrlf false
+
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          check-latest: true
+          cache: pnpm
+
+      - run: pnpm install --frozen-lockfile
+
+      - name: tsc
+        if: ${{ !cancelled() }}
+        run: pnpm exec tsc --noEmit
+
+      - name: eslint
+        if: ${{ !cancelled() }}
+        run: pnpm exec eslint .
+
+      - name: prettier
+        if: ${{ !cancelled() }}
+        run: pnpm exec prettier --check .
+
+      - name: vitest
+        if: ${{ !cancelled() }}
+        run: pnpm exec vitest run
+
+      - name: build
+        if: ${{ !cancelled() }}
+        run: pnpm run build
+
+      - name: check-exports
+        if: ${{ !cancelled() }}
+        run: pnpm run check-exports
+
+      - name: check-bin
+        if: ${{ !cancelled() }}
+        run: pnpm run check-bin
+
+      - name: check-lock
+        if: ${{ !cancelled() }}
+        run: pnpm run check-lock
