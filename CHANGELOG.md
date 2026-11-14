@@ -16,6 +16,7 @@ What changed in each release, newest first. Breaking entries link to their secti
 - The worktrees kit recognizes a checkout on Windows: paths are the real paths the disk reports (short names expanded) and compare without regard to case.
 - The store's atomic write tries again on Windows when another process has the file open (EPERM, EACCES, EBUSY), instead of failing at once.
 - Stopping a child of `ctx.exec` on Windows ends everything it started too (`taskkill /T /F`), where before a dev server's workers survived.
+- A path under a file is "not a folder" on Windows too (it said "missing"), so `art state` with a `stateDir` under a file fails with a hint on every platform: "The state folder ... is not a folder" replaces "Cannot read the state folder".
 
 ## 1.2.0 (2026-11-14)
 

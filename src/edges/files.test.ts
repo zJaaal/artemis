@@ -525,6 +525,20 @@ describe('folderProblem', () => {
         );
     });
 
+    test('a folder several levels below one that exists is missing, not blocked', () => {
+        expect(folderProblem(path.join(folders.make('artemis-files-'), 'a', 'b', 'c'))).toBe(
+            FOLDER_PROBLEM.MISSING
+        );
+    });
+
+    test('a path several levels below a file is not a folder, however the platform words it', () => {
+        const file = path.join(folders.make('artemis-files-'), 'plain.txt');
+
+        fs.writeFileSync(file, 'x');
+
+        expect(folderProblem(path.join(file, 'a', 'b'))).toBe(FOLDER_PROBLEM.NOT_A_FOLDER);
+    });
+
     test('a file is not a folder', () => {
         const file = path.join(folders.make('artemis-files-'), 'plain.txt');
 

@@ -853,8 +853,8 @@ describe('art state: a state folder that is a file', () => {
     });
 });
 
-describe('art state: a state folder that cannot be read', () => {
-    /** The state folder sits below a file, so listing it fails with ENOTDIR: the same path as EACCES. */
+describe('art state: a state folder under a file', () => {
+    /** The state folder sits below a file: POSIX says ENOTDIR for it, Windows ENOENT, and both are "not a folder". */
     const projectBelowAFile = () => {
         const { root } = newProject();
         const blocker = path.join(root, 'blocker');
@@ -875,15 +875,15 @@ describe('art state: a state folder that cannot be read', () => {
         expect((await art(['state', '--json'], root)).code).toBe(EXIT_CODE.FAILED);
     });
 
-    test('names the folder, and says where to look', async () => {
+    test('says that the state folder is not a folder, and how to fix it', async () => {
         const { root, dir } = projectBelowAFile();
         const result = envelope((await art(['state', '--json'], root)).out);
 
         expect(result).toMatchObject({
             ok: false,
             command: 'state',
-            error: expect.stringContaining(`Cannot read the state folder ${dir}`),
-            hint: `Check the permissions of ${dir}, or fix "artemis".stateDir in package.json.`
+            error: `The state folder ${dir} is not a folder.`,
+            hint: 'Fix "artemis".stateDir in package.json, or remove that file.'
         });
     });
 

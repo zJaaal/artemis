@@ -3,12 +3,13 @@ import path from 'node:path';
 import {
     CONFIG_KEY,
     EXIT_CODE,
+    FOLDER_PROBLEM,
     JSON_EXTENSION,
     MANIFEST_FILE,
     NOT_INTERACTIVE_MESSAGE
 } from '../constants.js';
 import { createPrompter } from '../context/context.js';
-import { isFolder, listJsonFiles, pathExists, readManifest } from '../edges/files.js';
+import { folderProblem, isFolder, listJsonFiles, readManifest } from '../edges/files.js';
 import { CommandError } from '../errors/errors.js';
 import { STORE_INDENT_SPACES } from '../kits/store/constants.js';
 import { resolveLockEdges } from '../kits/store/lock-options.js';
@@ -50,9 +51,12 @@ const fileOf = (dir: string, name: string): string => path.join(dir, `${name}${J
 /** A path as a person reads it: relative to where they are. */
 const shown = (run: StateRun, target: string): string => path.relative(run.cwd, target) || target;
 
-/** The state folder may not exist yet, but what is there must be a folder: a file is a setup mistake. */
+/**
+ * The state folder may not exist yet, but what is there must be a folder: a file in its place, or
+ * on its way (`stateDir` under a file), is a setup mistake.
+ */
 function assertStateFolder(dir: string): void {
-    if (pathExists(dir) && !isFolder(dir)) {
+    if (folderProblem(dir) === FOLDER_PROBLEM.NOT_A_FOLDER) {
         throw new CommandError(`The state folder ${dir} is not a folder.`, {
             hint: `Fix "${CONFIG_KEY}".stateDir in ${MANIFEST_FILE}, or remove that file.`
         });

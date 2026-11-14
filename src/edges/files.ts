@@ -23,6 +23,7 @@ import { sleepSync } from './sleep.js';
 import type {
     AppendTextFn,
     CreateExclusiveFn,
+    FolderProblem,
     FolderProblemFn,
     IsFileFn,
     IsFolderFn,
@@ -256,6 +257,32 @@ export const readManifest: ReadManifestFn = (dir) => {
  * not a folder (a file, or a parent that is one), or this user cannot enter it (EACCES or EPERM, on
  * it or on a parent).
  */
+/**
+ * What a path that is not there is: missing, or "not a folder" when the nearest part of it that
+ * does exist is a file. POSIX says the second with ENOTDIR; Windows says ENOENT for both, so it is
+ * found by looking up the path.
+ */
+function missingOrBlocked(folder: string): FolderProblem {
+    const parent = path.dirname(folder);
+
+    if (parent === folder) {
+        return FOLDER_PROBLEM.MISSING;
+    }
+
+    try {
+        const found = fs.statSync(parent, { throwIfNoEntry: false });
+
+        if (found === undefined) {
+            return missingOrBlocked(parent);
+        }
+
+        return found.isDirectory() ? FOLDER_PROBLEM.MISSING : FOLDER_PROBLEM.NOT_A_FOLDER;
+    } catch {
+        // ignoreUnreadableParent: if a part of the path cannot even be looked at, it is plainly not there
+        return FOLDER_PROBLEM.MISSING;
+    }
+}
+
 export const folderProblem: FolderProblemFn = (folder) => {
     try {
         if (!fs.statSync(folder).isDirectory()) {
@@ -269,7 +296,7 @@ export const folderProblem: FolderProblemFn = (folder) => {
         const code = codeOf(error);
 
         if (code === ERROR_CODE.MISSING) {
-            return FOLDER_PROBLEM.MISSING;
+            return missingOrBlocked(folder);
         }
 
         if (code === ERROR_CODE.NOT_A_DIRECTORY) {
