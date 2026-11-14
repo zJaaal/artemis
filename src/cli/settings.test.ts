@@ -207,7 +207,7 @@ describe('findProject: a package.json that cannot be read', () => {
             );
 
         expect(thrownBy(search)).toMatchObject({
-            message: `Cannot read ${at('/work/app/templates')}${path.sep}package.json`
+            message: `Cannot read ${at('/work/app/templates')}/package.json`
         });
     });
 

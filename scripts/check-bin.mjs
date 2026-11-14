@@ -6,6 +6,7 @@ import { execFileSync, spawnSync } from 'node:child_process';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
+import { pathToFileURL } from 'node:url';
 
 // The same escaping `ctx.exec` uses, so a `.cmd` file (npm, and the `art.cmd` that a global install makes on
 // Windows) is started through cmd.exe with every argument escaped. This script is not shipped.
@@ -205,7 +206,7 @@ try {
     const framework = json(execute(art, ['where', '--json'], project)).result.framework;
 
     assert.ok(
-        framework.startsWith(`file://${fs.realpathSync(prefix)}`),
+        framework.startsWith(pathToFileURL(fs.realpathSync(prefix)).href),
         `global copy expected, got ${framework}`
     );
 
@@ -649,7 +650,7 @@ export default defineCommand({
     const local = json(own(['where', '--json'], nowhere)).result.framework;
 
     assert.ok(
-        local.startsWith(`file://${fs.realpathSync(consumer)}`),
+        local.startsWith(pathToFileURL(fs.realpathSync(consumer)).href),
         `local copy expected, got ${local}`
     );
 
