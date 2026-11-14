@@ -62,7 +62,7 @@ With auditing on, `history` is a word of the tool, exactly as on the shipped `ar
 
 `HistoryCommandFn` changes from `(words, host, cwd)` to `(words, host, context)`, with `context: { project: Project; bin: string; route: CliRoute }` (a `HistoryContext` type in models.ts). It stops finding the project itself; the shipped launcher passes the project it finds from `cwd` today, and the tool launcher the one it found from `root`. `bin` is what `--help` shows on a tool: `wordHelp` gains an optional `bin`, and when it is given the text's leading `Usage: ` becomes `Usage: <bin> `. The shipped route passes none, so every shipped word's `--help` text stays exactly as it is today. The JSON form (`--help --json`) does not change.
 
-**On the shipped route,** `SHIPPED_WORDS` entries keep their `run(words, host, cwd)` shape. The `history` entry becomes a small wrapper that finds the project from `cwd` (`findProject(cwd, ..., 'shipped')`), throws the existing `noProjectError` when there is none, and calls `historyCommand(words, host, { project, bin: 'art', route: 'shipped' })`. `init`, `state`, `skill` and `doctor` are untouched. `new` (part 4) uses the same wrapper shape.
+**On the shipped route,** `SHIPPED_WORDS` entries keep their `run(words, host, cwd)` shape. The `history` entry becomes a small wrapper that finds the project from `cwd` (`findProject(cwd, ..., 'shipped')`), throws the existing `noProjectError` when there is none, and calls `historyCommand(words, host, { project, bin, route: 'shipped' })`, where `bin` is `resolveSettings(project, 'shipped').bin` (so `"artemis".bin` is honoured). `init`, `state`, `skill` and `doctor` are untouched. `new` (part 4) uses the same wrapper shape and the same `bin`, which its `Next:` line and its JSON `next` print.
 
 **On the tool route,** the `findProject` and `resolveAuditFile` calls of steps 1 and 2 sit inside the same `try` that sends a failure to `reportSetupFailure`, so an invalid `"audit"` value is reported like any other setup failure.
 
@@ -144,6 +144,7 @@ The first CI run on `windows-latest` (Node 24) sorted into these. W2, W3 and W5 
 
 - `folderProblem`, on `ENOENT`, walks up the path's ancestors: when the nearest one that exists is not a folder, the answer is `not-a-folder`. This runs on every platform (on POSIX the `ENOTDIR` case already answers it, so nothing changes there).
 - `assertStateFolder` (`src/cli/state-command.ts`) stops testing `pathExists(dir) && !isFolder(dir)` and asks `folderProblem(dir) === 'not-a-folder'` instead, so `art state` sees a `stateDir` under a file on Windows too (its `readdir` gets `ENOENT` there, which `listJsonFiles` rightly reads as "no documents"). `listJsonFiles` does not change.
+- This changes the message on every platform: a `stateDir` under a file was "Cannot read the state folder <dir>: ..." (hint: check the permissions, or fix `stateDir`) and becomes `assertStateFolder`'s existing "The state folder <dir> is not a folder." with its existing hint, `Fix "artemis".stateDir in package.json, or remove that file.`, exit 1 as before. It is the truer message. The `state-command.test.ts` case "names the folder, and says where to look" changes its expected text to that one.
 - Its tests are the three that fail today: `files.test.ts` "a path under a file is not a folder", `exec.test.ts` "a cwd under a file is not-a-folder too", and both `state-command.test.ts` "a state folder that cannot be read" cases.
 
 ### Tests that assume POSIX
@@ -181,6 +182,7 @@ Next: art db reset --help
   - `--destructive`, `--supports-dry-run`, `--json` and `--quiet` stand alone.
   - Any other word starting with `-` is the other words' usage error, `Unknown option "<word>"` (so `--yes`, `--dry-run` and `--log` are refused this way, exit 2).
   - Every other word is a command word, wherever it stands (`art new x --arg a y` is the words `x y` and the arg `a`).
+  - After `--`, every word is a command word, as in the other words; one that starts with `-` then fails the word pattern (usage error).
   - Every usage error is a `UsageError` with `usage: NEW_USAGE_LINE`, exit 2.
 - **Words:** one or more, each matching `^[a-z0-9][a-z0-9-]*$`. The first word may not be a word of the shipped binary (`help`, `init`, `state`, `skill`, `doctor`, `history`, `new`): that is a usage error (exit 2) whose hint says the command would be hidden.
 - **`--description`** is required and one line (no newline); missing or empty is a usage error (exit 2).
