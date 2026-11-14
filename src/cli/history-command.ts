@@ -14,7 +14,8 @@ import {
 } from './constants.js';
 import { historyLine, parseHistoryWords } from './history.js';
 import { readHistory } from './read-history.js';
-import { projectOrThrow, resolveSettings, resolveStateDir } from './settings.js';
+import { projectOrThrow } from './project.js';
+import { resolveSettings, resolveStateDir } from './settings.js';
 import { shadowsWord } from './shadow.js';
 import { wordHelp } from './word-help.js';
 import { NEWLINE } from '../constants.js';

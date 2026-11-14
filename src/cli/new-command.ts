@@ -9,7 +9,8 @@ import { resolveWorld } from '../run/world.js';
 import { messageOf } from '../utils/error-message.js';
 import { MODULE_TYPE, NEW_HELP, NEW_WORD, TYPE_WARNING } from './constants.js';
 import { checkNew, commandFile, parseNewWords, renderCommand } from './new.js';
-import { projectOrThrow, resolveSettings } from './settings.js';
+import { projectOrThrow } from './project.js';
+import { resolveSettings } from './settings.js';
 import { wordHelp } from './word-help.js';
 
 /** The file exists: nothing is written over it. */
