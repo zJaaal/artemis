@@ -1,21 +1,70 @@
 name: Release
 
-on:
-  push:
-    tags: ['v*']
-
+# Every merge to main runs this. It stages a release only when the merged PR carries the "release" label
+# and package.json has a version with no tag yet (release-check.yml makes a labelled PR bump it); any other
+# merge stages nothing. After staging it tags the merged commit v<version>, so the same version is never
+# staged twice. A tag pushed with the workflow's token starts no other workflow.
+#
 # Releases are staged, not published: this workflow only ever runs `npm stage publish`, and nothing is
 # public until the owner approves the staged package with 2FA (`npm stage approve`). That protects the
 # owner only if the token itself cannot publish. The token is the repository secret NPM_TOKEN (never
-# written in the repo); what it may do is decided on npm, and nothing here can check it. id-token is only
-# for the provenance statement.
+# written in the repo); what it may do is decided on npm, and nothing here can check it.
+on:
+  push:
+    branches: [main]
+
+# Two merges in a row are handled one after the other, never at once
+concurrency:
+  group: release
+  cancel-in-progress: false
+
 permissions:
   contents: read
-  id-token: write
 
 jobs:
-  publish:
+  version:
+    name: Is this a release?
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: read # the labels of the merged PR
+    outputs:
+      tag: ${{ steps.check.outputs.tag }}
+      release: ${{ steps.check.outputs.release }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0 # the tags, to know whether this version was already released
+
+      - id: check
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          tag="v$(jq -r .version package.json)"
+          echo "tag=$tag" >> "$GITHUB_OUTPUT"
+
+          labelled="$(gh api "repos/$GITHUB_REPOSITORY/commits/$GITHUB_SHA/pulls" \
+            --jq '[.[].labels[].name] | index("release") != null')"
+
+          if [ "$labelled" != "true" ]; then
+            echo "The merged PR has no \"release\" label: nothing to stage."
+            echo "release=false" >> "$GITHUB_OUTPUT"
+          elif git rev-parse -q --verify "refs/tags/$tag" >/dev/null; then
+            echo "$tag is already tagged: nothing to stage."
+            echo "release=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "$tag has no tag yet: staging it."
+            echo "release=true" >> "$GITHUB_OUTPUT"
+          fi
+
+  publish:
+    name: Stage ${{ needs.version.outputs.tag }}
+    needs: version
+    if: needs.version.outputs.release == 'true'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write # to push the v<version> tag
+      id-token: write # for the provenance statement
     steps:
       - uses: actions/checkout@v4
 
@@ -41,18 +90,14 @@ jobs:
 
       - run: pnpm run check-lock
 
-      - name: The tag must match the version in package.json
-        run: |
-          expected="v$(jq -r .version package.json)"
-
-          if [ "$GITHUB_REF_NAME" != "$expected" ]; then
-            echo "Tag $GITHUB_REF_NAME does not match package.json version $expected" >&2
-            exit 1
-          fi
-
       # `npm stage` needs npm 12 (Node 24 ships npm 11, and npm 12 runs on Node 22.22.2+, 24.15+ or 26+), so it
-      # runs through a pinned npx on this Node 24. It also creates the
-      # package when it does not exist yet, so the very first release is staged this way too.
+      # runs through a pinned npx on this Node 24. It also creates the package when it does not exist yet.
       - run: npx -y npm@12.2.1 stage publish --provenance --access public
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+
+      # Only after a successful stage, so a failed one is retried by re-running this workflow
+      - name: Tag the staged commit
+        run: |
+          git tag "${{ needs.version.outputs.tag }}" "$GITHUB_SHA"
+          git push origin "${{ needs.version.outputs.tag }}"

@@ -21,7 +21,7 @@ process.exitCode = await run(process.argv.slice(2), { bin: 'art', commandsDir })
 | Option             | Required | What it is                                                                                              |
 | ------------------ | -------- | ------------------------------------------------------------------------------------------------------- |
 | `bin`              | yes      | The name of your CLI, shown in help and usage lines.                                                    |
-| `commandsDir`      | yes      | The folder to hunt for commands in.                                                                     |
+| `commandsDir`      | yes      | The folder to look for commands in.                                                                     |
 | `stdout`, `stderr` | no       | Where output goes (anything with `write(chunk)`; a Node `Writable` fits). Default: the process streams. |
 | `interactive`      | no       | Whether prompts may be shown. Default: stdin and stdout are terminals.                                  |
 | `color`            | no       | Default: stdout is a terminal and `NO_COLOR` is unset.                                                  |

@@ -41,12 +41,21 @@ jobs:
       # Real processes racing for the registry lock each get their own slot
       - run: pnpm run check-lock
 
-      # What would be published, without publishing it
-      - run: npm publish --dry-run
+      # What would be published, without publishing it. npm pack, not npm publish --dry-run: the npm of
+      # Node 24 asks the registry even on a dry run and refuses a version that is already published.
+      - run: npm pack --dry-run
 
       # The command the release workflow runs, with --dry-run so nothing is staged, and without
       # --provenance: a dry run never signs anything and this workflow has no id-token permission, so
       # the flag would check nothing. Provenance and the token are only exercised by a tagged release.
       # npm 12 runs on Node 22.22.2+, 24.15+ or 26+; check-latest below makes sure the Node 24 job is one.
+      # npm refuses a version that is already published, which is every PR without the release label
+      # (they keep the released version): the step only has something to check when the version is new.
       - if: matrix.node == 24
-        run: npx -y npm@12.2.1 stage publish --dry-run --access public
+        run: |
+          version=$(node -p "require('./package.json').version")
+          if npm view "@zjaaal/artemis@$version" version > /dev/null 2>&1; then
+              echo "@zjaaal/artemis@$version is already published: nothing to stage"
+          else
+              npx -y npm@12.2.1 stage publish --dry-run --access public
+          fi
