@@ -217,7 +217,7 @@ export default defineCommand({
             return null;
         }
 
-        ]// TODO: the work. ctx.exec runs a program; throw new CommandError(message, { hint }) for a failure the caller can fix.
+        ]// TODO: the work. ctx.exec runs a program. For a failure the caller can fix, throw new CommandError(message, { hint }) (add CommandError to the import above).
         return [{ args, flags }|null];
     }
 });

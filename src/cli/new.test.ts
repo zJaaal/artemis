@@ -236,7 +236,7 @@ const spec = (overrides: Partial<NewSpec> = {}): NewSpec => ({
     ...overrides
 });
 
-const WORK = `        // TODO: the work. ctx.exec runs a program; throw new CommandError(message, { hint }) for a failure the caller can fix.`;
+const WORK = `        // TODO: the work. ctx.exec runs a program. For a failure the caller can fix, throw new CommandError(message, { hint }) (add CommandError to the import above).`;
 
 describe('renderCommand: the template', () => {
     test('with nothing but a description', () => {

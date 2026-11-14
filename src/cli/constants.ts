@@ -195,7 +195,7 @@ export const BACKSLASH = '\\';
 export const NEW_PLACEHOLDER = 'TODO: describe';
 export const NEW_PLAN_PLACEHOLDER = 'TODO: describe each step this command takes';
 export const NEW_WORK_COMMENT =
-    '// TODO: the work. ctx.exec runs a program; throw new CommandError(message, { hint }) for a failure the caller can fix.';
+    '// TODO: the work. ctx.exec runs a program. For a failure the caller can fix, throw new CommandError(message, { hint }) (add CommandError to the import above).';
 
 /** The width Prettier wraps at in this repository, and the indent of one level: a new file is written to match. */
 export const NEW_PRINT_WIDTH = 100;
