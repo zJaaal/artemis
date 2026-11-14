@@ -44,6 +44,14 @@ export const GLOBAL_FLAGS = {
     }
 } as const satisfies Record<string, FlagDefinition>;
 
+/** The value a flag takes, as a usage line writes it: only `--log` takes one, a file. */
+const GLOBAL_FLAG_VALUE = ' <file>';
+
+/** The global flags as one line, long names in their declared order: what a brief listing and a usage hint state once. */
+export const GLOBAL_FLAGS_TEXT: string = Object.entries(GLOBAL_FLAGS)
+    .map(([name, flag]) => `--${name}${flag.type === 'string' ? GLOBAL_FLAG_VALUE : ''}`)
+    .join(' ');
+
 export const RESERVED_FLAGS: readonly string[] = Object.keys(GLOBAL_FLAGS);
 
 /** The global flags as typed on a command line: `--json`, `-y`, ... */
@@ -51,6 +59,17 @@ export const GLOBAL_FLAG_TOKENS: readonly string[] = Object.entries(GLOBAL_FLAGS
     ([name, flag]) => [`--${name}`, ...('short' in flag ? [`-${flag.short}`] : [])]
 );
 
+/** Why a child cannot run in a folder: it is not there, it is not a folder, or this user cannot enter it. */
+export const FOLDER_PROBLEM = {
+    MISSING: 'missing',
+    NOT_A_FOLDER: 'not-a-folder',
+    NO_ACCESS: 'no-access'
+} as const;
+export const EXEC_FOLDER_ACCESS_HINT = "Check the folder's permissions, or pass another cwd.";
+export const EXEC_NOT_A_FOLDER_HINT = 'Pass a folder as cwd.';
+
+/** The kind `parseArgs` gives the tokens that are options. */
+export const OPTION_TOKEN = 'option';
 export const RESERVED_SHORTS: readonly string[] = Object.values(GLOBAL_FLAGS).flatMap((flag) =>
     'short' in flag ? [flag.short] : []
 );
@@ -73,6 +92,8 @@ export const TOPIC_FILE = '_topic.js';
 
 /** Words of a command id are joined with this ("uve config set"); "uve:config:set" also works. */
 export const ID_SEPARATOR = ' ';
+/** Written after the closing bracket of a repeatable flag in a usage line. */
+export const USAGE_REPEAT = '...';
 export const ALIAS_SEPARATOR = ':';
 
 /** Node appends a paragraph about "--" to unknown option errors; the first sentence is the useful part. */
@@ -120,6 +141,16 @@ export const NEXT_PREFIX = 'Next:';
 /** `ctx.exec`: how much of a failed child is kept, and how long a child gets to stop after SIGTERM. */
 export const EXEC_TAIL_LINES = 40;
 export const EXEC_TAIL_LINE_CHARS = 500;
+/** How many lines matching `errorPattern` a failed child keeps: the first ones. */
+export const EXEC_ERROR_LINES = 20;
+/** The longest line `errorPattern` reads whole: a line that never ends (a progress bar) must not grow without limit. */
+export const EXEC_ERROR_LINE_BUFFER_CHARS = 64 * 1024;
+export const EXEC_PATTERN_STATEFUL_FLAGS = ['g', 'y'] as const;
+export const EXEC_PATTERN_STATEFUL =
+    'ctx.exec: errorPattern cannot have the g or y flag, they make test() remember where it was';
+/** What a child shown to a terminal becomes when its output has to be read: piped, and still shown stream by stream. */
+export const EXEC_PIPED_SHOWN: ExecMode = { pipe: true, echo: 'split', keep: true };
+export const ERROR_LINES_HEADING = 'Error lines';
 export const EXEC_START_HINT = 'Check that it is an executable this user may run.';
 export const EXEC_KILL_GRACE_MS = 5000;
 /** After a child exits, how long its output pipes get to drain before they are cut (a grandchild may hold them open). */
@@ -151,6 +182,12 @@ export const DEPENDENCY_FIELDS = ['dependencies', 'devDependencies'] as const;
 export const DOCTOR_COMMAND_HINT = 'Run art doctor.';
 export const VERSION_WARNING_LABEL = 'warning:';
 /** `art skill`: how many examples the generated skill lists at most, and the file `help --agents` prints. */
+/** The destructive commands the generated skill lists before it says how many more there are. */
+export const SKILL_MAX_DESTRUCTIVE = 20;
+/** The most bytes the "Writing a command" section may take, with the default bin and commands folder. */
+export const SKILL_AUTHORING_MAX_BYTES = 900;
+/** The most bytes the generated skill of the fixture project may take. */
+export const SKILL_MAX_BYTES = 4 * 1024;
 export const SKILL_MAX_EXAMPLES = 10;
 export const AGENTS_FILE = 'AGENTS.md';
 export const LINE_BREAKS = /\s*[\r\n]+\s*/g;
@@ -170,8 +207,63 @@ export const DRY_RUN_NOTE = 'Says what it would do and changes nothing.';
 
 /** The tail of the line a brief manifest ends with: how to get one command in full. */
 export const BRIEF_MORE_SUFFIX = 'help <command> --json';
+/** Above this many commands the top-level brief listing shows topics instead of commands. */
+export const BRIEF_FOLD_THRESHOLD = 40;
+/** The labels of the `more` line of the text listing: one command in full, or a topic to open. */
+export const BRIEF_COMMAND_LABEL = 'One command in full:';
+export const BRIEF_TOPIC_LABEL = 'One topic in full:';
+export const BRIEF_TOPIC_MORE_SUFFIX = 'help <topic> --json --brief';
+export const BRIEF_SEARCH_SUFFIX = 'help --search <words> --json';
 export const BRIEF_FLAG = '--brief';
+/** The flags that make `help` print the brief JSON listing. */
+export const BRIEF_LISTING_FLAGS = '--json --brief';
+/** Search and "did you mean": text is split on anything that is not a Unicode letter or digit. */
+export const SEARCH_WORD_SPLIT = /[^\p{L}\p{N}]+/u;
+/** Words shorter than this are dropped: a one-character word says nothing. */
+export const SEARCH_MIN_WORD_CHARS = 2;
+/** The separator between choices in a usage line: `<a|b>`. */
+export const CHOICE_SEPARATOR = '|';
+export const SEARCH_STOP_WORDS: readonly string[] = [
+    'the',
+    'and',
+    'for',
+    'with',
+    'from',
+    'into',
+    'of',
+    'to',
+    'in',
+    'on',
+    'an'
+];
+export const SEARCH_FLAG = '--search';
+/** The flags of `help` that cannot go with a search. */
+export const SEARCH_CLASH_FLAGS: readonly string[] = ['--brief', '--agents', '--authoring'];
+export const SEARCH_FLAG_PREFIX = `${SEARCH_FLAG}=`;
+/** A query word matches a longer command word it is a prefix of, when it has at least this many characters. */
+export const SEARCH_PREFIX_MIN = 4;
+/** Added once to the score of a command when a query word matches a word of its id. */
+export const SEARCH_ID_BONUS = 1;
+export const SEARCH_MAX_MATCHES = 5;
+export const SEARCH_NO_MATCH_TEXT = 'No command matches.';
+export const SEARCH_EXAMPLE = 'reset database';
+export const SEARCH_STOP_WORD_SET: ReadonlySet<string> = new Set(SEARCH_STOP_WORDS);
+/** The most ids "did you mean one of" names. */
+export const UNKNOWN_COMMAND_MAX_IDS = 3;
+/** What a usage hint says after the usage line, before the global flags. */
+export const USAGE_HINT_GLOBAL = 'Global:';
 export const AGENTS_FLAG = '--agents';
+export const AUTHORING_FLAG = '--authoring';
+/** The sections of the shipped AGENTS.md, found by their exact heading line. A missing one is a bug in the package. */
+export const AGENTS_CALLING_HEADING = '## Calling a command (the contract an agent relies on)';
+export const AGENTS_ADDING_HEADING = '## Adding a command (for an agent writing its own tooling)';
+export const AGENTS_RUNNING_HEADING = '## Running the CLI';
+/** What `help --agents` must stay under, in bytes: it is what a calling agent reads up front. */
+export const AGENTS_DOC_MAX_BYTES = 5 * 1024;
+/** Starts a section of AGENTS.md. */
+export const MARKDOWN_SECTION_START = '## ';
+export const MARKDOWN_FENCE = '```';
+export const SECTION_JOINER = '\n\n';
 
 export const NO_COMMAND = null;
 
@@ -183,10 +275,18 @@ export const TEMP_SUFFIX = '.tmp';
 export const ERROR_CODE = {
     EXISTS: 'EEXIST',
     MISSING: 'ENOENT',
+    NOT_A_DIRECTORY: 'ENOTDIR',
     PERMISSION_DENIED: 'EPERM',
+    ACCESS_DENIED: 'EACCES',
     MODULE_NOT_FOUND: 'ERR_MODULE_NOT_FOUND',
     ABORTED: 'ABORT_ERR'
 } as const;
+
+/** The errors that mean this user may not enter a folder. */
+export const NO_ACCESS_CODES: readonly string[] = [
+    ERROR_CODE.ACCESS_DENIED,
+    ERROR_CODE.PERMISSION_DENIED
+];
 
 /** The package a command file imports the framework from. */
 export const PACKAGE_NAME = '@zjaaal/artemis';
@@ -214,6 +314,20 @@ export const URL_LIKE = /^(file:|[a-z][a-z0-9+.-]*:\/\/)/i;
 
 /** How `ctx.exec` starts a child: stdin ignored and both output streams piped, or everything inherited. */
 export const EXEC_STDIO_PIPED: StdioOptions = ['ignore', 'pipe', 'pipe'];
+/** What a detached call that never started has in common: no pid, and neither a missing program nor a folder problem until said. */
+export const DETACHED_NOT_STARTED = {
+    pid: undefined,
+    notFound: false,
+    cwdProblem: undefined
+} as const;
+/** A detached child: no stdin; stdout and stderr are the log file, whose descriptor is filled in at spawn. */
+export const EXEC_DETACHED_STDIN = 'ignore' as const;
+export const EXEC_DETACHED_LOG_MODE = 'a';
+/** The keys a detached call may have: anything else is a `TypeError`. */
+export const EXEC_DETACHED_KEYS: readonly string[] = ['cwd', 'env', 'detached', 'logFile'];
+export const EXEC_DETACHED_NEEDS_LOGFILE =
+    'ctx.exec: detached: true needs a logFile (a path that is not empty) for the output of the child';
+export const EXEC_LOGFILE_WITHOUT_DETACHED = 'ctx.exec: logFile only goes with detached: true';
 export const EXEC_STDIO_INHERITED: StdioOptions = 'inherit';
 export const EXEC_OUTPUT_ENCODING = 'utf8';
 
@@ -234,3 +348,50 @@ export const VERSION_MAJOR_MINOR = 2;
 export const VERSION_MAJOR_INDEX = 0;
 export const VERSION_MINOR_INDEX = 1;
 export const VERSION_PATCH_INDEX = 2;
+
+// ---------------------------------------------------------------------------------------------
+// The audit trail
+// ---------------------------------------------------------------------------------------------
+
+/** One line per run of a project command, appended here under the state folder. */
+export const AUDIT_FILE_NAME = 'audit.jsonl';
+/** What the file becomes when it passes `AUDIT_MAX_BYTES`: one old file, replaced each time. */
+export const AUDIT_ROTATED_FILE_NAME = 'audit.1.jsonl';
+export const AUDIT_MAX_BYTES = 1024 * 1024;
+export const AUDIT_CONFIG_KEY = 'audit';
+export const AUDIT_WRITE_WARNING = 'could not write the audit trail';
+export const NEWLINE = '\n';
+export const POSIX_SEPARATOR = '/';
+export const PARENT_FOLDER = '..';
+export const YES_FLAG_TOKENS: readonly string[] = ['--yes', '-y'];
+export const DRY_RUN_FLAG_TOKEN = '--dry-run';
+
+// ---------------------------------------------------------------------------------------------
+// Doctor: command health from the audit trail
+// ---------------------------------------------------------------------------------------------
+
+/** A command whose last this-many real runs all failed is reported. */
+export const HEALTH_FAILING_RUNS = 3;
+/** A destructive command with this many dry runs and no real run is reported. */
+export const HEALTH_PREVIEW_RUNS = 3;
+/** A command whose newest run is older than this many days is reported. */
+export const HEALTH_STALE_DAYS = 60;
+export const MS_PER_DAY = 24 * 60 * 60 * 1000;
+
+// ---------------------------------------------------------------------------------------------
+// `art init`: the agent pointer and the gitignore line
+// ---------------------------------------------------------------------------------------------
+
+export const AGENTS_DOC_FILE = 'AGENTS.md';
+export const CLAUDE_DOC_FILE = 'CLAUDE.md';
+export const GITIGNORE_FILE = '.gitignore';
+/** A file that already has this text already has the pointer, whatever its bin. */
+export const POINTER_MARKER = 'help --json --brief';
+/** The line of CLAUDE.md that imports AGENTS.md: the pointer is then already read. */
+export const AGENTS_IMPORT = /^@AGENTS\.md\b/m;
+/** What a new AGENTS.md starts with, before the pointer. */
+export const NEW_AGENTS_TITLE = '# AGENTS.md';
+/** The most bytes the pointer may take with the default bin. */
+export const INIT_POINTER_MAX_BYTES = 400;
+export const CRLF_EOL = '\r\n';
+export const LF_EOL = '\n';

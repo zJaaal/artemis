@@ -4,23 +4,33 @@ import path from 'node:path';
 import { afterEach, describe, expect, test } from 'vitest';
 
 import {
+    EXEC_FOLDER_ACCESS_HINT,
     EXEC_NO_LOG_HINT,
+    EXEC_NOT_A_FOLDER_HINT,
     EXEC_NOT_FOUND_HINT,
     EXEC_TAIL_LINE_CHARS,
     EXEC_TAIL_LINES,
     EXIT_CODE
 } from '../constants.js';
 import { art, envelope } from '../test/art.js';
+import { NO_EXECUTE_MODE, ROOT_UID } from '../test/constants.js';
+import { withMode } from '../test/permissions.js';
 import { createSink } from '../test/sink.js';
 import { failure } from './run-exec.js';
 import { createTempFolders } from '../test/temp.js';
 
 const folders = createTempFolders();
 
+/** A folder with no execute bit can still be entered by root, so those tests do not apply there. */
+const isRoot = process.getuid?.() === ROOT_UID;
+
 afterEach(() => folders.cleanUp());
 
 const HELLO_SCRIPT = "process.stdout.write('hi\\n')";
-const NOISY_FAILURE = "for (let i = 1; i <= 100; i++) console.log('line ' + i); process.exit(1)";
+
+const NOISY_FAILURE =
+    "for (let i = 1; i <= 100; i++) console.log('line ' + i); process.exitCode = 1";
+
 const FOREVER_SCRIPT = 'setInterval(() => {}, 1000)';
 const SHORT_TIMEOUT_MS = '100';
 const LONG_LINE_LENGTH = 1000;
@@ -124,7 +134,7 @@ describe('ctx.exec: a child that fails', () => {
     });
 
     test('each tail line is cut at EXEC_TAIL_LINE_CHARS', async () => {
-        const script = `console.log('x'.repeat(${LONG_LINE_LENGTH})); process.exit(1)`;
+        const script = `console.log('x'.repeat(${LONG_LINE_LENGTH})); process.exitCode = 1`;
         const failure = envelope(await art(['exec', script, '--json']));
 
         expect(failure.tail?.[0]).toHaveLength(EXEC_TAIL_LINE_CHARS);
@@ -280,6 +290,39 @@ describe('ctx.exec: a folder that does not exist', () => {
     });
 });
 
+describe('ctx.exec: a cwd that is not a folder, or cannot be entered', () => {
+    test('a cwd that is a file says so, naming it, with a hint', async () => {
+        const cwd = path.join(folders.make('artemis-exec-cwd-'), 'plain.txt');
+
+        fs.writeFileSync(cwd, 'x');
+
+        const run = await art(['exec', 'process.exit(0)', '--cwd', cwd, '--json']);
+
+        expect(envelope(run)).toMatchObject({
+            ok: false,
+            error: `${cwd} is not a folder`,
+            hint: EXEC_NOT_A_FOLDER_HINT
+        });
+    });
+
+    test.skipIf(isRoot)(
+        'a folder this user cannot enter says so, naming it, with a hint',
+        async () => {
+            const cwd = folders.make('artemis-exec-cwd-');
+
+            const run = await withMode(cwd, NO_EXECUTE_MODE, () =>
+                art(['exec', 'process.exit(0)', '--cwd', cwd, '--json'])
+            );
+
+            expect(envelope(run)).toMatchObject({
+                ok: false,
+                error: `This user cannot enter the folder ${cwd}`,
+                hint: EXEC_FOLDER_ACCESS_HINT
+            });
+        }
+    );
+});
+
 describe('ctx.exec under --dry-run', () => {
     test('starts no process: it is skipped and says so', async () => {
         const run = await art(['exec', HELLO_SCRIPT, '--dry-run', '--json']);
@@ -355,21 +398,29 @@ describe('ctx.exec: a program that was not found and was stopped by the run', ()
         code: 1,
         timedOut: false,
         notFound: true,
-        cwdMissing: false,
+        cwdProblem: undefined,
         stopped: true,
         startError: undefined,
         signal: undefined
     };
 
     test('is still "was not found": the stop does not turn it into a success', () => {
-        expect(failure(run, 'no-such-binary', outcome, {}, [], undefined)?.message).toBe(
-            'no-such-binary was not found'
-        );
+        expect(
+            failure(run, 'no-such-binary', outcome, {}, { tail: [], errorLines: [] }, undefined)
+                ?.message
+        ).toBe('no-such-binary was not found');
     });
 
     test('a child that really started and was stopped is not a failure', () => {
         expect(
-            failure(run, 'sleep', { ...outcome, notFound: false }, {}, [], undefined)
+            failure(
+                run,
+                'sleep',
+                { ...outcome, notFound: false },
+                {},
+                { tail: [], errorLines: [] },
+                undefined
+            )
         ).toBeUndefined();
     });
 });

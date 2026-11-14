@@ -3,7 +3,7 @@ import type { ParseArgsConfig } from 'node:util';
 
 import type { AbstractPromptOptions } from '@topcli/prompts';
 
-import type { EXIT_CODE, STYLE_CODES } from './constants.js';
+import type { EXIT_CODE, FOLDER_PROBLEM, STYLE_CODES } from './constants.js';
 import type { LockOptions } from './kits/store/models.js';
 import type { CommandError, UsageError } from './errors/errors.js';
 
@@ -292,7 +292,11 @@ export type CommandErrorShape = Error & {
     hint: string | undefined;
     exitCode: ExitCode;
 };
-export type UsageErrorShape = CommandErrorShape & { usage: string | undefined };
+export type UsageErrorShape = CommandErrorShape & {
+    usage: string | undefined;
+    /** Set by `parse()` for a resolved project command: the usage hint is built for it. Absent on an older copy of Artemis. */
+    fromCommand?: boolean | undefined;
+};
 
 export type CommandErrorOptions = {
     hint?: string | undefined;
@@ -304,11 +308,57 @@ export type ExecErrorOptions = CommandErrorOptions & {
     tail: readonly string[];
     /** True when the child's output was hidden (`--quiet`, `capture`) and the run is not `--json`. */
     showTail: boolean;
+    /** The lines of its output that matched `errorPattern`; left out when none did. */
+    errorLines?: readonly string[] | undefined;
 };
-export type ExecErrorShape = CommandErrorShape & { tail: readonly string[]; showTail: boolean };
+export type ExecErrorShape = CommandErrorShape & {
+    tail: readonly string[];
+    showTail: boolean;
+    errorLines?: readonly string[] | undefined;
+};
 export type IsExecErrorFn = (value: unknown) => value is ExecErrorShape;
 
-export type UsageErrorOptions = { hint?: string | undefined; usage?: string | undefined };
+export type UsageErrorOptions = {
+    hint?: string | undefined;
+    usage?: string | undefined;
+    /** The error comes from parsing the argv of a resolved project command. */
+    fromCommand?: boolean;
+};
+
+/** The words of a text for search and suggestions: lowercase, without short and stop words. */
+export type WordsOfFn = (text: string) => string[];
+
+/** What `--search` took from the words after `help`: whether it was typed, its value, and the topic words left. */
+export type SearchRead = { present: boolean; query: string | undefined; words: string[] };
+export type ReadSearchFn = (tokens: readonly string[]) => SearchRead;
+
+/** Words of the commands by word and by long-enough prefix, each pointing at the commands that have it. */
+export type WordIndex = { whole: Map<string, Set<number>>; prefixed: Map<string, Set<number>> };
+
+export type SearchCommandsFn = (input: {
+    commands: readonly ManifestCommand[];
+    topics: readonly TopicEntry[];
+    query: string;
+    topicId?: string | undefined;
+}) => ManifestCommand[];
+
+/** What a brief listing shows: which topics and which commands, and how to go one step further. */
+export type ShownListing = {
+    topics: TopicEntry[];
+    commands: ManifestCommand[];
+    more: string;
+    /** What `more` points at, as the text listing says it: one command in full, or a topic to open. */
+    moreLabel: string;
+};
+
+/** The result of `help --search`: the query as typed, the best commands as brief entries, how to read one in full. */
+export type SearchResult = { query: string; matches: BriefCommand[]; more: string };
+
+export type SearchResultFn = (
+    everything: Manifest,
+    query: string,
+    topicId?: string
+) => SearchResult;
 
 // ---------------------------------------------------------------------------------------------
 // Parsing
@@ -328,6 +378,17 @@ export type ParsedCommandLine = {
     args: Record<string, string | undefined>;
     flags: Record<string, unknown>;
     global: GlobalFlags;
+    /** What the parser read, word by word: which words are options, and which words are their values. */
+    tokens: readonly ArgToken[];
+};
+
+/** One token of `parseArgs`, as far as the audit needs it: `index` is the word it came from (a group such as `-fy` shares one). */
+export type ArgToken = {
+    kind: string;
+    index: number;
+    name?: string | undefined;
+    /** Whether the value was typed in the same word (`--log=x`, `-nyes`); false when it is the next word. */
+    inlineValue?: boolean | undefined;
 };
 
 export type ParseTarget = Pick<Command, 'args' | 'flags'>;
@@ -376,6 +437,10 @@ export type WalkContext = { registry: Registry; root: string };
 export type ListDirectoryFn = (dir: string) => DirectoryEntry[];
 export type PathExistsFn = (path: string) => boolean;
 export type IsFolderFn = (path: string) => boolean;
+
+export type FolderProblem = (typeof FOLDER_PROBLEM)[keyof typeof FOLDER_PROBLEM];
+/** Why a child cannot run in a folder, or undefined when it can: it is a folder this user can enter. */
+export type FolderProblemFn = (folder: string) => FolderProblem | undefined;
 export type MakeDirectoryFn = (dir: string) => void;
 export type ReadTextIfExistsFn = (file: string) => string | undefined;
 /** Creates the file only if it does not exist yet; false means someone else has it. */
@@ -388,6 +453,8 @@ export type ProcessIdFn = () => number;
 export type ErrorCodeFn = (error: unknown) => string | undefined;
 export type GitRootFn = (cwd: string) => string | null;
 export type WriteTextFn = (file: string, text: string) => void;
+/** Adds text to the end of a file that exists. */
+export type AppendTextFn = (file: string, text: string) => void;
 export type RemoveFileFn = (file: string) => void;
 /** Replaces a file with this text so that nobody ever reads it half written. */
 export type WriteAtomicFn = (file: string, text: string) => void;
@@ -432,7 +499,8 @@ export type TableRow = readonly [name: string, text: string | undefined];
 
 /** What a help listing shows: topics and the commands under them. */
 export type HelpChildren = { topics: TopicEntry[]; commands: CommandEntry[] };
-export type UsageFn = (bin: string, entry: CommandEntry) => string;
+/** The usage of a project command: its id, args and flags, with no bin and no global flags. */
+export type UsageFn = (entry: CommandEntry) => string;
 export type RootHelpFn = (
     bin: string,
     registry: Registry,
@@ -459,34 +527,37 @@ export type HelpSubject = {
     dryRun?: boolean;
 };
 
+/** An argument in the manifest. A key that holds its default (`required` false, no `default`, no `choices`) is left out. */
 export type ManifestArg = {
     name: string;
     description: string;
-    required: boolean;
-    default: string | null;
-    choices: readonly string[] | null;
+    required?: true;
+    default?: string;
+    choices?: readonly string[];
 };
 
+/** A flag in the manifest. A key that holds its default (no `short`, `default` or `choices`, not `multiple`) is left out. */
 export type ManifestFlag = {
     name: string;
     type: FlagDefinition['type'];
-    short: string | null;
-    multiple: boolean;
+    short?: string;
+    multiple?: true;
     description: string;
-    default: boolean | string | readonly string[] | null;
-    choices: readonly string[] | null;
+    default?: boolean | string | readonly string[];
+    choices?: readonly string[];
 };
 
+/** A command in the manifest. A key that holds its default (no aliases, no examples, not destructive, no dry run) is left out. */
 export type ManifestCommand = {
     id: string;
     description: string;
     usage: string;
-    aliases: readonly string[];
+    aliases?: readonly string[];
     args: ManifestArg[];
     flags: ManifestFlag[];
-    examples: readonly string[];
-    destructive: boolean;
-    dryRun: boolean;
+    examples?: readonly string[];
+    destructive?: true;
+    dryRun?: true;
 };
 
 /** Everything help shows, as data: what an agent reads to know which commands exist. */
@@ -503,6 +574,8 @@ export type Manifest = {
 export type Builtin = {
     id: string;
     description: string;
+    /** Its fixed usage line, with no bin: a built-in is not a command file, so it writes its own. */
+    usage: string;
     args: readonly ArgDefinition[];
     flags: FlagDefinitions;
     examples: readonly string[];
@@ -540,7 +613,23 @@ export type ExecOptions = {
     reject?: boolean;
     /** Kills the child (SIGTERM, then SIGKILL after the grace period) and throws. Default: none. */
     timeoutMs?: number;
+    /** A failed child keeps the lines of its output that match, next to its `tail`. It makes the call piped. No `g` or `y` flag. */
+    errorPattern?: RegExp;
 };
+
+/** The options of a child meant to outlive the command: nothing else (no `capture`, `timeoutMs`...) goes with `detached`. */
+export type ExecDetachedOptions = {
+    cwd?: string;
+    /** Default: the process environment. */
+    env?: NodeJS.ProcessEnv;
+    /** The child outlives the command: it is never killed when `run` ends and never awaited. */
+    detached: true;
+    /** Where its stdout and stderr are appended, relative to its folder. Required, never empty. */
+    logFile: string;
+};
+
+/** `pid` is the child's; `null` and `skipped` under `--dry-run`, where nothing started. */
+export type ExecDetachedResult = { pid: number | null; skipped: boolean };
 
 export type ExecResult = {
     /** 0 when skipped under `--dry-run`. */
@@ -549,6 +638,8 @@ export type ExecResult = {
     output: string;
     /** True under `--dry-run` for a call without `readOnly`: nothing ran. */
     skipped: boolean;
+    /** With `errorPattern` and `reject: false`: the lines that matched, when the child failed and any did. */
+    errorLines?: string[];
 };
 
 /** Opens the `--log` file, truncated. `cwd` is what a relative path is relative to. */
@@ -581,7 +672,18 @@ export type CheckRangeFn = (version: string, range: string) => RangeVerdict;
 // ---------------------------------------------------------------------------------------------
 
 export type DoctorCheckId =
-    'version' | 'range' | 'installed' | 'project' | 'module' | 'commands' | 'words' | 'state';
+    | 'version'
+    | 'range'
+    | 'installed'
+    | 'project'
+    | 'module'
+    | 'commands'
+    | 'words'
+    | 'state'
+    | 'history'
+    | 'history-failing'
+    | 'history-previewed'
+    | 'history-stale';
 
 export type DoctorStatus = 'ok' | 'warn' | 'fail';
 
@@ -628,10 +730,16 @@ export type DoctorFacts = {
               problem?: string;
               /** Every alias with the id of its command, to see which one is called like a built-in word. */
               aliases?: readonly (readonly [alias: string, id: string])[];
+              /** Every command that loads, and whether it is destructive: what the health checks need. */
+              loaded?: readonly { id: string; destructive: boolean }[];
           }
         | undefined;
     /** The built-in words a project command, topic or alias hides, and what hides each. */
     hiddenWords: readonly HiddenWord[];
+    /** The audit trail, when there is a project: what it holds, or why it cannot be read. */
+    history: DoctorHistory | undefined;
+    /** The clock, in milliseconds, for "not run for 60 days". */
+    now: number;
     /** The state folder: whether it is there, the documents that cannot be read, or why it cannot be listed. */
     state:
         | {
@@ -642,6 +750,22 @@ export type DoctorFacts = {
           }
         | undefined;
 };
+
+/** The audit trail as the doctor reads it: absent, unreadable (`problem`), or the lines it holds in file order. */
+export type DoctorHistory = {
+    present: boolean;
+    entries: readonly AuditLine[];
+    problem?: string;
+};
+
+/** What the health checks decide from: the trail, the commands that exist (none known when they do not load), and the time. */
+export type HealthFacts = {
+    history: DoctorHistory;
+    loaded: readonly { id: string; destructive: boolean }[] | undefined;
+    now: number;
+};
+
+export type HealthChecksFn = (facts: HealthFacts) => DoctorCheck[];
 
 export type RunDoctorFn = (facts: DoctorFacts) => DoctorCheck[];
 
@@ -660,7 +784,8 @@ export type DoctorCommandFn = (
 export type SkillPackage = { name: string | undefined; description: string | undefined };
 
 /** The `SKILL.md` a manifest and a package give: short, fixed and never stale. */
-export type BuildSkillFn = (manifest: Manifest, pkg: SkillPackage) => string;
+/** `commandsDir` is the commands folder relative to the project, written with forward slashes. */
+export type BuildSkillFn = (manifest: Manifest, pkg: SkillPackage, commandsDir: string) => string;
 
 /** What the words after `skill` ask for. */
 export type SkillWords = {
@@ -678,6 +803,9 @@ export type ParseSkillWordsFn = (words: readonly string[]) => SkillWords;
 export type SkillCommandFn = (words: string[], options: CliOptions, cwd: string) => Promise<number>;
 
 /** Reads the AGENTS.md that ships beside the running copy; undefined when it is not there. */
+/** The lines of a markdown section, from its exact heading to the next `## ` heading (headings inside code fences do not count); undefined when the heading is missing. */
+export type MarkdownSectionFn = (markdown: string, heading: string) => string | undefined;
+
 export type ReadAgentsFn = () => { file: string; markdown: string } | undefined;
 
 export type ReadRunningPackageFn = () => RunningPackage;
@@ -709,11 +837,45 @@ export type LogSink = {
     failure: () => string | undefined;
 };
 
-export type ExecFn = (
+/**
+ * `ctx.exec`. With `{ detached: true, logFile }` it starts a child that outlives the command and
+ * resolves to its pid; with anything else it runs a child and waits for it.
+ */
+export type ExecFn = {
+    (
+        command: string,
+        args: readonly string[] | undefined,
+        options: ExecDetachedOptions
+    ): Promise<ExecDetachedResult>;
+    (command: string, args?: readonly string[], options?: ExecOptions): Promise<ExecResult>;
+};
+
+/** What the edge needs to start a child that outlives the command, with its output appended to a file. */
+export type SpawnDetachedRequest = {
+    command: string;
+    args: readonly string[];
+    cwd: string | undefined;
+    env: NodeJS.ProcessEnv | undefined;
+    /** Where its stdout and stderr go (appended), relative to `cwd`; its folders are created. */
+    logFile: string;
+};
+
+/** How starting a detached child went: its pid, or why it did not start. */
+export type DetachedOutcome = Pick<SpawnOutcome, 'notFound' | 'cwdProblem' | 'startError'> & {
+    pid: number | undefined;
+};
+
+export type IsDetachedOptionsFn = (
+    options: ExecOptions | ExecDetachedOptions
+) => options is ExecDetachedOptions;
+export type AssertExecOptionsFn = (options: ExecOptions | ExecDetachedOptions) => void;
+export type DetachedPlannedLineFn = (
     command: string,
-    args?: readonly string[],
-    options?: ExecOptions
-) => Promise<ExecResult>;
+    args: readonly string[],
+    logFile: string
+) => string;
+
+export type SpawnDetachedFn = (request: SpawnDetachedRequest) => Promise<DetachedOutcome>;
 
 /** Which stream a piece of child output came from. */
 export type ChildStream = 'stdout' | 'stderr';
@@ -739,18 +901,18 @@ export type SpawnOutcome = {
     timedOut: boolean;
     /** The executable could not be started (ENOENT). */
     notFound: boolean;
-    /** The folder to run in does not exist: Node reports it with the same ENOENT as a missing program. */
-    cwdMissing: boolean;
+    /** Why the folder to run in cannot be used: it is missing (Node reports that with the same ENOENT as a missing program), it is not a folder, or this user cannot enter it. */
+    cwdProblem: FolderProblem | undefined;
     /** The caller ended it (`stop`, when the run ended), as opposed to the timeout: not a failure. */
     stopped: boolean;
-    /** Why it could not start, when the cause is neither a missing program nor a missing folder (permissions, say). */
+    /** Why it could not start, when the cause is neither a missing program nor a folder problem (permission to run the program, say). */
     startError: string | undefined;
     /** The signal that ended it (an OOM kill, a crash), when it had no exit code. */
     signal: string | undefined;
 };
 
 /** What a child's end is built from: the exit code, and why it did not run or how it was ended when that applies. */
-export type SpawnFinish = Pick<SpawnOutcome, 'code' | 'notFound' | 'cwdMissing'> & {
+export type SpawnFinish = Pick<SpawnOutcome, 'code' | 'notFound' | 'cwdProblem'> & {
     startError?: string | undefined;
     signal?: string | undefined;
 };
@@ -772,42 +934,88 @@ export type ExecMode = {
     keep: boolean;
 };
 
-export type ExecModeInput = { capture: boolean; quiet: boolean; json: boolean; log: boolean };
+export type ExecModeInput = {
+    capture: boolean;
+    quiet: boolean;
+    json: boolean;
+    log: boolean;
+    /** The call has an `errorPattern`, so its output has to be read. */
+    errorPattern: boolean;
+};
 export type PickExecModeFn = (input: ExecModeInput) => ExecMode;
 
-/** The last lines of a child's output, each cut: what a failed command's envelope carries as `tail`. */
-export type TailRing = {
+/** Splits a child's output into cleaned lines, per stream, each bounded by `maxChars`. */
+export type LineReader = {
     push: (stream: ChildStream, chunk: string) => void;
-    /** Closes the lines still being written and returns the last ones. */
+    /** Closes the lines still being written. */
+    flush: () => void;
+};
+
+export type CreateLineReaderFn = (maxChars: number, onLine: (line: string) => void) => LineReader;
+
+/** The first lines of a child's output that match a pattern, each cut. */
+export type ErrorLineCollector = {
+    add: (line: string) => void;
     lines: () => string[];
 };
 
-export type CreateTailFn = (maxLines: number, maxChars: number) => TailRing;
+export type OutputKeeperOptions = {
+    tailLines: number;
+    /** Each line of the tail is cut at this many characters. */
+    tailChars: number;
+    /** Without it nothing is matched, and the reader is as small as the tail's lines. */
+    errorPattern: RegExp | undefined;
+    /** How many matching lines are kept. */
+    errorLines: number;
+};
+
+/** What a child printed that is worth keeping: its last lines, and the lines that match `errorPattern`. */
+export type OutputKeeper = {
+    push: (stream: ChildStream, chunk: string) => void;
+    /** Closes the lines still being written and returns the last ones. */
+    tail: () => string[];
+    /** Closes the lines still being written and returns the first matches. */
+    errorLines: () => string[];
+};
+
+export type CreateOutputKeeperFn = (options: OutputKeeperOptions) => OutputKeeper;
+export type CreateErrorLinesFn = (
+    pattern: RegExp,
+    maxLines: number,
+    maxChars: number
+) => ErrorLineCollector;
 
 /** One line of the brief manifest: what an agent needs before it calls. `destructive` and `dryRun` only when true. */
 export type BriefCommand = {
     id: string;
     description: string;
+    usage: string;
     destructive?: true;
     dryRun?: true;
 };
 
-export type BriefTopic = { id: string; description: string };
+/** A topic of the brief listing: `commands` is how many commands sit under it, nested topics included. */
+export type BriefTopic = { id: string; description?: string; commands: number };
 
 /** `help --json --brief`: ids and one-line descriptions, and how to get one command in full. */
 export type BriefManifest = {
     bin: string;
     topics: BriefTopic[];
     commands: BriefCommand[];
-    /** Only on the shipped binary, as in the full manifest. Never marked destructive. */
-    builtins?: { id: string; description: string }[];
+    /** The ids of the words of the shipped binary, as in the full manifest. Absent on a published tool's CLI. */
+    builtins?: string[];
+    /** The global flags, stated once. */
+    globalFlags: string;
     more: string;
+    /** How to search the commands by intent. */
+    search: string;
 };
 
-/** The brief manifest of everything, or of one topic when `topicId` is given. */
-export type BriefManifestFn = (everything: Manifest, topicId?: string) => BriefManifest;
+/** The brief manifest with the label its text listing gives its `more` line. */
+export type BriefListing = { brief: BriefManifest; moreLabel: string };
+export type BriefListingFn = (everything: Manifest, topicId?: string) => BriefListing;
 
-export type DescribeBuiltinsFn = (bin: string, builtins: readonly Builtin[]) => ManifestCommand[];
+export type DescribeBuiltinsFn = (builtins: readonly Builtin[]) => ManifestCommand[];
 
 export type ManifestFn = (
     bin: string,
@@ -843,6 +1051,10 @@ export type RunOptions = {
     builtins?: readonly Builtin[] | undefined;
     /** The folder a relative `--log` path is resolved against. Default: the current folder of the process. */
     cwd?: string | undefined;
+    /** The absolute path of the audit trail. Without it `run()` records nothing; the shipped `art` passes it. */
+    auditFile?: string | undefined;
+    /** The audit trail's edges, for a test: the append and the clock. */
+    audit?: Partial<AuditEdges> | undefined;
 };
 
 export type RunCliFn = (argv: string[], options: RunOptions) => Promise<number>;
@@ -861,7 +1073,10 @@ export type SystemProcess = {
 export type CurrentProcessFn = () => SystemProcess;
 
 /** The options that describe the host a run happens in; `run()` and `cli()` both take them. */
-export type HostOptions = Pick<RunOptions, 'stdout' | 'stderr' | 'interactive' | 'color' | 'env'>;
+export type HostOptions = Pick<
+    RunOptions,
+    'stdout' | 'stderr' | 'interactive' | 'color' | 'env' | 'audit'
+>;
 
 /** What a run resolved from the host options and the process, before any command is looked at. */
 export type Environment = { io: IO; style: Style; canPrompt: boolean };
@@ -871,7 +1086,92 @@ export type World = Environment & { bin: string; cwd?: string | undefined };
 export type ResolveWorldFn = (options: HostOptions) => Environment;
 
 /** The id of the command a run is about, filled in as the command line is understood. */
-export type RunState = { commandId: string | undefined };
+export type RunState = {
+    commandId: string | undefined;
+    /** What the audit trail needs, filled in as the command line is understood. */
+    audit: AuditDraft;
+};
+
+/**
+ * What a run knows about itself for its audit line. `recordable` is set once a project command is
+ * resolved and its words are about to be parsed; `--help` takes it back. `tokens` are the words
+ * after the command id, global flags still in them. `ran` is set when the command's `run` starts.
+ */
+export type AuditDraft = {
+    recordable: boolean;
+    tokens: string[];
+    ran: boolean;
+    /** The words as typed without the global options, once the words parsed; a usage error has none. */
+    argv?: string[];
+    /** What the parser read, once the words parsed: it knows `-fy` is `--yes`. A usage error has none, and the tokens stand in. */
+    global?: Pick<GlobalFlags, 'dryRun' | 'yes'>;
+};
+
+/** One line of the audit trail. `plan` only on a dry run, `error` only on a failure. */
+export type AuditLine = {
+    time: string;
+    command: string;
+    argv: string[];
+    ran: boolean;
+    dryRun: boolean;
+    yes: boolean;
+    exitCode: number;
+    ms: number;
+    plan?: string[];
+    error?: string;
+};
+
+/** What `buildAuditLine` is made from. */
+export type AuditFacts = {
+    commandId: string;
+    draft: AuditDraft;
+    startedAt: number;
+    endedAt: number;
+    exitCode: number;
+    plan: readonly string[];
+    error: string | undefined;
+};
+
+/** Appends one line to the audit file, rotating it first when it is full. Throws when it cannot write. */
+export type AppendAuditFn = (file: string, line: string) => void;
+
+/** How a run ended, for its audit line: when it started, its exit code, what failed it, its plan, and whether warnings are hidden. */
+export type AuditOutcome = {
+    startedAt: number;
+    code: number;
+    error: unknown;
+    plan: readonly string[];
+    quiet: boolean;
+};
+
+/** What a manifest entry is made of: a command's definition or a built-in, with its id and usage. */
+export type DescribedWord = {
+    id: string;
+    description: string;
+    usage: string;
+    aliases: readonly string[];
+    args: readonly ArgDefinition[];
+    flags: FlagDefinitions;
+    examples: readonly string[];
+    destructive?: boolean | undefined;
+    dryRun?: boolean | undefined;
+};
+
+/** The words of a parsed command line without its global options. */
+export type AuditArgvFn = (raw: readonly string[], tokens: readonly ArgToken[]) => string[];
+
+export type StripGlobalFlagsFn = (tokens: readonly string[]) => string[];
+export type BuildAuditLineFn = (facts: AuditFacts) => AuditLine;
+
+/** The lines of an audit file that could be read, in file order, and how many could not. */
+export type AuditRead = { entries: AuditLine[]; skipped: number };
+export type ParseAuditTextFn = (text: string) => AuditRead;
+
+/** Where the audit line goes, and the clock. Edges, injected so a test fakes them. */
+export type AuditEdges = {
+    append: (file: string, line: string) => void;
+    now: () => number;
+};
 
 /** What one run collects across the commands it invokes: the dry-run plan. */
 export type RunScope = {
@@ -900,10 +1200,14 @@ export type ErrorReport = {
     message: string;
     hint: string | undefined;
     usage: string | undefined;
+    /** True when `hint` was built from the usage, so the separate Usage line would repeat it. */
+    usageHint: boolean;
     /** Only for a plain error, which means a bug. */
     stack: string | undefined;
     /** The last lines of a failed child, when `ctx.exec` made this error. */
     tail: readonly string[] | undefined;
+    /** The lines of a failed child that matched its `errorPattern`. */
+    errorLines: readonly string[] | undefined;
     showTail: boolean;
     exitCode: ExitCode;
 };
@@ -913,6 +1217,8 @@ export type ReportContext = {
     style: Style;
     json: boolean;
     commandId: string | undefined;
+    /** The name usage lines show. Only `run()` sets it: a usage line is printed with the bin in front when it is. */
+    bin?: string | undefined;
     /** The absolute path of the `--log` file, when one was opened. */
     log?: string | undefined;
 };
@@ -931,6 +1237,8 @@ export type ArtemisConfig = {
     bin?: string;
     /** Where the store kit keeps its documents, relative to the folder of that package.json. Default "state". Read by `art state` and `defineStore({ project })`. */
     stateDir?: string;
+    /** `false` turns the audit trail off. Default true. */
+    audit?: boolean;
 };
 
 /** The folder holding the nearest qualifying package.json, and what that file says. */
@@ -970,6 +1278,9 @@ export type FindProjectFn = (
 
 /** The folder the store kit keeps its documents in (absolute). Throws a CommandError when the "artemis" key has a bad shape. */
 export type ResolveStateDirFn = (project: Project) => string;
+
+/** Where the audit trail goes (absolute), or undefined when the project turned it off. */
+export type ResolveAuditFileFn = (project: Project) => string | undefined;
 
 /** What to say when no project is found from a folder upwards. */
 export type NoProjectErrorFn = (start: string, route: CliRoute) => CommandError;
@@ -1030,13 +1341,36 @@ export type InitInput = {
     commandsDirIsEmpty: boolean;
     /** Whether a command or topic named `init` is already there, which the `init` word would hide. */
     shadowsCommand: boolean;
+    /** What the agent pointer and the gitignore line need; without it `init` writes neither. */
+    pointer?: PointerInput;
 };
+
+/** A text file of the folder: where it is, the file it really is (links followed), and what it holds. */
+export type TextFile = { path: string; real: string; text: string };
+
+/** What the pointer and the gitignore line are decided from. */
+export type PointerInput = {
+    dir: string;
+    /** The name the pointer tells an agent to run: the `bin` setting, default `art`. */
+    bin: string;
+    agents: TextFile | undefined;
+    claude: TextFile | undefined;
+    gitignore: TextFile | undefined;
+    /** The `.gitignore` line for the audit files; undefined when the state folder is outside the project. */
+    gitignoreLine: string | undefined;
+};
+
+export type PointerText = (bin: string) => string;
+export type AppendedTextFn = (existing: string, addition: string) => string;
+export type PlanPointerFn = (input: PointerInput) => InitStep[];
+export type GitignoreLineFn = (dir: string, stateDir: string) => string | undefined;
 
 /** One thing `init` does. It never overwrites a file that exists. */
 export type InitStep =
     | { kind: 'folder'; path: string }
     /** `create` fails if the file appears in the meantime; `update` is the one deliberate rewrite, of package.json. */
-    | { kind: 'file'; mode: 'create' | 'update'; path: string; text: string };
+    /** `append` adds `text` to the end of a file that exists, and changes nothing else in it. */
+    | { kind: 'file'; mode: 'create' | 'update' | 'append'; path: string; text: string };
 
 export type InitPlan = {
     steps: InitStep[];
@@ -1048,7 +1382,14 @@ export type InitPlan = {
 /** Pure: decides what to create, from what the folder already has. */
 export type PlanInitFn = (input: InitInput) => InitPlan;
 
-export type InitResult = { root: string; created: string[]; kept: string[]; warnings: string[] };
+/** `created` are the files made new (or the package.json that gained its key), `changed` the files text was appended to. */
+export type InitResult = {
+    root: string;
+    created: string[];
+    changed: string[];
+    kept: string[];
+    warnings: string[];
+};
 
 /** Reads the folder, plans, and does it. Throws a CommandError for a package.json it cannot use. */
 export type InitProjectFn = (dir: string) => InitResult;
@@ -1125,6 +1466,7 @@ export type FailureEnvelopeFn = (
         hint?: string | undefined;
         log?: string | undefined;
         tail?: readonly string[] | undefined;
+        errorLines?: readonly string[] | undefined;
         checks?: readonly DoctorCheck[] | undefined;
     }
 ) => string;
@@ -1174,3 +1516,28 @@ export type FlagWithoutCommandFn = (
     bin: string | undefined,
     subject?: string
 ) => UsageError;
+
+// ---------------------------------------------------------------------------------------------
+// `art history`
+// ---------------------------------------------------------------------------------------------
+
+/** What the words after `history` ask for. */
+export type HistoryWords = {
+    /** The words of the command id to filter by, joined by spaces; none shows every command. */
+    command: string[];
+    limit: number;
+    json: boolean;
+    help: boolean;
+    quiet: boolean;
+};
+
+export type ParseHistoryWordsFn = (words: readonly string[]) => HistoryWords;
+
+/** The newest runs first: those of one command id when given, at most `limit`. */
+export type SelectHistoryFn = (
+    entries: readonly AuditLine[],
+    selection: { commandId: string | undefined; limit: number }
+) => AuditLine[];
+
+export type HistoryLineFn = (entry: AuditLine) => string;
+export type HistoryCommandFn = (words: string[], host: CliOptions, cwd: string) => Promise<number>;

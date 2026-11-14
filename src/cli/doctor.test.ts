@@ -4,6 +4,8 @@ import { ARTEMIS_PACKAGE } from '../constants.js';
 import type { DoctorCheck, DoctorFacts, DoctorCheckId } from '../models.js';
 import { doctorFailure, runDoctor } from './doctor.js';
 
+const NOW = Date.parse('2026-11-13T12:00:00.000Z');
+
 const running = { version: '1.4.0', root: '/usr/lib/node_modules/@zjaaal/artemis' };
 
 /** A healthy project: every check ok. Each test breaks one thing. */
@@ -16,7 +18,9 @@ const healthy = (): DoctorFacts => ({
     },
     commands: { dir: '/work/app/commands', exists: true, warnings: [] },
     hiddenWords: [],
-    state: { dir: '/work/app/state', exists: true, unreadable: [] }
+    state: { dir: '/work/app/state', exists: true, unreadable: [] },
+    history: { present: false, entries: [] },
+    now: NOW
 });
 
 const checkOf = (checks: DoctorCheck[], id: DoctorCheckId): DoctorCheck | undefined =>
@@ -32,7 +36,8 @@ describe('runDoctor: a healthy project', () => {
             'module',
             'commands',
             'words',
-            'state'
+            'state',
+            'history'
         ]);
     });
 
@@ -60,7 +65,9 @@ describe('runDoctor: with no project', () => {
         project: undefined,
         commands: undefined,
         hiddenWords: [],
-        state: undefined
+        state: undefined,
+        history: undefined,
+        now: NOW
     };
 
     test('reports only version, installed and project', () => {

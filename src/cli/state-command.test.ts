@@ -938,7 +938,7 @@ describe('art state --help --json', () => {
         expect(envelope((await art(['state', '--help', '--json'], root)).out)).toMatchObject({
             ok: true,
             command: 'state',
-            result: { id: 'state', usage: expect.stringContaining('state'), aliases: [] }
+            result: { id: 'state', usage: expect.stringContaining('state') }
         });
     });
 

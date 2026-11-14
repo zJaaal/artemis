@@ -1,6 +1,8 @@
 import path from 'node:path';
 
 import {
+    AUDIT_CONFIG_KEY,
+    AUDIT_FILE_NAME,
     CONFIG_KEY,
     DEFAULT_BIN_NAME,
     DEFAULT_COMMANDS_FOLDER,
@@ -20,6 +22,7 @@ import type {
     NoProjectErrorFn,
     Project,
     ReadManifestFn,
+    ResolveAuditFileFn,
     ResolveBinNameFn,
     ResolveSettingsFn,
     ResolveStateDirFn
@@ -27,7 +30,7 @@ import type {
 import { isRecord } from '../utils/is-record.js';
 import { INIT_WORD } from './constants.js';
 
-const VALID_SHAPE_HINT = `The key looks like "${CONFIG_KEY}": { "commandsDir": "commands", "bin": "mytool", "stateDir": "state" }, and every field is optional.`;
+const VALID_SHAPE_HINT = `The key looks like "${CONFIG_KEY}": { "commandsDir": "commands", "bin": "mytool", "stateDir": "state", "audit": false }, and every field is optional.`;
 
 const isNonEmptyText = (value: unknown): value is string =>
     typeof value === 'string' && value.length > 0;
@@ -137,6 +140,13 @@ function readConfig(project: Project): ArtemisConfig {
         }
     }
 
+    if (
+        declared[AUDIT_CONFIG_KEY] !== undefined &&
+        typeof declared[AUDIT_CONFIG_KEY] !== 'boolean'
+    ) {
+        throw invalidConfig(project, `"${CONFIG_KEY}".${AUDIT_CONFIG_KEY} must be true or false`);
+    }
+
     return declared;
 }
 
@@ -201,3 +211,12 @@ export const noProjectError: NoProjectErrorFn = (start, route) =>
         : new CommandError(`No project found from ${start} upwards`, {
               hint: `A project is the nearest ${MANIFEST_FILE} with an "${CONFIG_KEY}" key or a ${DEFAULT_COMMANDS_FOLDER}/ folder next to it. Run it inside one, or use its "${INIT_WORD}" command in this folder to create one.`
           });
+
+/**
+ * Where the audit trail is written (absolute): `audit.jsonl` in the state folder, or nothing when the
+ * project turned it off with `"audit": false`. Throws a CommandError when the "artemis" key has a bad shape.
+ */
+export const resolveAuditFile: ResolveAuditFileFn = (project) =>
+    readConfig(project)[AUDIT_CONFIG_KEY] === false
+        ? undefined
+        : path.join(resolveStateDir(project), AUDIT_FILE_NAME);

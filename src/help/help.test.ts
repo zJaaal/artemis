@@ -2,11 +2,19 @@ import { describe, expect, test } from 'vitest';
 
 import { EXIT_CODE } from '../constants.js';
 import type { Manifest } from '../models.js';
-import { BUILTINS } from '../cli/constants.js';
+import { BUILTINS, INIT_USAGE_LINE, STATE_USAGE_LINE } from '../cli/constants.js';
 import { discover } from '../discover/discover.js';
 import { COMMANDS_FIXTURE_DIR } from '../test/constants.js';
 import { art, envelope } from '../test/art.js';
-import { briefManifest, describeBuiltins, manifest, rootHelp, topicManifest } from './help.js';
+import { defineCommand } from '../define/define.js';
+import {
+    briefListing,
+    describeBuiltins,
+    manifest,
+    rootHelp,
+    topicManifest,
+    usage
+} from './help.js';
 import { createStyle } from './help.js';
 
 const manifestOf = async (...argv: string[]): Promise<Manifest> =>
@@ -47,7 +55,7 @@ describe('help: text', () => {
         const result = await art(['math', 'pick', '--help']);
 
         expect(result.code).toBe(EXIT_CODE.OK);
-        expect(result.out).toMatch(/art math pick \[color\]/);
+        expect(result.out).toContain('Usage  art math pick [red|blue] [--tag <value>]...');
         expect(result.out).toMatch(/red, blue/);
         expect(result.out).toMatch(/--tag/);
     });
@@ -120,31 +128,16 @@ describe('help --json: the manifest', () => {
         expect(hello).toEqual({
             id: 'hello',
             description: 'Greet someone',
-            usage: 'art hello [name] [flags]',
-            aliases: [],
-            args: [
-                {
-                    name: 'name',
-                    description: 'Who to greet',
-                    required: false,
-                    default: 'world',
-                    choices: null
-                }
-            ],
+            usage: 'hello [name] [--shout]',
+            args: [{ name: 'name', description: 'Who to greet', default: 'world' }],
             flags: [
                 {
                     name: 'shout',
                     type: 'boolean',
                     short: 's',
-                    multiple: false,
-                    description: 'Uppercase the greeting',
-                    default: null,
-                    choices: null
+                    description: 'Uppercase the greeting'
                 }
-            ],
-            examples: [],
-            destructive: false,
-            dryRun: false
+            ]
         });
     });
 
@@ -169,21 +162,68 @@ describe('help --json: the manifest', () => {
 
     test('the manifest keeps its field order', async () => {
         const manifest = await manifestOf('help');
-        const [first] = manifest.commands;
 
         expect(Object.keys(manifest)).toEqual(['bin', 'topics', 'commands', 'globalFlags']);
+    });
 
-        expect(Object.keys(first ?? {})).toEqual([
+    test('an entry with every default has only id, description, usage, args and flags', async () => {
+        const manifest = await manifestOf('help');
+        const hello = manifest.commands.find((command) => command.id === 'hello');
+
+        expect(Object.keys(hello ?? {})).toEqual(['id', 'description', 'usage', 'args', 'flags']);
+    });
+
+    test('a command with aliases has the aliases key between usage and args', async () => {
+        const manifest = await manifestOf('help');
+        const add = manifest.commands.find((command) => command.id === 'math add');
+
+        expect(Object.keys(add ?? {})).toEqual([
             'id',
             'description',
             'usage',
             'aliases',
             'args',
-            'flags',
-            'examples',
-            'destructive',
-            'dryRun'
+            'flags'
         ]);
+    });
+
+    test('a built-in with examples has the examples key after flags', () => {
+        const state = describeBuiltins(BUILTINS).find((builtin) => builtin.id === 'state');
+
+        expect(Object.keys(state ?? {}).slice(-2)).toEqual(['flags', 'examples']);
+    });
+
+    test('a destructive command with dry-run support has both keys after the examples', async () => {
+        const manifest = await manifestOf('help');
+        const wipe = manifest.commands.find((command) => command.id === 'wipe');
+
+        expect(Object.keys(wipe ?? {}).slice(-2)).toEqual(['destructive', 'dryRun']);
+    });
+
+    test('an arg with a default and choices, and a repeatable flag, carry those keys', async () => {
+        const manifest = await manifestOf('help');
+        const pick = manifest.commands.find((command) => command.id === 'math pick');
+
+        expect(Object.keys(pick?.args[0] ?? {})).toEqual([
+            'name',
+            'description',
+            'default',
+            'choices'
+        ]);
+
+        expect(Object.keys(pick?.flags[0] ?? {})).toEqual([
+            'name',
+            'type',
+            'multiple',
+            'description'
+        ]);
+    });
+
+    test('a required arg says required: true', async () => {
+        const manifest = await manifestOf('help');
+        const add = manifest.commands.find((command) => command.id === 'math add');
+
+        expect(add?.args[0]).toHaveProperty('required', true);
     });
 
     test('the global flags are part of the manifest', async () => {
@@ -191,11 +231,11 @@ describe('help --json: the manifest', () => {
 
         expect(manifest.globalFlags.map((flag) => [flag.name, flag.short])).toEqual([
             ['help', 'h'],
-            ['json', null],
+            ['json', undefined],
             ['yes', 'y'],
-            ['dry-run', null],
-            ['quiet', null],
-            ['log', null]
+            ['dry-run', undefined],
+            ['quiet', undefined],
+            ['log', undefined]
         ]);
     });
 
@@ -248,7 +288,8 @@ describe('help: the binary’s own words', () => {
             'init',
             'state',
             'skill',
-            'doctor'
+            'doctor',
+            'history'
         ]);
     });
 
@@ -260,12 +301,9 @@ describe('help: the binary’s own words', () => {
             'id',
             'description',
             'usage',
-            'aliases',
             'args',
             'flags',
-            'examples',
-            'destructive',
-            'dryRun'
+            'examples'
         ]);
     });
 
@@ -311,7 +349,7 @@ describe('help: the binary’s own words', () => {
 
         expect([result.code, result.out]).toEqual([
             EXIT_CODE.OK,
-            expect.stringContaining('art state [doc] [flags]')
+            expect.stringContaining(`Usage  art ${STATE_USAGE_LINE}`)
         ]);
     });
 
@@ -334,7 +372,7 @@ describe('help: the binary’s own words', () => {
         expect(result).toMatchObject({
             ok: true,
             command: 'state',
-            result: { id: 'state', usage: 'art state [doc] [flags]', aliases: [] }
+            result: { id: 'state', usage: STATE_USAGE_LINE }
         });
     });
 
@@ -355,24 +393,19 @@ describe('help: the binary’s own words', () => {
     });
 
     test('state is described with its document argument and its --reset flag', () => {
-        const described = describeBuiltins('art', BUILTINS).find(
-            (builtin) => builtin.id === 'state'
-        );
+        const described = describeBuiltins(BUILTINS).find((builtin) => builtin.id === 'state');
 
         expect(described).toMatchObject({
-            usage: 'art state [doc] [flags]',
-            aliases: [],
-            args: [{ name: 'doc', required: false }],
+            usage: STATE_USAGE_LINE,
+            args: [{ name: 'doc' }],
             flags: [{ name: 'reset', type: 'boolean' }]
         });
     });
 
     test('init is described with no arguments and no flags of its own', () => {
-        const described = describeBuiltins('art', BUILTINS).find(
-            (builtin) => builtin.id === 'init'
-        );
+        const described = describeBuiltins(BUILTINS).find((builtin) => builtin.id === 'init');
 
-        expect(described).toMatchObject({ usage: 'art init', args: [], flags: [] });
+        expect(described).toMatchObject({ usage: INIT_USAGE_LINE, args: [], flags: [] });
     });
 
     test('a manifest built with no builtins argument has no builtins key at all', async () => {
@@ -395,17 +428,13 @@ describe('help: the binary’s own words', () => {
     });
 });
 
-describe('briefManifest: a nested topic', () => {
+describe('briefListing: a nested topic', () => {
     const command = (id: string) => ({
         id,
         description: id,
         usage: id,
-        aliases: [],
         args: [],
-        flags: [],
-        examples: [],
-        destructive: false,
-        dryRun: false
+        flags: []
     });
 
     const everything: Manifest = {
@@ -418,16 +447,94 @@ describe('briefManifest: a nested topic', () => {
         globalFlags: []
     };
 
-    test('does not list the topics above the one asked for', () => {
-        expect(briefManifest(everything, 'dotcms db').topics.map((topic) => topic.id)).toEqual([
+    test('does not list the topics above the one asked for, nor the topic itself', () => {
+        expect(briefListing(everything, 'dotcms db').brief.topics.map((topic) => topic.id)).toEqual(
+            []
+        );
+    });
+
+    test('lists the direct sub-topics of the topic asked for', () => {
+        expect(briefListing(everything, 'dotcms').brief.topics.map((topic) => topic.id)).toEqual([
             'dotcms db'
         ]);
     });
+});
 
-    test('lists the topic asked for and the ones below it', () => {
-        expect(briefManifest(everything, 'dotcms').topics.map((topic) => topic.id)).toEqual([
-            'dotcms',
-            'dotcms db'
-        ]);
+describe('usage: the one string of a command', () => {
+    const entryOf = (definition: Parameters<typeof defineCommand>[0]) => ({
+        id: 'db prune',
+        file: 'prune.js',
+        definition: defineCommand(definition)
+    });
+
+    const base = { description: 'Prune', run: () => undefined };
+
+    test('a command with no args and no flags is its id', () => {
+        expect(usage(entryOf(base))).toBe('db prune');
+    });
+
+    test('a required arg is <name>', () => {
+        expect(usage(entryOf({ ...base, args: [{ name: 'target', required: true }] }))).toBe(
+            'db prune <target>'
+        );
+    });
+
+    test('an optional arg is [name]', () => {
+        expect(usage(entryOf({ ...base, args: [{ name: 'target' }] }))).toBe('db prune [target]');
+    });
+
+    test('a required arg with choices drops its name', () => {
+        const args = [{ name: 'mode', required: true, choices: ['soft', 'hard'] }];
+
+        expect(usage(entryOf({ ...base, args }))).toBe('db prune <soft|hard>');
+    });
+
+    test('an optional arg with choices drops its name', () => {
+        const args = [{ name: 'mode', choices: ['soft', 'hard'] }];
+
+        expect(usage(entryOf({ ...base, args }))).toBe('db prune [soft|hard]');
+    });
+
+    test('a boolean flag is [--name]', () => {
+        const flags = { all: { type: 'boolean' as const } };
+
+        expect(usage(entryOf({ ...base, flags }))).toBe('db prune [--all]');
+    });
+
+    test('a string flag is [--name <value>]', () => {
+        const flags = { 'older-than': { type: 'string' as const } };
+
+        expect(usage(entryOf({ ...base, flags }))).toBe('db prune [--older-than <value>]');
+    });
+
+    test('a string flag with choices shows them as its value', () => {
+        const flags = { mode: { type: 'string' as const, choices: ['a', 'b'] } };
+
+        expect(usage(entryOf({ ...base, flags }))).toBe('db prune [--mode <a|b>]');
+    });
+
+    test('a repeatable flag has ... after its bracket', () => {
+        const flags = { tag: { type: 'string' as const, multiple: true } };
+
+        expect(usage(entryOf({ ...base, flags }))).toBe('db prune [--tag <value>]...');
+    });
+
+    test('a flag short is not shown', () => {
+        const flags = { all: { type: 'boolean' as const, short: 'a' } };
+
+        expect(usage(entryOf({ ...base, flags }))).not.toContain(' -a');
+    });
+
+    test('flags come in definition order, after the args', () => {
+        const args = [{ name: 'target' }];
+
+        const flags = {
+            'older-than': { type: 'string' as const },
+            all: { type: 'boolean' as const }
+        };
+
+        expect(usage(entryOf({ ...base, args, flags }))).toBe(
+            'db prune [target] [--older-than <value>] [--all]'
+        );
     });
 });

@@ -12,6 +12,13 @@ import { createSink } from '../test/sink.js';
 import { createTempFolders } from '../test/temp.js';
 import { readRunningPackage } from '../edges/package-info.js';
 import { cli } from './index.js';
+import {
+    DOCTOR_USAGE_LINE,
+    HISTORY_USAGE_LINE,
+    INIT_USAGE_LINE,
+    SKILL_USAGE_LINE,
+    STATE_USAGE_LINE
+} from './constants.js';
 
 const readRunning = readRunningPackage;
 
@@ -235,7 +242,8 @@ describe('cli: the built-in words in help', () => {
             'init',
             'state',
             'skill',
-            'doctor'
+            'doctor',
+            'history'
         ]);
     });
 
@@ -247,16 +255,17 @@ describe('cli: the built-in words in help', () => {
         expect((await art(['help'], root)).out).toMatch(/Built-in\n\s+init\s+.*\n\s+state\s+/);
     });
 
-    test('the usage lines of the builtins show the name of the binary', async () => {
+    test('the usage lines of the builtins are their fixed lines, with no bin', async () => {
         const root = folders.make('artemis-cli-');
 
         makeProject(root, { greeting: 'project', manifest: { artemis: { bin: 'mytool' } } });
 
         expect((await manifestOf(root)).builtins?.map((builtin) => builtin.usage)).toEqual([
-            'mytool init',
-            'mytool state [doc] [flags]',
-            'mytool skill [flags]',
-            'mytool doctor'
+            INIT_USAGE_LINE,
+            STATE_USAGE_LINE,
+            SKILL_USAGE_LINE,
+            DOCTOR_USAGE_LINE,
+            HISTORY_USAGE_LINE
         ]);
     });
 
@@ -818,7 +827,7 @@ describe('cli: the init word of the shipped binary', () => {
         expect(envelope(result.out)).toMatchObject({
             ok: true,
             command: 'init',
-            result: { id: 'init', aliases: [], args: [], flags: [] }
+            result: { id: 'init', args: [], flags: [] }
         });
     });
 

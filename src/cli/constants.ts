@@ -114,10 +114,39 @@ export const SKILL_SHADOW_WARNING =
 export const SKILL_OVERWRITE_HINT_PREFIX = 'Pass --yes to overwrite';
 export const SKILL_WRITE_HINT = 'Give --write the path of a file, in a folder that can be created.';
 
+/** `history` shows what the audit trail recorded: the newest runs of project commands first. */
+export const HISTORY_WORD = 'history';
+/** What `--limit` takes: a whole number, 1 or more. */
+export const POSITIVE_INTEGER = /^[1-9]\d*$/;
+export const HISTORY_USAGE_LINE = `${HISTORY_WORD} [command words]... [--limit <n>] [--json] [--quiet]`;
+export const HISTORY_DEFAULT_LIMIT = 20;
+export const HISTORY_HELP = `Usage: ${HISTORY_USAGE_LINE}
+
+Shows the runs of project commands that the audit trail recorded, the newest first: when, which command, whether it was a dry run or its exit code, and its arguments. The command words filter to one command (its id, or an alias); --limit says how many to show (default ${HISTORY_DEFAULT_LIMIT}).
+
+The trail is audit.jsonl in the state folder ("artemis".stateDir in package.json, default "state"), and "artemis": { "audit": false } turns it off.`;
+
+export const HISTORY_FLAGS = {
+    json: '--json',
+    help: '--help',
+    helpShort: '-h',
+    quiet: '--quiet',
+    limit: '--limit'
+} as const;
+
+export const HISTORY_SHADOW_WARNING =
+    'This project has a command or topic called "history", and the history word of this binary hides it: it cannot be run through here. Rename it.';
+export const HISTORY_LIMIT_HINT =
+    'Give --limit a whole number of runs, 1 or more: history --limit 5';
+export const NOTHING_RECORDED = 'Nothing recorded yet.';
+export const HISTORY_DRY_RUN_TEXT = 'dry run';
+export const HISTORY_LIMIT_PREFIX = `${HISTORY_FLAGS.limit}=`;
+
 /** The words of the shipped binary that help lists under "Built-in" and `help --json` under "builtins". */
 export const BUILTINS: readonly Builtin[] = [
     {
         id: INIT_WORD,
+        usage: INIT_USAGE_LINE,
         description: 'Make the current folder a project',
         args: [],
         flags: {},
@@ -125,6 +154,7 @@ export const BUILTINS: readonly Builtin[] = [
     },
     {
         id: STATE_WORD,
+        usage: STATE_USAGE_LINE,
         description: 'List, show or reset the documents the app keeps',
         args: [{ name: 'doc', description: 'The document to show or reset' }],
         flags: {
@@ -137,6 +167,7 @@ export const BUILTINS: readonly Builtin[] = [
     },
     {
         id: SKILL_WORD,
+        usage: SKILL_USAGE_LINE,
         description: 'Write a short SKILL.md for agents, from the commands of this project',
         args: [],
         flags: {
@@ -149,10 +180,26 @@ export const BUILTINS: readonly Builtin[] = [
     },
     {
         id: DOCTOR_WORD,
+        usage: DOCTOR_USAGE_LINE,
         description: 'Check the install and the project, and say how to fix each problem',
         args: [],
         flags: {},
         examples: [DOCTOR_WORD]
+    },
+    {
+        id: HISTORY_WORD,
+        usage: HISTORY_USAGE_LINE,
+        description: 'Show the recorded runs of project commands, newest first',
+        args: [
+            { name: 'command', description: 'Only this command, by id or alias (several words)' }
+        ],
+        flags: {
+            limit: {
+                type: 'string',
+                description: `How many runs to show (default ${HISTORY_DEFAULT_LIMIT})`
+            }
+        },
+        examples: [HISTORY_WORD, `${HISTORY_WORD} db reset`, `${HISTORY_WORD} --limit 5 --json`]
     }
 ];
 
@@ -161,8 +208,11 @@ export const WORD_NAMES: readonly string[] = BUILTINS.map((builtin) => builtin.i
 
 /** How `doctor` lays out a check in text: the status label, the id padded to the longest, the fix under it. */
 export const DOCTOR_STATUS_LABEL = { ok: 'ok  ', warn: 'warn', fail: 'FAIL' } as const;
-export const DOCTOR_ID_WIDTH = 'installed'.length;
+export const DOCTOR_ID_WIDTH = 'history-previewed'.length;
 export const DOCTOR_FIX_INDENT = '      ';
 
 export const SKILL_WRITE_PREFIX = `${SKILL_FLAGS.write}=`;
 export const DOCTOR_SINGULAR_FAILED = '1 check failed';
+
+/** Between the names of the commands a health check lists. */
+export const LIST_SEPARATOR = ', ';

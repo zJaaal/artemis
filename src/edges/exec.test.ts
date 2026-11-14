@@ -3,11 +3,18 @@ import path from 'node:path';
 
 import { afterEach, describe, expect, test } from 'vitest';
 
+import { FOLDER_PROBLEM } from '../constants.js';
+
 import type { ChildStream, SpawnRequest } from '../models.js';
+import { NO_EXECUTE_MODE, ROOT_UID, UNREADABLE_MODE } from '../test/constants.js';
+import { withMode } from '../test/permissions.js';
 import { createTempFolders } from '../test/temp.js';
 import { spawnChild } from './exec.js';
 
 const folders = createTempFolders();
+
+/** A folder that cannot be read is readable to root, so those tests do not apply there. */
+const isRoot = process.getuid?.() === ROOT_UID;
 
 afterEach(() => folders.cleanUp());
 
@@ -71,18 +78,74 @@ describe('spawnChild: how a child ends', () => {
             cwd: path.join(folders.make('artemis-exec-'), 'typo')
         });
 
-        expect(outcome).toMatchObject({ notFound: false, cwdMissing: true });
+        expect(outcome).toMatchObject({ notFound: false, cwdProblem: FOLDER_PROBLEM.MISSING });
     });
 
-    test('a cwd that is a file is a start error, not a thrown exception', async () => {
+    test('a cwd that is a file is not-a-folder, not a start error or a thrown exception', async () => {
         const file = path.join(folders.make('artemis-exec-'), 'plain.txt');
 
         fs.writeFileSync(file, 'x');
 
         const { outcome } = await runNode('process.exit(0)', { cwd: file });
 
-        expect(outcome.startError).toMatch(/ENOTDIR|not a directory/i);
+        expect(outcome).toMatchObject({
+            cwdProblem: FOLDER_PROBLEM.NOT_A_FOLDER,
+            startError: undefined
+        });
     });
+
+    test("a cwd that is a symlink loop is a start error in Node's own words, not a permission problem", async () => {
+        const root = folders.make('artemis-exec-');
+        const first = path.join(root, 'a');
+
+        fs.symlinkSync(path.join(root, 'b'), first);
+        fs.symlinkSync(first, path.join(root, 'b'));
+
+        const { outcome } = await runNode('process.exit(0)', { cwd: first });
+
+        expect(outcome).toMatchObject({
+            cwdProblem: undefined,
+            startError: expect.stringMatching(/ELOOP/)
+        });
+    });
+
+    test('a cwd under a file is not-a-folder too', async () => {
+        const file = path.join(folders.make('artemis-exec-'), 'plain.txt');
+
+        fs.writeFileSync(file, 'x');
+
+        const { outcome } = await runNode('process.exit(0)', { cwd: path.join(file, 'sub') });
+
+        expect(outcome).toMatchObject({ cwdProblem: FOLDER_PROBLEM.NOT_A_FOLDER });
+    });
+
+    test.skipIf(isRoot)(
+        'a folder under one that cannot be read is no-access, not a raw error',
+        async () => {
+            const locked = path.join(folders.make('artemis-exec-'), 'locked');
+
+            fs.mkdirSync(path.join(locked, 'sub'), { recursive: true });
+
+            const { outcome } = await withMode(locked, UNREADABLE_MODE, () =>
+                runNode('process.exit(0)', { cwd: path.join(locked, 'sub') })
+            );
+
+            expect(outcome).toMatchObject({ cwdProblem: FOLDER_PROBLEM.NO_ACCESS });
+        }
+    );
+
+    test.skipIf(isRoot)(
+        'a folder this user cannot enter (no execute bit) is no-access',
+        async () => {
+            const folder = folders.make('artemis-exec-');
+
+            const { outcome } = await withMode(folder, NO_EXECUTE_MODE, () =>
+                runNode('process.exit(0)', { cwd: folder })
+            );
+
+            expect(outcome).toMatchObject({ cwdProblem: FOLDER_PROBLEM.NO_ACCESS });
+        }
+    );
 
     test('an argument with a null byte is a start error, not a thrown exception', async () => {
         const { outcome } = await runNode('process.exit(0)', {}, ['a\0b']);

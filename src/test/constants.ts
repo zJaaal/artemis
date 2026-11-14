@@ -37,3 +37,16 @@ export const KIT_BASE_PORTS = { http: 8080, frontend: 4200 } as const;
 export const KIT_SLOT_STEP = 100;
 export const KIT_COLORS = ['blue', 'green', 'magenta'] as const;
 export const KIT_LOCK_TIMEOUT_MS = 100;
+
+/** The most bytes the brief listing of the fixture commands may take (it was 2.7 KB before `usage`). */
+export const BRIEF_FIXTURE_MAX_BYTES = 4096;
+
+/** The most bytes the folded top-level brief listing of a 200-command project may take. */
+export const BRIEF_FOLDED_MAX_BYTES = 6144;
+
+/** The user id of root, who can read a folder whose mode is 0. */
+export const ROOT_UID = 0;
+export const UNREADABLE_MODE = 0;
+export const OWNER_MODE = 0o700;
+/** A folder that can be listed and written but not entered: the owner has no execute bit. */
+export const NO_EXECUTE_MODE = 0o600;

@@ -41,10 +41,14 @@ export class UsageError extends CommandError {
     /** The usage line of the command, shown after the message. */
     readonly usage: string | undefined;
 
-    constructor(message: string, { hint, usage }: UsageErrorOptions = {}) {
+    /** Whether it comes from parsing a resolved project command, which is what gets the usage hint. */
+    readonly fromCommand: boolean;
+
+    constructor(message: string, { hint, usage, fromCommand = false }: UsageErrorOptions = {}) {
         super(message, { hint, exitCode: EXIT_CODE.USAGE });
         this.name = 'UsageError';
         this.usage = usage;
+        this.fromCommand = fromCommand;
         Object.defineProperty(this, USAGE_ERROR_TAG, { value: true });
     }
 }
@@ -57,11 +61,15 @@ export class ExecError extends CommandError {
     /** Whether a person has to be shown them under the error (the child's output was hidden). */
     readonly showTail: boolean;
 
-    constructor(message: string, { tail, showTail, ...options }: ExecErrorOptions) {
+    /** The lines of its output that matched `errorPattern`, when any did. */
+    readonly errorLines: readonly string[] | undefined;
+
+    constructor(message: string, { tail, showTail, errorLines, ...options }: ExecErrorOptions) {
         super(message, options);
         this.name = 'ExecError';
         this.tail = tail;
         this.showTail = showTail;
+        this.errorLines = errorLines;
         Object.defineProperty(this, EXEC_ERROR_TAG, { value: true });
     }
 }

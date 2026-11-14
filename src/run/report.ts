@@ -1,4 +1,11 @@
-import { EXIT_CODE, FAILURE_CODES } from '../constants.js';
+import {
+    ERROR_LINES_HEADING,
+    EXIT_CODE,
+    FAILURE_CODES,
+    GLOBAL_FLAGS_TEXT,
+    ID_SEPARATOR,
+    USAGE_HINT_GLOBAL
+} from '../constants.js';
 import { isCommandError, isExecError, isUsageError } from '../errors/errors.js';
 import type {
     ErrorReport,
@@ -18,13 +25,24 @@ const failureCodeOf: FailureCodeOfFn = (value) =>
 /** Splits an error into what the user sees; only a plain error (a bug) carries its stack. */
 function describeError(error: unknown): ErrorReport {
     const isExpected = isCommandError(error);
+    const usage = isUsageError(error) ? error.usage : undefined;
+    const ownHint = isExpected ? error.hint : undefined;
+
+    // The error of a resolved command that has no hint of its own gets what is valid, in the hint
+    const usageHint =
+        isUsageError(error) &&
+        error.fromCommand === true &&
+        ownHint === undefined &&
+        usage !== undefined;
 
     return {
         message: messageOf(error),
-        hint: isExpected ? error.hint : undefined,
-        usage: isUsageError(error) ? error.usage : undefined,
+        hint: usageHint ? `${usage}. ${USAGE_HINT_GLOBAL} ${GLOBAL_FLAGS_TEXT}` : ownHint,
+        usage: usageHint ? undefined : usage,
+        usageHint,
         stack: !isExpected && error instanceof Error ? error.stack : undefined,
         tail: isExecError(error) && error.tail.length ? error.tail : undefined,
+        errorLines: isExecError(error) && error.errorLines?.length ? error.errorLines : undefined,
         showTail: isExecError(error) && error.showTail,
         exitCode: isExpected ? failureCodeOf(error.exitCode) : EXIT_CODE.FAILED
     };
@@ -48,6 +66,7 @@ export const failureEnvelope: FailureEnvelopeFn = (command, error, keys = {}) =>
         ...(keys.hint ? { hint: keys.hint } : {}),
         ...(keys.log === undefined ? {} : { log: keys.log }),
         ...(keys.tail ? { tail: keys.tail } : {}),
+        ...(keys.errorLines ? { errorLines: keys.errorLines } : {}),
         ...(keys.checks ? { checks: keys.checks } : {})
     });
 
@@ -56,14 +75,23 @@ const toJson = (report: ErrorReport, { commandId, log }: ReportContext): string 
     failureEnvelope(commandId ?? null, report.message, {
         hint: report.hint,
         log,
-        tail: report.tail
+        tail: report.tail,
+        errorLines: report.errorLines
     });
 
-function toText(report: ErrorReport, { style }: ReportContext): string {
+function toText(report: ErrorReport, { style, bin }: ReportContext): string {
     const lines = [`${style.red('Error:')} ${report.message}`];
 
     if (report.hint) {
         lines.push(`${style.yellow('Hint:')} ${report.hint}`);
+    }
+
+    if (report.errorLines && report.showTail) {
+        lines.push(
+            '',
+            style.bold(ERROR_LINES_HEADING),
+            ...report.errorLines.map((line) => style.dim(line))
+        );
     }
 
     if (report.tail && report.showTail) {
@@ -71,7 +99,10 @@ function toText(report: ErrorReport, { style }: ReportContext): string {
     }
 
     if (report.usage) {
-        lines.push('', `${style.bold('Usage')}  ${report.usage}`);
+        lines.push(
+            '',
+            `${style.bold('Usage')}  ${bin === undefined ? '' : `${bin}${ID_SEPARATOR}`}${report.usage}`
+        );
     }
 
     if (report.stack) {

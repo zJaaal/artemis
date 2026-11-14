@@ -206,6 +206,8 @@ describe('initProject: on the disk', () => {
         const result = initProject(dir);
 
         expect(result.created.map((file) => path.relative(dir, file)).sort()).toEqual([
+            '.gitignore',
+            'AGENTS.md',
             'commands',
             path.join('commands', 'hello.js'),
             'package.json'

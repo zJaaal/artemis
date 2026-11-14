@@ -3,6 +3,15 @@ import {
     ANSI_RESET,
     GLOBAL_FLAGS,
     BRIEF_MORE_SUFFIX,
+    BRIEF_FLAG,
+    CHOICE_SEPARATOR,
+    BRIEF_FOLD_THRESHOLD,
+    SEARCH_NO_MATCH_TEXT,
+    BRIEF_SEARCH_SUFFIX,
+    BRIEF_COMMAND_LABEL,
+    BRIEF_TOPIC_LABEL,
+    BRIEF_TOPIC_MORE_SUFFIX,
+    GLOBAL_FLAGS_TEXT,
     DESTRUCTIVE_NOTE,
     DRY_RUN_NOTE,
     ID_SEPARATOR,
@@ -10,14 +19,19 @@ import {
     SECTION_SEPARATOR,
     STYLE_CODES,
     TABLE_GAP,
-    TABLE_INDENT
+    TABLE_INDENT,
+    USAGE_REPEAT
 } from '../constants.js';
+import { isWithin, topicPrefixes } from '../utils/topics.js';
+import { searchCommands } from './search.js';
 import type {
     ArgDefinition,
     BriefCommand,
+    BriefListing,
+    BriefListingFn,
     BriefManifest,
-    BriefManifestFn,
     BriefTopic,
+    DescribedWord,
     Builtin,
     BuiltinHelpFn,
     CommandEntry,
@@ -35,6 +49,9 @@ import type {
     ManifestFn,
     TopicManifestFn,
     Registry,
+    SearchResult,
+    ShownListing,
+    SearchResultFn,
     RootHelpFn,
     StyleFn,
     Style,
@@ -60,26 +77,31 @@ export const createStyle: CreateStyleFn = (enabled) => ({
     cyan: wrap(STYLE_CODES.cyan, enabled)
 });
 
-const argToken = (arg: ArgDefinition): string => (arg.required ? `<${arg.name}>` : `[${arg.name}]`);
+/** `<name>` for a required arg, `[name]` for an optional one; an arg with choices shows them instead of its name. */
+const argToken = (arg: ArgDefinition): string => {
+    const label = arg.choices ? arg.choices.join(CHOICE_SEPARATOR) : arg.name;
 
-/** `art uve config set [url] [flags]` */
-const usageOf = (
-    bin: string,
-    id: string,
-    args: readonly ArgDefinition[],
-    flags: FlagDefinitions
-): string => {
-    const parts = [bin, id, ...args.map(argToken)];
-
-    if (Object.keys(flags).length > 0) {
-        parts.push('[flags]');
-    }
-
-    return parts.join(ID_SEPARATOR);
+    return arg.required ? `<${label}>` : `[${label}]`;
 };
 
-export const usage: UsageFn = (bin, entry) =>
-    usageOf(bin, entry.id, entry.definition.args, entry.definition.flags);
+/** `[--all]`, `[--older-than <value>]`, `[--mode <a|b>]`, and `...` after the bracket when repeatable. */
+function flagToken(name: string, flag: FlagDefinition): string {
+    const value = flag.choices ? flag.choices.join(CHOICE_SEPARATOR) : 'value';
+    const body = flag.type === 'string' ? `--${name} <${value}>` : `--${name}`;
+
+    return `[${body}]${flag.multiple ? USAGE_REPEAT : ''}`;
+}
+
+/** `uve config set [url] [--force]`: the id, then each arg, then each command flag. No bin, no global flags. */
+const usageOf = (id: string, args: readonly ArgDefinition[], flags: FlagDefinitions): string =>
+    [
+        id,
+        ...args.map(argToken),
+        ...Object.entries(flags).map(([name, flag]) => flagToken(name, flag))
+    ].join(ID_SEPARATOR);
+
+export const usage: UsageFn = (entry) =>
+    usageOf(entry.id, entry.definition.args, entry.definition.flags);
 
 function table(rows: TableRow[], style: Style): string {
     const width = Math.max(0, ...rows.map(([name]) => name.length));
@@ -220,7 +242,7 @@ export const topicHelp: TopicHelpFn = (_bin, registry, topic, style) =>
 /** The help of one word: its description, usage, arguments, flags, aliases and examples. */
 function subjectHelp(bin: string, subject: HelpSubject, style: Style): string {
     const { description, args, flags, aliases, examples } = subject;
-    const sections = [description, `${style.bold('Usage')}  ${subject.usage}`];
+    const sections = [description, `${style.bold('Usage')}  ${bin}${ID_SEPARATOR}${subject.usage}`];
 
     if (subject.destructive) {
         sections.push(`${style.bold('Destructive')}  ${DESTRUCTIVE_NOTE}`);
@@ -254,7 +276,7 @@ function subjectHelp(bin: string, subject: HelpSubject, style: Style): string {
 }
 
 export const commandHelp: CommandHelpFn = (bin, entry, style) =>
-    subjectHelp(bin, { ...entry.definition, usage: usage(bin, entry) }, style);
+    subjectHelp(bin, { ...entry.definition, usage: usage(entry) }, style);
 
 /** The help of a word the binary handles itself (`init`, `state`), laid out like a command's. */
 export const builtinHelp: BuiltinHelpFn = (bin, builtin, style) =>
@@ -262,7 +284,6 @@ export const builtinHelp: BuiltinHelpFn = (bin, builtin, style) =>
         bin,
         {
             ...builtin,
-            usage: usageOf(bin, builtin.id, builtin.args, builtin.flags),
             aliases: []
         },
         style
@@ -272,47 +293,41 @@ const describeFlags = (flags: FlagDefinitions): ManifestFlag[] =>
     Object.entries(flags).map(([name, flag]) => ({
         name,
         type: flag.type,
-        short: flag.short ?? null,
-        multiple: Boolean(flag.multiple),
+        ...(flag.short === undefined ? {} : { short: flag.short }),
+        ...(flag.multiple ? { multiple: true as const } : {}),
         description: flag.description ?? '',
-        default: flag.default ?? null,
-        choices: flag.choices ?? null
+        ...(flag.default === undefined ? {} : { default: flag.default }),
+        ...(flag.choices === undefined ? {} : { choices: flag.choices })
     }));
 
 const describeArgs = (args: readonly ArgDefinition[]): ManifestArg[] =>
     args.map((arg) => ({
         name: arg.name,
         description: arg.description ?? '',
-        required: Boolean(arg.required),
-        default: arg.default ?? null,
-        choices: arg.choices ?? null
+        ...(arg.required ? { required: true as const } : {}),
+        ...(arg.default === undefined ? {} : { default: arg.default }),
+        ...(arg.choices === undefined ? {} : { choices: arg.choices })
     }));
 
-const describeCommand = (bin: string, entry: CommandEntry): ManifestCommand => ({
-    id: entry.id,
-    description: entry.definition.description,
-    usage: usage(bin, entry),
-    aliases: entry.definition.aliases,
-    args: describeArgs(entry.definition.args),
-    flags: describeFlags(entry.definition.flags),
-    examples: entry.definition.examples,
-    destructive: entry.definition.destructive,
-    dryRun: entry.definition.dryRun
+/** The manifest entry of a command or built-in; a key that holds its default is left out. */
+const describeWord = (word: DescribedWord): ManifestCommand => ({
+    id: word.id,
+    description: word.description,
+    usage: word.usage,
+    ...(word.aliases.length ? { aliases: word.aliases } : {}),
+    args: describeArgs(word.args),
+    flags: describeFlags(word.flags),
+    ...(word.examples.length ? { examples: word.examples } : {}),
+    ...(word.destructive ? { destructive: true as const } : {}),
+    ...(word.dryRun ? { dryRun: true as const } : {})
 });
 
+const describeCommand = (entry: CommandEntry): ManifestCommand =>
+    describeWord({ ...entry.definition, id: entry.id, usage: usage(entry) });
+
 /** The words of the shipped binary, described like commands so a caller reads both the same way. */
-export const describeBuiltins: DescribeBuiltinsFn = (bin, builtins) =>
-    builtins.map((builtin) => ({
-        id: builtin.id,
-        description: builtin.description,
-        usage: usageOf(bin, builtin.id, builtin.args, builtin.flags),
-        aliases: [],
-        args: describeArgs(builtin.args),
-        flags: describeFlags(builtin.flags),
-        examples: builtin.examples,
-        destructive: false,
-        dryRun: false
-    }));
+export const describeBuiltins: DescribeBuiltinsFn = (builtins) =>
+    builtins.map((builtin) => describeWord({ ...builtin, aliases: [] }));
 
 /**
  * Everything help shows, as data: what an agent reads to know which commands exist and how to call
@@ -321,58 +336,112 @@ export const describeBuiltins: DescribeBuiltinsFn = (bin, builtins) =>
 export const manifest: ManifestFn = (bin, registry, builtins): Manifest => ({
     bin,
     topics: [...registry.topics.values()],
-    commands: [...registry.commands.values()].map((entry) => describeCommand(bin, entry)),
+    commands: [...registry.commands.values()].map(describeCommand),
     globalFlags: describeFlags(GLOBAL_FLAGS),
-    ...(builtins === undefined ? {} : { builtins: describeBuiltins(bin, builtins) })
+    ...(builtins === undefined ? {} : { builtins: describeBuiltins(builtins) })
 });
 
-const isWithin = (id: string, topicId: string): boolean =>
-    id === topicId || id.startsWith(`${topicId}${ID_SEPARATOR}`);
-
-/** Every topic id above a command id: `dotcms db seed` sits under `dotcms` and `dotcms db`. */
-const topicPrefixes = (id: string): string[] => {
-    const words = id.split(ID_SEPARATOR).slice(0, -1);
-
-    return words.map((_, index) => words.slice(0, index + 1).join(ID_SEPARATOR));
-};
-
-const briefCommand = (command: Manifest['commands'][number]): BriefCommand => ({
+export const briefCommand = (command: ManifestCommand): BriefCommand => ({
     id: command.id,
     description: command.description,
+    usage: command.usage,
     ...(command.destructive ? { destructive: true as const } : {}),
     ...(command.dryRun ? { dryRun: true as const } : {})
 });
 
+/** How many commands sit under each topic id, nested topics included: one pass over the commands. */
+const countByTopic = (commands: readonly ManifestCommand[]): Map<string, number> => {
+    const counts = new Map<string, number>();
+
+    commands
+        .flatMap((command) => topicPrefixes(command.id))
+        .forEach((topicId) => counts.set(topicId, (counts.get(topicId) ?? 0) + 1));
+
+    return counts;
+};
+
+const isTopLevelId = (id: string): boolean => !id.includes(ID_SEPARATOR);
+
+/** The parent of a topic id: `dotcms db` sits under `dotcms`; a top-level topic has none. */
+const parentOf = (id: string): string => id.split(ID_SEPARATOR).slice(0, -1).join(ID_SEPARATOR);
+
 /**
- * The brief manifest: ids and one-line descriptions, and `destructive` and `dryRun` only when true,
- * because they are the two facts an agent must not miss before calling. Topics are listed at any
- * depth, by full id, when they hold a command of the listing.
+ * What the listing of a topic shows: its direct sub-topics, and every command under it at any depth.
+ * It is a step down, so it is never folded.
  */
-export const briefManifest: BriefManifestFn = (everything, topicId) => {
-    const commands = everything.commands.filter(
+const shownForTopic = (
+    everything: Manifest,
+    inside: readonly ManifestCommand[],
+    counts: ReadonlyMap<string, number>,
+    topicId: string
+): ShownListing => ({
+    topics: everything.topics.filter(
+        (topic) => counts.has(topic.id) && parentOf(topic.id) === topicId
+    ),
+    commands: [...inside],
+    more: `${everything.bin} ${BRIEF_MORE_SUFFIX}`,
+    moreLabel: BRIEF_COMMAND_LABEL
+});
+
+/**
+ * What the top-level listing shows. Past `BRIEF_FOLD_THRESHOLD` commands it is folded: the
+ * top-level topics, and only the commands that sit in no topic. Below it, everything.
+ */
+const shownForTop = (everything: Manifest, counts: ReadonlyMap<string, number>): ShownListing => {
+    const topics = everything.topics.filter((topic) => counts.has(topic.id));
+
+    if (everything.commands.length <= BRIEF_FOLD_THRESHOLD) {
+        return {
+            topics,
+            commands: everything.commands,
+            more: `${everything.bin} ${BRIEF_MORE_SUFFIX}`,
+            moreLabel: BRIEF_COMMAND_LABEL
+        };
+    }
+
+    return {
+        topics: topics.filter((topic) => isTopLevelId(topic.id)),
+        commands: everything.commands.filter((command) => isTopLevelId(command.id)),
+        more: `${everything.bin} ${BRIEF_TOPIC_MORE_SUFFIX}`,
+        moreLabel: BRIEF_TOPIC_LABEL
+    };
+};
+
+/**
+ * The brief manifest: ids, one-line descriptions and how to call each (`usage`), and `destructive`
+ * and `dryRun` only when true, because they are the two facts an agent must not miss before calling.
+ * Topics carry the number of commands under them. A project with more than `BRIEF_FOLD_THRESHOLD`
+ * commands gets a folded top level (topics, not commands); a topic listing is never folded.
+ */
+export const briefListing: BriefListingFn = (everything, topicId) => {
+    const inside = everything.commands.filter(
         (command) => topicId === undefined || isWithin(command.id, topicId)
     );
 
-    const withCommands = new Set(commands.flatMap((command) => topicPrefixes(command.id)));
+    const counts = countByTopic(inside);
 
-    const topics: BriefTopic[] = everything.topics
-        .filter(
-            (topic) =>
-                withCommands.has(topic.id) && (topicId === undefined || isWithin(topic.id, topicId))
-        )
-        .map((topic) => ({ id: topic.id, description: topic.description }));
+    const shown =
+        topicId === undefined
+            ? shownForTop(everything, counts)
+            : shownForTopic(everything, inside, counts, topicId);
 
-    return {
+    const brief: BriefManifest = {
         bin: everything.bin,
-        topics,
-        commands: commands.map(briefCommand),
+        topics: shown.topics.map((topic) => ({
+            id: topic.id,
+            ...(topic.description ? { description: topic.description } : {}),
+            commands: counts.get(topic.id) ?? 0
+        })),
+        commands: shown.commands.map(briefCommand),
         ...(everything.builtins === undefined || topicId !== undefined
             ? {}
-            : {
-                  builtins: everything.builtins.map(({ id, description }) => ({ id, description }))
-              }),
-        more: `${everything.bin} ${BRIEF_MORE_SUFFIX}`
+            : { builtins: everything.builtins.map((builtin) => builtin.id) }),
+        globalFlags: GLOBAL_FLAGS_TEXT,
+        more: shown.more,
+        search: `${everything.bin} ${BRIEF_SEARCH_SUFFIX}`
     };
+
+    return { brief, moreLabel: shown.moreLabel };
 };
 
 /** One line per command: `id  description`, with what an agent must not miss in parentheses. */
@@ -385,21 +454,27 @@ const briefRows = (commands: BriefCommand[]): TableRow[] =>
         ])
     ]);
 
-/** `help --brief` as text: the same listing as the JSON, one line per command. */
-export const briefHelp = (brief: BriefManifest, style: Style): string => {
+const topicRows = (topics: readonly BriefTopic[]): TableRow[] =>
+    topics.map((topic) => [
+        topic.id,
+        withNotes(topic.description, [
+            `${topic.commands} ${topic.commands === 1 ? 'command' : 'commands'}`
+        ])
+    ]);
+
+/**
+ * `help --brief` as text: the same listing as the JSON, one line per command. The built-in words
+ * are ids in the JSON, so their descriptions come from `builtins`.
+ */
+export const briefHelp = (
+    { brief, moreLabel }: BriefListing,
+    style: Style,
+    builtins: readonly Builtin[] = []
+): string => {
     const sections: string[] = [];
 
     if (brief.topics.length) {
-        sections.push(
-            section(
-                'Topics',
-                table(
-                    brief.topics.map((topic) => [topic.id, topic.description]),
-                    style
-                ),
-                style
-            )
-        );
+        sections.push(section('Topics', table(topicRows(brief.topics), style), style));
     }
 
     if (brief.commands.length) {
@@ -407,15 +482,38 @@ export const briefHelp = (brief: BriefManifest, style: Style): string => {
     }
 
     if (brief.builtins?.length) {
-        const rows: TableRow[] = brief.builtins.map((builtin) => [builtin.id, builtin.description]);
+        const rows: TableRow[] = builtins
+            .filter((builtin) => brief.builtins?.includes(builtin.id))
+            .map((builtin) => [builtin.id, builtin.description]);
 
         sections.push(section('Built-in', table(rows, style), style));
     }
 
-    sections.push(style.dim(`One command in full: ${brief.more}`));
+    sections.push(style.dim(`${moreLabel} ${brief.more}`));
 
     return sections.join(SECTION_SEPARATOR);
 };
+
+/** The result of `help --search`: the best commands for a query, as brief entries. */
+export const searchResult: SearchResultFn = (everything, query, topicId) => ({
+    query,
+    matches: searchCommands({
+        commands: everything.commands,
+        topics: everything.topics,
+        query,
+        topicId
+    }).map(briefCommand),
+    more: `${everything.bin} ${BRIEF_MORE_SUFFIX}`
+});
+
+/** `help --search` as text: the matches as `help --brief` prints commands, best first, or that none matches. */
+export const searchText = (result: SearchResult, bin: string, style: Style): string =>
+    result.matches.length
+        ? [
+              section('Commands', table(briefRows(result.matches), style), style),
+              style.dim(`${BRIEF_COMMAND_LABEL} ${result.more}`)
+          ].join(SECTION_SEPARATOR)
+        : `${SEARCH_NO_MATCH_TEXT} Run ${bin} help ${BRIEF_FLAG}.`;
 
 /**
  * The manifest of one topic: the topic and its sub-topics, and every command under it. It keeps the

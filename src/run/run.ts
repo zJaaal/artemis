@@ -1,6 +1,8 @@
 import { createContext } from '../context/context.js';
 import { createExec } from '../context/run-exec.js';
 import { readAgents } from '../edges/agents-file.js';
+import { appendAuditLine } from '../edges/audit-file.js';
+import { now } from '../edges/clock.js';
 import { openLogFile } from '../edges/log-file.js';
 import { workingDirectory } from '../edges/system.js';
 import {
@@ -16,23 +18,41 @@ import {
     NEXT_PREFIX,
     DRY_RUN_EMPTY,
     DRY_RUN_HEADER,
-    TABLE_INDENT
+    TABLE_INDENT,
+    AUDIT_WRITE_WARNING,
+    UNKNOWN_COMMAND_MAX_IDS,
+    BRIEF_LISTING_FLAGS,
+    AGENTS_ADDING_HEADING,
+    AGENTS_CALLING_HEADING,
+    AGENTS_RUNNING_HEADING,
+    AUTHORING_FLAG,
+    SECTION_JOINER,
+    SEARCH_CLASH_FLAGS,
+    SEARCH_EXAMPLE,
+    SEARCH_FLAG
 } from '../constants.js';
+import { auditArgv, buildAuditLine } from '../audit/audit.js';
 import { discover } from '../discover/discover.js';
+import { markdownSection } from '../help/markdown.js';
+import { readSearch, wordsOf } from '../help/search.js';
 import { CommandError, UsageError, isUsageError } from '../errors/errors.js';
 import {
     briefHelp,
-    briefManifest,
+    briefListing,
     builtinHelp,
     commandHelp,
     describeBuiltins,
     manifest,
     rootHelp,
+    searchResult,
+    searchText,
     topicHelp,
     topicManifest,
     usage
 } from '../help/help.js';
 import type {
+    AuditEdges,
+    AuditOutcome,
     Builtin,
     ChildHandle,
     CommandEntry,
@@ -41,9 +61,11 @@ import type {
     HelpOutput,
     InvokeFn,
     ParsedCommandLine,
+    SearchRead,
     Registry,
     Resolution,
     RunCliFn,
+    RunOptions,
     RunScope,
     RunState,
     Session,
@@ -62,8 +84,8 @@ import {
     suggest
 } from '../resolve/resolve.js';
 import { printResult } from './report.js';
+import { messageOf } from '../utils/error-message.js';
 import { flagWithoutCommand } from '../utils/flag-without-command.js';
-import { isFlagToken } from '../utils/flag-token.js';
 import { beforeTerminator, jsonRequested, quietRequested } from '../utils/terminator.js';
 
 /** What `printResult` takes for this run: text, or under --json the data wrapped in the success envelope. */
@@ -79,6 +101,17 @@ const shown = (
     result,
     extras
 });
+
+/** The ids that share a word with what was typed, the first few by id order. */
+function idsSharingAWord(registry: Registry, name: string): string[] {
+    // Only the word that was not found: the topic before it is right, and shares a word with every command in it
+    const typed = new Set(wordsOf(name.split(ID_SEPARATOR).slice(-1).join(ID_SEPARATOR)));
+
+    return [...registry.commands.keys()]
+        .filter((id) => wordsOf(id).some((word) => typed.has(word)))
+        .sort()
+        .slice(0, UNKNOWN_COMMAND_MAX_IDS);
+}
 
 const unknownHint = (
     bin: string,
@@ -96,9 +129,18 @@ const unknownHint = (
         return `Did you mean "${match}"?`;
     }
 
+    const sharing = idsSharingAWord(registry, name);
+
+    if (sharing.length) {
+        return `Did you mean one of: ${sharing.map((id) => `"${id}"`).join(', ')}?`;
+    }
+
     // Inside a topic, point at that topic's list rather than the whole CLI
     const topic = name.split(ID_SEPARATOR).slice(0, -1).join(ID_SEPARATOR);
-    const listing = registry.topics.has(topic) ? `${bin} ${topic} help` : `${bin} help`;
+
+    const listing = registry.topics.has(topic)
+        ? `${bin} help ${topic} ${BRIEF_LISTING_FLAGS}`
+        : `${bin} help ${BRIEF_LISTING_FLAGS}`;
 
     return `Run "${listing}" to see the commands.`;
 };
@@ -120,7 +162,7 @@ function parseNested(
     argv: string[]
 ): ParsedCommandLine {
     try {
-        const nested = parse(target.definition, argv, usage(session.bin, target));
+        const nested = parse(target.definition, argv, usage(target));
 
         if (nested.global.help) {
             throw new CommandError(
@@ -138,7 +180,7 @@ function parseNested(
         }
 
         throw new CommandError(`ctx.invoke("${id}"): ${error.message}`, {
-            hint: error.usage ? `Usage: ${error.usage}` : error.hint,
+            hint: error.usage ? `Usage: ${session.bin} ${error.usage}` : error.hint,
             cause: error
         });
     }
@@ -246,6 +288,9 @@ async function execute(
     });
 
     try {
+        // From here on the command is running: a refused or declined confirmation never got this far
+        session.state.audit.ran = true;
+
         const result = await entry.definition.run({ args: parsed.args, flags: parsed.flags, ctx });
 
         return { result, next };
@@ -281,9 +326,9 @@ function showBriefFor(session: Session, words: string[]): void {
     if (!words.length) {
         session.state.commandId = HELP_WORD;
 
-        const brief = briefManifest(everything);
+        const listing = briefListing(everything);
 
-        printResult(session.io, shown(session, briefHelp(brief, style), brief));
+        printResult(session.io, shown(session, briefHelp(listing, style, builtins), listing.brief));
 
         return;
     }
@@ -305,20 +350,27 @@ function showBriefFor(session: Session, words: string[]): void {
 
     session.state.commandId = target.topic.id;
 
-    const brief = briefManifest(everything, target.topic.id);
+    const listing = briefListing(everything, target.topic.id);
 
-    printResult(session.io, shown(session, briefHelp(brief, style), brief));
+    printResult(session.io, shown(session, briefHelp(listing, style, builtins), listing.brief));
 }
 
 /**
- * `help --agents`: the AGENTS.md of the running copy, as it is. It reads the running copy and never
- * the project's, so it works with a global `art` and no local install. It documents Artemis, not the
- * tool, so a published tool's CLI has it too. It takes no topic or command.
+ * `help --agents` and `help --authoring`: parts of the AGENTS.md of the running copy. `--agents` is
+ * the calling contract and points at `--authoring`; `--authoring` is how to write a command and how
+ * to set a project up. It reads the running copy and never the project's, so it works with a global
+ * `art` and no local install. It documents Artemis, not the tool, so a published tool's CLI has it
+ * too. Neither takes a topic or command, and they do not go with each other, `--brief` or `--search`.
  */
-function showAgents(session: Session, words: string[], brief: boolean): void {
-    if (words.length || brief) {
-        throw new UsageError(`${AGENTS_FLAG} takes no ${brief ? BRIEF_FLAG : 'topic or command'}`, {
-            hint: `Run "${session.bin} help ${AGENTS_FLAG}" on its own.`
+function showAgentsDoc(session: Session, words: string[], rest: string[]): void {
+    const flag = rest.includes(AGENTS_FLAG) ? AGENTS_FLAG : AUTHORING_FLAG;
+    const other = flag === AGENTS_FLAG ? AUTHORING_FLAG : AGENTS_FLAG;
+    const clash = [other, BRIEF_FLAG].find((token) => beforeTerminator(rest).includes(token));
+    const subject = clash ?? (words.length ? 'topic or command' : undefined);
+
+    if (subject !== undefined) {
+        throw new UsageError(`${flag} takes no ${subject}`, {
+            hint: `Run "${session.bin} help ${flag}" on its own.`
         });
     }
 
@@ -330,9 +382,103 @@ function showAgents(session: Session, words: string[], brief: boolean): void {
         });
     }
 
+    const headings =
+        flag === AGENTS_FLAG
+            ? [AGENTS_CALLING_HEADING]
+            : [AGENTS_ADDING_HEADING, AGENTS_RUNNING_HEADING];
+
+    const sections = headings.map((heading) => markdownSection(agents.markdown, heading));
+    const missing = headings.find((_, index) => sections[index] === undefined);
+
+    if (missing !== undefined) {
+        throw new CommandError(`${AGENTS_FILE} has no "${missing}" section`, {
+            hint: `Reinstall ${PACKAGE_NAME}.`
+        });
+    }
+
+    const body = sections.join(SECTION_JOINER);
+
+    const markdown =
+        flag === AGENTS_FLAG
+            ? `${body}${SECTION_JOINER}To write a command or set up a project: ${session.bin} help ${AUTHORING_FLAG}`
+            : body;
+
     session.state.commandId = HELP_WORD;
 
-    printResult(session.io, shown(session, agents.markdown.trimEnd(), agents));
+    printResult(session.io, shown(session, markdown, { file: agents.file, markdown }));
+}
+
+/** The flags of `help` that mean something else than a search, and cannot go with one. */
+const flagsClashingWith = (tokens: readonly string[]): string[] =>
+    SEARCH_CLASH_FLAGS.filter((flag) => beforeTerminator(tokens).includes(flag));
+
+/**
+ * `help --search <words>`: the best few commands for an intent, in the whole project or inside one
+ * topic. Builtins are never searched. It is help, so it never changes the exit code but for a wrong
+ * command line.
+ */
+function showSearch(session: Session, searched: SearchRead, rest: string[]): void {
+    const { bin, registry, style } = session;
+    const [clash] = flagsClashingWith(rest);
+
+    if (clash !== undefined) {
+        throw new UsageError(`${SEARCH_FLAG} cannot go with ${clash}`, {
+            hint: `Run "${bin} help ${SEARCH_FLAG} <words>" on its own, or "${bin} help ${clash}" without a search.`
+        });
+    }
+
+    const { query, words } = searched;
+
+    if (query === undefined) {
+        throw new UsageError(`${SEARCH_FLAG} needs the words to search for`, {
+            hint: `Quote them: ${bin} help ${SEARCH_FLAG} "${SEARCH_EXAMPLE}" --json`
+        });
+    }
+
+    if (!wordsOf(query).length) {
+        throw new UsageError(`Nothing to search for in "${query}"`, {
+            hint: `Search with words from what the command does, for example: ${bin} help ${SEARCH_FLAG} "${SEARCH_EXAMPLE}" --json`
+        });
+    }
+
+    const topicId = searchScope(session, words);
+    const result = searchResult(manifest(bin, registry), query, topicId);
+
+    session.state.commandId = HELP_WORD;
+
+    printResult(session.io, shown(session, searchText(result, bin, style), result));
+}
+
+/** The topic a search is limited to: none for the whole project; a command or a built-in is not a scope. */
+function searchScope(session: Session, words: string[]): string | undefined {
+    if (!words.length) {
+        return undefined;
+    }
+
+    const named = words.join(ID_SEPARATOR);
+
+    if (builtinNamed(session, words)) {
+        throw new UsageError(`${SEARCH_FLAG} does not search the built-in word ${named}`, {
+            hint: `Built-in words are listed by "${session.bin} help ${BRIEF_FLAG} --json".`
+        });
+    }
+
+    const target = resolve(session.registry, words);
+
+    if (target.kind === 'unknown') {
+        throw unknownCommand(session, target.name);
+    }
+
+    if (target.kind === 'command') {
+        throw new UsageError(
+            `${SEARCH_FLAG} searches the project or a topic, and ${named} is a command`,
+            {
+                hint: `Run "${session.bin} help ${named} --json" for the whole entry.`
+            }
+        );
+    }
+
+    return target.topic.id;
 }
 
 function showHelpFor(session: Session, words: string[]): void {
@@ -361,7 +507,7 @@ function showHelpFor(session: Session, words: string[]): void {
             shown(
                 session,
                 builtinHelp(session.bin, builtin, session.style),
-                describeBuiltins(session.bin, [builtin])[0]
+                describeBuiltins([builtin])[0]
             )
         );
 
@@ -427,10 +573,13 @@ async function dispatch(session: Session, argv: string[]): Promise<number> {
     if (first === undefined || first === HELP_WORD) {
         assertHelpFlags(session, leading, rest);
 
-        const helpWords = rest.slice(1).filter((token) => !isFlagToken(token));
+        const searched = readSearch(rest.slice(1));
+        const helpWords = searched.words;
 
-        if (rest.includes(AGENTS_FLAG)) {
-            showAgents(session, helpWords, rest.includes(BRIEF_FLAG));
+        if (searched.present) {
+            showSearch(session, searched, rest);
+        } else if (rest.includes(AGENTS_FLAG) || rest.includes(AUTHORING_FLAG)) {
+            showAgentsDoc(session, helpWords, rest);
         } else if (rest.includes(BRIEF_FLAG)) {
             showBriefFor(session, helpWords);
         } else {
@@ -455,14 +604,21 @@ async function dispatch(session: Session, argv: string[]): Promise<number> {
     }
 
     session.state.commandId = target.entry.id;
+    session.state.audit.tokens = [...leading, ...target.rest];
+    session.state.audit.recordable = true;
 
     const parsed = parse(
         target.entry.definition,
         [...leading, ...target.rest],
-        usage(session.bin, target.entry)
+        usage(target.entry)
     );
 
+    session.state.audit.global = parsed.global;
+    session.state.audit.argv = auditArgv(session.state.audit.tokens, parsed.tokens);
+
     if (parsed.global.help) {
+        // Reading the help of a command is not running it
+        session.state.audit.recordable = false;
         showHelpFor(session, target.entry.id.split(ID_SEPARATOR));
 
         return EXIT_CODE.OK;
@@ -470,7 +626,7 @@ async function dispatch(session: Session, argv: string[]): Promise<number> {
 
     if (lacksDryRun(target.entry, parsed.global)) {
         throw new UsageError(noDryRunMessage(target.entry), {
-            usage: usage(session.bin, target.entry),
+            usage: usage(target.entry),
             hint: `Drop --dry-run, or read "${session.bin} help ${target.entry.id}" for what it supports.`
         });
     }
@@ -493,6 +649,53 @@ async function dispatch(session: Session, argv: string[]): Promise<number> {
     return EXIT_CODE.OK;
 }
 
+/** The append and the clock of a run: the real ones, unless a test gave others. */
+const auditEdgesOf = (options: RunOptions): AuditEdges => ({
+    append: appendAuditLine,
+    now,
+    ...options.audit
+});
+
+/**
+ * Writes the audit line of a run, the last thing it does: after the result is printed and the log
+ * is closed, so a slow disk never delays it. It records a resolved project command only, and only
+ * when `run()` was given a file. A failed write is a warning, never a change of the result.
+ */
+function recordAudit(
+    options: RunOptions,
+    world: World,
+    state: RunState,
+    outcome: AuditOutcome
+): void {
+    const { commandId, audit } = state;
+
+    if (options.auditFile === undefined || !audit.recordable || commandId === undefined) {
+        return;
+    }
+
+    const edges = auditEdgesOf(options);
+
+    const line = buildAuditLine({
+        commandId,
+        draft: audit,
+        startedAt: outcome.startedAt,
+        endedAt: edges.now(),
+        exitCode: outcome.code,
+        plan: outcome.plan,
+        error: outcome.error === undefined ? undefined : messageOf(outcome.error)
+    });
+
+    try {
+        edges.append(options.auditFile, JSON.stringify(line));
+    } catch (error) {
+        if (!outcome.quiet) {
+            world.io.stderr.write(
+                `${world.style.yellow('warning:')} ${AUDIT_WRITE_WARNING} ${options.auditFile}: ${messageOf(error)}\n`
+            );
+        }
+    }
+}
+
 /**
  * Runs a command line and resolves to the exit code; it never calls process.exit, so it can be
  * embedded and tested. Exit codes: 0 success, 1 the command failed, 2 the command line was wrong.
@@ -502,8 +705,16 @@ async function dispatch(session: Session, argv: string[]): Promise<number> {
 export const run: RunCliFn = async (argv, options) => {
     const world: World = { ...resolveWorld(options), bin: options.bin, cwd: options.cwd };
     const wantsJson = jsonRequested(argv);
-    const state: RunState = { commandId: undefined };
+
+    const state: RunState = {
+        commandId: undefined,
+        audit: { recordable: false, tokens: [], ran: false }
+    };
+
     const scope: RunScope = { plan: [] };
+    const startedAt = auditEdgesOf(options).now();
+    let code: number = EXIT_CODE.FAILED;
+    let failed: unknown;
 
     try {
         const registry = await discover(options.commandsDir);
@@ -514,18 +725,25 @@ export const run: RunCliFn = async (argv, options) => {
             );
         }
 
-        return await dispatch(
+        code = await dispatch(
             { ...world, registry, wantsJson, state, builtins: options.builtins, scope },
             argv
         );
+
+        return code;
     } catch (error) {
-        return reportError(error, {
+        failed = error;
+
+        code = reportError(error, {
             io: world.io,
             style: world.style,
             json: wantsJson,
             commandId: state.commandId,
+            bin: options.bin,
             log: scope.log?.path
         });
+
+        return code;
     } finally {
         scope.log?.close();
 
@@ -535,5 +753,13 @@ export const run: RunCliFn = async (argv, options) => {
                 `${world.style.yellow('warning:')} the log file ${scope.log.path} is incomplete: ${scope.log.failure()}\n`
             );
         }
+
+        recordAudit(options, world, state, {
+            startedAt,
+            code,
+            error: failed,
+            plan: scope.plan,
+            quiet: quietRequested(argv)
+        });
     }
 };

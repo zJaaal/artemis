@@ -9,6 +9,7 @@ import type {
     RunDoctorFn
 } from '../models.js';
 import { DOCTOR_SINGULAR_FAILED } from './constants.js';
+import { healthChecks } from './health.js';
 import { installedCheck, rangeCheck, rangeOf } from './install-checks.js';
 
 // Pure: every check of `art doctor` from what the edges read. A `warn` or a `fail` always has a `fix`.
@@ -151,7 +152,14 @@ export const runDoctor: RunDoctorFn = (facts) => {
         moduleCheck(facts),
         commandsCheck(facts),
         wordsCheck(facts),
-        stateCheck(facts)
+        stateCheck(facts),
+        ...(facts.history
+            ? healthChecks({
+                  history: facts.history,
+                  loaded: facts.commands?.loaded,
+                  now: facts.now
+              })
+            : [])
     ];
 };
 

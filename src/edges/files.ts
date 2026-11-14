@@ -2,14 +2,23 @@ import { randomUUID } from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
 
-import { ERROR_CODE, JSON_EXTENSION, MANIFEST_FILE, TEMP_SUFFIX } from '../constants.js';
+import {
+    ERROR_CODE,
+    FOLDER_PROBLEM,
+    NO_ACCESS_CODES,
+    JSON_EXTENSION,
+    MANIFEST_FILE,
+    TEMP_SUFFIX
+} from '../constants.js';
 import { CommandError } from '../errors/errors.js';
 import { messageOf } from '../utils/error-message.js';
 import { isRecord } from '../utils/is-record.js';
 import { codeOf } from '../utils/error-code.js';
 
 import type {
+    AppendTextFn,
     CreateExclusiveFn,
+    FolderProblemFn,
     IsFolderFn,
     ListDirectoryFn,
     ListJsonFilesFn,
@@ -72,6 +81,10 @@ export const makeDirectory: MakeDirectoryFn = (dir) => {
 
 export const writeText: WriteTextFn = (file, text) => {
     fs.writeFileSync(file, text);
+};
+
+export const appendText: AppendTextFn = (file, text) => {
+    fs.appendFileSync(file, text);
 };
 
 /** Removing a file that is not there is not an error: the goal is that it is gone. */
@@ -190,6 +203,38 @@ export const readManifest: ReadManifestFn = (dir) => {
     }
 
     return text === undefined ? undefined : parseManifest(file, text);
+};
+
+/**
+ * Why a child cannot run in a folder, or undefined when it can (or when the disk says something
+ * else, which the spawn then reports in its own words). Three kinds: the folder is not there, it is
+ * not a folder (a file, or a parent that is one), or this user cannot enter it (EACCES or EPERM, on
+ * it or on a parent).
+ */
+export const folderProblem: FolderProblemFn = (folder) => {
+    try {
+        if (!fs.statSync(folder).isDirectory()) {
+            return FOLDER_PROBLEM.NOT_A_FOLDER;
+        }
+
+        fs.accessSync(folder, fs.constants.X_OK);
+
+        return undefined;
+    } catch (error) {
+        const code = codeOf(error);
+
+        if (code === ERROR_CODE.MISSING) {
+            return FOLDER_PROBLEM.MISSING;
+        }
+
+        if (code === ERROR_CODE.NOT_A_DIRECTORY) {
+            return FOLDER_PROBLEM.NOT_A_FOLDER;
+        }
+
+        // Only a permission error is "no access": anything else (a symlink loop, a name too long) is
+        // not this check's to explain, so the spawn goes ahead and Node's own message is the error
+        return NO_ACCESS_CODES.includes(code ?? '') ? FOLDER_PROBLEM.NO_ACCESS : undefined;
+    }
 };
 
 export const isFolder: IsFolderFn = (target) =>

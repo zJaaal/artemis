@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'vitest';
 
-import { EXIT_CODE } from '../constants.js';
+import { EXIT_CODE, GLOBAL_FLAGS_TEXT, USAGE_HINT_GLOBAL } from '../constants.js';
 import { CommandError, UsageError } from '../errors/errors.js';
 import { foreignCommandError } from '../test/foreign-error.js';
 import { createStyle } from '../help/help.js';
@@ -8,7 +8,12 @@ import { createSink } from '../test/sink.js';
 import { reportError } from './report.js';
 
 /** Pass `null` for a run that never resolved a command. */
-const report = (error: unknown, json: boolean, commandId: string | null = 'math add') => {
+const report = (
+    error: unknown,
+    json: boolean,
+    commandId: string | null = 'math add',
+    bin?: string
+) => {
     const stdout = createSink();
     const stderr = createSink();
 
@@ -16,7 +21,8 @@ const report = (error: unknown, json: boolean, commandId: string | null = 'math 
         io: { stdout, stderr },
         style: createStyle(false),
         json,
-        commandId: commandId ?? undefined
+        commandId: commandId ?? undefined,
+        bin
     });
 
     return { code, out: stdout.text, err: stderr.text };
@@ -53,6 +59,42 @@ describe('reportError under --json', () => {
     });
 });
 
+describe('reportError: the usage hint', () => {
+    test('a usage error of a command gets the usage and the global flags as its hint', () => {
+        const error = new UsageError('Missing', { usage: 'x <a>', fromCommand: true });
+
+        expect(JSON.parse(report(error, true).out).hint).toBe(
+            `x <a>. ${USAGE_HINT_GLOBAL} ${GLOBAL_FLAGS_TEXT}`
+        );
+    });
+
+    test('a usage error that did not come from a command has no hint', () => {
+        expect(
+            JSON.parse(report(new UsageError('Missing', { usage: 'x <a>' }), true).out)
+        ).not.toHaveProperty('hint');
+    });
+
+    test('a usage error with its own hint keeps it', () => {
+        const error = new UsageError('Missing', {
+            usage: 'x <a>',
+            hint: 'Mine',
+            fromCommand: true
+        });
+
+        expect(JSON.parse(report(error, true).out).hint).toBe('Mine');
+    });
+
+    test('a usage error from an older copy, with no marker, gets no hint', () => {
+        const error = foreignCommandError('Missing', {
+            exitCode: EXIT_CODE.USAGE,
+            usage: 'x <a>',
+            isUsage: true
+        });
+
+        expect(JSON.parse(report(error, true).out)).not.toHaveProperty('hint');
+    });
+});
+
 describe('reportError as text', () => {
     test('prints the error and its hint on stderr', () => {
         expect(report(new CommandError('Bad input', { hint: 'Fix it' }), false).err).toBe(
@@ -60,10 +102,16 @@ describe('reportError as text', () => {
         );
     });
 
-    test('prints the usage line of a usage error', () => {
-        expect(report(new UsageError('Missing', { usage: 'art x <a>' }), false).err).toContain(
-            'Usage  art x <a>'
+    test('prints the usage line of a usage error as it is when the run has no bin', () => {
+        expect(report(new UsageError('Missing', { usage: 'state [<doc>]' }), false).err).toContain(
+            'Usage  state [<doc>]'
         );
+    });
+
+    test('puts the bin of the run in front of the usage line', () => {
+        const { err } = report(new UsageError('Missing', { usage: 'x <a>' }), false, 'x', 'art');
+
+        expect(err).toContain('Usage  art x <a>');
     });
 
     test('a plain error is a bug, so its stack is shown', () => {
@@ -120,11 +168,11 @@ describe('reportError with an error from another copy of Artemis', () => {
     test('a usage error from the other copy still exits with the usage code and shows its usage', () => {
         const error = foreignCommandError('Missing', {
             exitCode: EXIT_CODE.USAGE,
-            usage: 'art x <a>',
+            usage: 'x <a>',
             isUsage: true
         });
 
-        const { code, err } = report(error, false);
+        const { code, err } = report(error, false, 'x', 'art');
 
         expect(code).toBe(EXIT_CODE.USAGE);
         expect(err).toContain('Usage  art x <a>');

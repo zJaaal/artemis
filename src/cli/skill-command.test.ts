@@ -3,7 +3,8 @@ import path from 'node:path';
 
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 
-import { EXIT_CODE } from '../constants.js';
+import { EXIT_CODE, SKILL_MAX_BYTES } from '../constants.js';
+import { COMMANDS_FIXTURE_DIR } from '../test/constants.js';
 import { makeProject } from '../test/project.js';
 import { createSink } from '../test/sink.js';
 import { createTempFolders } from '../test/temp.js';
@@ -55,6 +56,28 @@ const newProject = (manifest: Record<string, unknown> = {}): string => {
     return root;
 };
 
+describe('art skill: the Writing a command section and the size', () => {
+    test('uses the bin and the commands folder of the project, relative to it', async () => {
+        const root = newProject({ artemis: { bin: 'mytool', commandsDir: 'tools/commands' } });
+
+        fs.cpSync(path.join(root, 'commands'), path.join(root, 'tools', 'commands'), {
+            recursive: true
+        });
+
+        const { out } = await art(['skill'], root);
+
+        expect(out).toContain('`tools/commands/<topic>/<name>.js`');
+        expect(out).toContain('`mytool help --authoring`');
+    });
+
+    test('the whole skill of the fixture project is under SKILL_MAX_BYTES', async () => {
+        const root = newProject({ artemis: { commandsDir: COMMANDS_FIXTURE_DIR } });
+        const { out } = await art(['skill'], root);
+
+        expect(Buffer.byteLength(out)).toBeLessThan(SKILL_MAX_BYTES);
+    });
+});
+
 describe('art skill: printing', () => {
     test('prints a SKILL.md built from the project commands', async () => {
         const { out } = await art(['skill'], newProject({ description: 'Our scripts' }));
@@ -64,8 +87,8 @@ describe('art skill: printing', () => {
         );
     });
 
-    test('names the help --agents line', async () => {
-        expect((await art(['skill'], newProject())).out).toContain('`art help --agents`');
+    test('points at help --authoring for writing a command', async () => {
+        expect((await art(['skill'], newProject())).out).toContain('`art help --authoring`');
     });
 
     test('under --json the result is { markdown }', async () => {

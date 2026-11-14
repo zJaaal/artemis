@@ -1,4 +1,3 @@
-import { DEFAULT_BIN_NAME } from '../constants.js';
 import { describeBuiltins } from '../help/help.js';
 import type { WordHelpFn } from '../models.js';
 import { successEnvelope } from '../run/report.js';
@@ -15,10 +14,7 @@ export const wordHelp: WordHelpFn = ({ id, text, json }) => {
         return text;
     }
 
-    const [result] = describeBuiltins(
-        DEFAULT_BIN_NAME,
-        BUILTINS.filter((builtin) => builtin.id === id)
-    );
+    const [result] = describeBuiltins(BUILTINS.filter((builtin) => builtin.id === id));
 
     return successEnvelope(id, result);
 };
