@@ -62,7 +62,7 @@ With auditing on, `history` is a word of the tool, exactly as on the shipped `ar
 
 `HistoryCommandFn` changes from `(words, host, cwd)` to `(words, host, context)`, with `context: { project: Project; bin: string; route: CliRoute }` (a `HistoryContext` type in models.ts). It stops finding the project itself; the shipped launcher passes the project it finds from `cwd` today, and the tool launcher the one it found from `root`. `bin` is what `--help` shows on a tool: `wordHelp` gains an optional `bin`, and when it is given the text's leading `Usage: ` becomes `Usage: <bin> `. The shipped route passes none, so every shipped word's `--help` text stays exactly as it is today. The JSON form (`--help --json`) does not change.
 
-**On the shipped route,** `SHIPPED_WORDS` entries keep their `run(words, host, cwd)` shape. The `history` entry becomes a small wrapper that finds the project from `cwd` (`findProject(cwd, ..., 'shipped')`), throws the existing `noProjectError` when there is none, and calls `historyCommand(words, host, { project, bin, route: 'shipped' })`, where `bin` is `resolveSettings(project, 'shipped').bin` (so `"artemis".bin` is honoured). `init`, `state`, `skill` and `doctor` are untouched. `new` (part 4) uses the same wrapper shape and the same `bin`, which its `Next:` line and its JSON `next` print.
+**On the shipped route,** `SHIPPED_WORDS` entries keep their `run(words, host, cwd)` shape. The `history` entry becomes a small wrapper that reads its words first (so `--help` and a usage error still work outside a project, as they do today), then finds the project from `cwd` (`findProject(cwd, ..., 'shipped')`), throws the existing `noProjectError` when there is none, and calls `historyCommand(words, host, { project, bin, route: 'shipped' })`, where `bin` is `resolveSettings(project, 'shipped').bin` (so `"artemis".bin` is honoured). `init`, `state`, `skill` and `doctor` are untouched. `new` (part 4) uses the same wrapper shape and the same `bin`, which its `Next:` line and its JSON `next` print.
 
 **On the tool route,** the `findProject` and `resolveAuditFile` calls of steps 1 and 2 sit inside the same `try` that sends a failure to `reportSetupFailure`, so an invalid `"audit"` value is reported like any other setup failure.
 
@@ -137,7 +137,8 @@ The first CI run on `windows-latest` (Node 24) sorted into these. W2, W3 and W5 
 
 - On `win32`, stopping a child (the end of `run`, a timeout) calls a new edge in `src/edges/exec.ts`, `killTree(pid)`: `spawnSync('taskkill', ['/pid', String(pid), '/T', '/F'], { stdio: 'ignore', windowsHide: true })`, which ends the whole tree. Its failure is ignored with a named reason (the tree may already be gone). A child with no `pid` (it never started) is skipped. The polite first step of other platforms (a signal, then a wait) is skipped: Windows has no polite signal for a console process.
 - Its test is new (no test failed for it): on the Windows job, a child that starts a long-running grandchild and prints its pid; after the stop, that pid is no longer alive.
-- A detached child (`detached: true`) is never stopped by Artemis, on any platform (unchanged).
+- A detached child (`detached: true`) is never stopped by Artemis, on any platform (unchanged). When the program is a `.cmd` file, the `pid` it resolves to is the `cmd.exe` that runs it, so on Windows a command's own stop command ends it with `taskkill /pid <pid> /T /F` (which ends the program under it too); `process.kill(pid)` would end only `cmd.exe`. docs/commands.md and AGENTS.md say so.
+- A child that already exited on its own while its output still drains is not tree-killed: its pid may already belong to another process. As on other platforms, what it left running is left (revised in review).
 - A signal name in an error (`killed by SIGTERM`) can only come from POSIX; on Windows a killed child is reported by its exit code.
 
 **W5. A path under a file is "missing" on Windows, not "not a folder".** Windows reports `ENOENT` where POSIX reports `ENOTDIR` for `a-file/below`. So `folderProblem` says `missing`, and `art state` with a `stateDir` under a file exits 0 with nothing to show instead of exiting 1 with a hint.
@@ -222,7 +223,7 @@ export default defineCommand({
 });
 ```
 
-- The description is written as a single-quoted JavaScript string, with `\` and `'` escaped. Flag keys are always quoted.
+- The file is written the way Prettier would write it under the repo's settings (revised during implementation: the earlier "always quoted, always single quotes" contradicted "Prettier-clean"): the description takes Prettier's quote choice (single quotes, double when the text has an apostrophe and no double quote), and a flag key is quoted only when it is not a plain identifier (it has a `-`).
 - The file is Prettier-clean under the repo's own settings, loads, and `art <words> --help` exits 0. When it has no args, `art <words> --json` exits 0 (`--yes` too when destructive).
 - The return is `{ args, flags }` with only the keys that exist, or `null` when neither does.
 - **Docs:** `help --authoring` (AGENTS.md "Adding a command") and the generated skill's "Writing a command" section mention `art new`, worded as "in a project run by the shipped `art`", because `help --authoring` also serves tools, which have no `new`. The init pointer mentions it only if it stays under `INIT_POINTER_MAX_BYTES` with the default bin; otherwise it is left as is.
