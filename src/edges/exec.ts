@@ -1,4 +1,4 @@
-import { type ChildProcess, spawn, spawnSync } from 'node:child_process';
+import { type ChildProcess, spawn } from 'node:child_process';
 import fs from 'node:fs';
 import { Socket } from 'node:net';
 import path from 'node:path';
@@ -71,17 +71,28 @@ const noFolder = (cwdProblem: FolderProblem): ChildHandle => ({
 
 /**
  * Ends a process and everything it started, with `taskkill /T /F`: the one way on Windows, where there
- * are no process groups to signal. A child that never started has no pid, so there is nothing to end.
+ * are no process groups to signal. It waits for taskkill without blocking the event loop, so the
+ * children of a run are ended together. A child that never started has no pid: nothing to end.
  */
 export const killTree: KillTreeFn = (pid) => {
     if (pid === undefined) {
-        return;
+        return Promise.resolve();
     }
 
-    // ignoreTreeAlreadyGone: taskkill fails when the process ended in the meantime, and then there is nothing left to end
-    spawnSync(TASKKILL_COMMAND, [TASKKILL_PID_FLAG, String(pid), ...TASKKILL_ARGUMENTS], {
-        stdio: 'ignore',
-        windowsHide: true
+    return new Promise((resolve) => {
+        const killer = spawn(
+            TASKKILL_COMMAND,
+            [TASKKILL_PID_FLAG, String(pid), ...TASKKILL_ARGUMENTS],
+            {
+                stdio: 'ignore',
+                windowsHide: true
+            }
+        );
+
+        // ignoreTreeAlreadyGone: taskkill fails when the process ended in the meantime, and then there is
+        // nothing left to end; it also fails to start where there is no taskkill, and the child is killed after it
+        killer.once('error', () => resolve());
+        killer.once('close', () => resolve());
     });
 };
 
@@ -217,7 +228,7 @@ export const spawnChild: SpawnChildFn = (request) => {
             // what it left running, as on POSIX (the drain below lets go of the pipes)
             if (!exited) {
                 // No polite signal for a console process, and no process group: end the whole tree at once
-                killTree(child.pid);
+                await killTree(child.pid);
                 // And the child itself, in case taskkill itself could not run
                 child.kill();
             }

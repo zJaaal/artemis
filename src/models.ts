@@ -490,8 +490,8 @@ export type RenameWithRetryFn = (from: string, to: string, edges?: RenameEdges) 
 /** Waits, blocking the thread: `writeAtomic` is synchronous. */
 export type SleepSyncFn = (ms: number) => void;
 
-/** Ends a process and every process it started (Windows has no process groups). A process that never started has no pid, and nothing to end. */
-export type KillTreeFn = (pid: number | undefined) => void;
+/** Ends a process and every process it started (Windows has no process groups), without blocking. A process that never started has no pid, and nothing to end. */
+export type KillTreeFn = (pid: number | undefined) => Promise<void>;
 /** The `*.json` files of a folder, by name: never a temporary file or a lock. A missing folder has none. */
 export type ListJsonFilesFn = (dir: string) => string[];
 export type HomeDirectoryFn = () => string;

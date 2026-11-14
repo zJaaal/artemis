@@ -416,8 +416,8 @@ const GONE_POLL_MS = 50;
 const GONE_WITHIN_MS = 5000;
 
 describe('killTree', () => {
-    test('a child that never started has no pid, and there is nothing to end', () => {
-        expect(killTree(undefined)).toBeUndefined();
+    test('a child that never started has no pid, and there is nothing to end', async () => {
+        await expect(killTree(undefined)).resolves.toBeUndefined();
     });
 });
 
