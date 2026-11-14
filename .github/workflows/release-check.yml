@@ -55,4 +55,10 @@ jobs:
             exit 1
           fi
 
+          if ! awk -v heading="## $head (" 'index($0, heading) == 1 { found = 1 } END { exit !found }' CHANGELOG.md; then
+            echo "CHANGELOG.md has no line starting with \"## $head (\"." >&2
+            echo "Move the Unreleased entries under a heading \"## $head (<YYYY-MM-DD>)\"." >&2
+            exit 1
+          fi
+
           echo "Release: $base -> $head. Merging stages v$head."
