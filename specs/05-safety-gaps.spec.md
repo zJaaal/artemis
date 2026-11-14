@@ -50,10 +50,17 @@ With auditing on, `history` is a word of the tool, exactly as on the shipped `ar
 - `<bin> history [command words]... [--limit <n>] [--json] [--quiet]`, the same output, filters, `--limit` rules, flag refusals (`--dry-run`, `--log`, exit 2) and `--help` text, with the tool's `bin` in usage lines.
 - It reads the tool's own trail. It needs the tool's project, not a commands folder that loads (as today).
 - A tool command or topic named `history` is hidden behind the word, with the shipped warning text on stderr (`--quiet` hides it). The tool's author opted in, so the word wins.
-- The tool's `help` lists the word: the brief listing and `help --json` gain `builtins: ["history"]` (today a tool has no `builtins` key), and text help shows it where the shipped `art` shows its words.
+- The tool's `help` lists the word, in the shapes the shipped `art` uses: the brief listing gains `builtins: ["history"]` (ids), `help --json` gains `builtins` with the one object `describeBuiltins` makes for `history`, `help history --json` prints that object, and text help shows it where the shipped `art` shows its words. Today a tool has no `builtins` key.
 - Without auditing, a tool reserves nothing (unchanged): no `history` word, no `builtins` key.
 
-**Implementation note:** `historyCommand` stops finding the project from the current folder. The launcher passes it the project it already resolved (by route), so the same code serves both routes.
+**How the launcher gets there (tool route):**
+
+1. It finds the tool's project from `root`, as today (`findProject(..., 'own')`).
+2. It reads the `audit` setting with `resolveAuditFile(project, route)`, which gains the route: on `shipped` the trail is on unless `"audit": false` (today's rule); on `own` it is on only with `"audit": true`.
+3. When the trail is on and the first word after the leading global flags is `history`, the word runs now, before `settingsFor`, so it works without a commands folder (as on the shipped route).
+4. Otherwise `settingsFor` runs as today, and `run()` gets `auditFile` and `builtins: [<the history entry of BUILTINS>]` when the trail is on, nothing extra when it is off.
+
+`HistoryCommandFn` changes from `(words, host, cwd)` to `(words, host, context)`, with `context: { project: Project; bin: string; route: CliRoute }` (a `HistoryContext` type in models.ts). It stops finding the project itself; the shipped launcher passes the project it finds from `cwd` today, and the tool launcher the one it found from `root`. `bin` is what usage lines and `--help` show: `HISTORY_USAGE_LINE` and `HISTORY_HELP` lose nothing, and `wordHelp` gains a `bin` parameter (default `art` behavior unchanged on the shipped route) that it puts in front of the usage line, the way text help does for commands.
 
 ### `readHistory` for `run()` callers
 
@@ -65,7 +72,8 @@ readHistory(auditFile: string, options?: { command?: string; limit?: number }): 
 
 - The lines of `auditFile`, newest first, filtered to the command id `command` (an id: aliases are the caller's to resolve, from its own registry), at most `limit` (default `HISTORY_DEFAULT_LIMIT`, 20). The same `entries` and `skipped` as `art history --json`.
 - A missing file is `{ entries: [], skipped: 0 }`. An unreadable one throws the `CommandError` that `art history` throws today. A `limit` that is not a whole number above 0 is a `TypeError`.
-- `AuditLine` is exported as a type.
+- `AuditLine` (already in models.ts) is exported as a type from `src/index.ts`. New types in models.ts: `ReadHistoryOptions` (`{ command?: string; limit?: number }`), `HistoryRead` (`{ entries: AuditLine[]; skipped: number }`) and `ReadHistoryFn`.
+- It lives in `src/cli/read-history.ts`: the file read through the existing `readTextIfExists` edge, then the pure `parseAuditText` and `selectHistory`.
 - docs/run.md documents `auditFile` and `readHistory`, with a five-line example of a `history` command file built on them.
 
 ## 2. Destructive by call
@@ -80,53 +88,70 @@ export default defineCommand({
 ```
 
 - `destructive` is `true`, `false` (default) or a function `({ args, flags }) => boolean`. `args` and `flags` are typed from the definition, exactly as in `run`. Any other value is the existing `TypeError` from `defineCommand`.
-- **When it is called:** once per call, after the command line parsed and before the confirmation step, with the parsed `args` and `flags` (defaults applied). Never for `--help`, help listings, a usage error or a dry run decision that does not need it. Under `--dry-run` it is still called (the audit line records what was asked) but nothing is asked, as today.
+- **When it is called:** once per call that reaches the confirmation step, after the command line parsed, with the parsed `args` and `flags` (defaults applied). That includes calls with `--yes` and with `--dry-run`, so a broken function fails the same way on every call; its answer only matters when neither is set. It is never called for `--help`, a help listing or a usage error (those never reach the step).
 - **Its answer** feeds the confirmation exactly as `true` or `false` does today: `true` asks in a terminal, runs with `--yes`, and is refused with the existing hint when nobody can answer.
 - **A function that throws, or returns anything but a boolean,** is a bug in the command: the call fails before `run` the way a plain `Error` from `run` does (exit 1, a stack). The non-boolean case throws `TypeError: destructive() of "<id>" returned <value>; it must return true or false`.
 - **`ctx.invoke`** calls the invoked command's function with that command's own parsed `args` and `flags`.
 - **Everywhere a command is described** (help text, `help --json`, the brief listing, `art skill`, doctor's `history-previewed` check), a function counts as `destructive: true`: the command can change or delete data, and the reader cannot run the function. Text help prints the existing Destructive line followed by `(depends on the arguments and flags)`; the manifest stays `destructive: true` (no new key).
-- The type of `destructive` in the `defineCommand` input widens; the output definition keeps the value as given (a boolean or the function).
+- **Types.** models.ts gains `DestructiveFn<TArgs, TFlags> = (input: { args: <the parsed args type of run>; flags: <the parsed flags type of run> }) => boolean`, using the same generic parameters as `run`'s input, so `define.test-d.ts` can check that `flags['no-prune']` is a `boolean` there and that returning a string is a type error. `destructive` on the definition input and on `Command` becomes `boolean | DestructiveFn<...>`; the output definition keeps the value as given.
+- **Consumers.** `execute` resolves the value to a boolean (calling the function) and passes that boolean to `confirmDestructive`, whose `call.destructive` stays `boolean`. Every describer (help, manifest, brief, skill, doctor's `loaded`) normalises with one helper, `canDestroy(value) = value !== false`; doctor's `loaded: { destructive: boolean }` keeps its type.
+- **Validation.** `validateMarker` accepts a boolean or a function for `destructive`; `dryRun` stays boolean-only.
 
 ## 3. Windows
 
-The first CI run on `windows-latest` (Node 24) sorted into these. Each fix below has a test that runs on the Windows job.
+The first CI run on `windows-latest` (Node 24) sorted into these. W2, W3 and W5 have failing tests in that run; W1 showed only as the `check-bin` failure (spawning `npm` gave no pid and no status); W4 has no failing test and gets a new one. Each fix below has a test that runs on the Windows job.
 
 ### Real bugs
 
 **W1. `ctx.exec` cannot start `.cmd` and `.bat` files.** `npm`, `pnpm`, `npx`, `yarn` and everything in `node_modules/.bin` are `.cmd` shims on Windows. Node refuses to spawn them without a shell (EINVAL since the 2024 security release), and `ctx.exec` never uses one, so `ctx.exec('pnpm', ['build'])` fails on Windows.
 
 - On `win32` only, before spawning, `ctx.exec` resolves a bare command (no path separator, no extension) through `PATH` and `PATHEXT` (default `.COM;.EXE;.BAT;.CMD`), in the call's `cwd` and `env`. A command with a path or an extension is used as given.
-- When the resolved file is `.cmd` or `.bat`, it runs as `cmd.exe /d /s /c "<file> <args>"` with `windowsVerbatimArguments: true`, every argument quoted and escaped so `cmd.exe` interprets none of it: the rules `cross-spawn` uses (double quotes and backslashes escaped for the program, then every `cmd.exe` metacharacter `( ) % ! ^ " < > & |` prefixed with `^`, and the file path escaped the same way). Artemis implements them itself, about 40 lines in `src/utils/`, pure, with tests of each metacharacter.
+- When the resolved file is `.cmd` or `.bat`, it runs as `cmd.exe /d /s /c "<file> <args>"` with `windowsVerbatimArguments: true`, with `cross-spawn`'s escaping, all of it:
+  - the metacharacters are `( ) [ ] % ! ^ " \` < > & | ; , * ?` and space (`/([()\][%!^"`<>&|;, *?])/g`);
+  - the file path: each metacharacter prefixed with `^`;
+  - each argument: backslashes before a `"` doubled and the `"` escaped as `\"`, trailing backslashes doubled, the whole wrapped in `"..."`, then each metacharacter prefixed with `^`;
+  - **shims are escaped twice:** when the file matches `/node_modules[\\/]\.bin[\\/][^\\/]+\.cmd$/i` (an npm `.bin` shim, which hands its arguments to another `cmd.exe`), the metacharacter step runs a second time on each argument.
+- Placement: the escaping is pure, in `src/utils/windows-command.ts`, tested on every platform with each metacharacter, a quote, trailing backslashes and the shim case. The `PATH` × `PATHEXT` lookup reads the disk, so it is an edge, in `src/edges/`, written as one `flatMap` over the candidate paths (no nested loops).
 - The promise "never through a shell" becomes, for Windows `.cmd` files only, "through `cmd.exe` with every argument escaped so nothing is interpreted". docs/commands.md says so.
 - `.exe` and `.com` files spawn directly, as on every other platform. A command not found keeps the existing not-found error.
 - The same resolution applies to the detached spawn (`detached: true`).
 
-**W2. The worktrees kit compares paths as strings.** Windows paths ignore case and have short forms (`C:\Users\RUNNER~1\...` and `C:\Users\runneradmin\...` are one folder), so the main checkout was "a worktree with no instance yet".
+**W2. The worktrees kit's paths do not match on Windows.** The kit already passes its paths through `realPathOrResolve` (`src/edges/files.ts`), but that uses the JavaScript `fs.realpathSync`, which on Windows neither expands short names (`C:\Users\RUNNER~1\...` is `C:\Users\runneradmin\...`) nor fixes case, and the comparisons that follow are case-sensitive. So the main checkout was "a worktree with no instance yet".
 
-- Every path the kit compares or stores as an identity (a checkout root, `mainCheckout`, the root `git` reports) goes through one `samePath` helper: `fs.realpathSync.native` (which expands short names and fixes case to what the disk says), then on `win32` a case-insensitive comparison. A path that does not exist falls back to `path.resolve`.
-- Stored registry entries are not rewritten; they are compared through the same helper.
+- `realPathOrResolve` switches to `fs.realpathSync.native` (which expands short names and returns the case the disk has), keeping its fallback to `path.resolve` for a path that does not exist. It is used by the kit (`git.ts`, `registration.ts`, `worktrees.ts`) and nothing changes for its callers on other platforms.
+- A new pure `samePath(a, b, platform)` in `src/utils/` compares two such paths: case-insensitively on `win32`, exactly elsewhere. Every place the kit compares two paths for identity (a checkout root against a registry entry, against `mainCheckout`, against `git`'s root) uses it instead of `===`.
+- Stored registry entries are not rewritten; they are compared through `samePath`.
 
 **W3. The store's atomic write fails while another process reads the file.** `rename` over a file another process has open is `EPERM` (or `EACCES`, `EBUSY`) on Windows.
 
-- On `win32`, `writeAtomic` retries the rename on those three codes, `ATOMIC_RENAME_RETRIES` (10) times, `ATOMIC_RENAME_RETRY_MS` (20) apart, then throws the last error. The staging file is removed in `finally`, as today. Other platforms are unchanged.
+- On `win32`, `writeAtomic` retries the rename on those three codes, `ATOMIC_RENAME_RETRIES` (10) times, `ATOMIC_RENAME_RETRY_MS` (20) apart, then throws the last error. `writeAtomic` is synchronous, so the wait is a synchronous sleep, `Atomics.wait` on a one-element `Int32Array` over a `SharedArrayBuffer`, in a `sleepSync(ms)` in `src/edges/`. The two constants are in `src/constants.ts`. The staging file is removed in `finally`, as today. Other platforms are unchanged.
+- A reader that holds the file open longer than the retries still makes the write fail. That is a limitation of Windows, said in docs/kits/store.md.
 
 **W4. Stopping a child does not stop its children.** Windows has no process groups, so when `run` ends, a child `ctx.exec` started is killed but what it started (a dev server's workers) survives.
 
-- On `win32`, stopping a child (the end of `run`, a timeout) runs `taskkill /pid <pid> /T /F` through the existing quiet-spawn edge, which ends the whole tree. The polite first step of other platforms (a signal, then a wait) is skipped: Windows has no polite signal for a console process.
+- On `win32`, stopping a child (the end of `run`, a timeout) calls a new edge in `src/edges/exec.ts`, `killTree(pid)`: `spawnSync('taskkill', ['/pid', String(pid), '/T', '/F'], { stdio: 'ignore', windowsHide: true })`, which ends the whole tree. Its failure is ignored with a named reason (the tree may already be gone). A child with no `pid` (it never started) is skipped. The polite first step of other platforms (a signal, then a wait) is skipped: Windows has no polite signal for a console process.
+- Its test is new (no test failed for it): on the Windows job, a child that starts a long-running grandchild and prints its pid; after the stop, that pid is no longer alive.
 - A detached child (`detached: true`) is never stopped by Artemis, on any platform (unchanged).
 - A signal name in an error (`killed by SIGTERM`) can only come from POSIX; on Windows a killed child is reported by its exit code.
+
+**W5. A path under a file is "missing" on Windows, not "not a folder".** Windows reports `ENOENT` where POSIX reports `ENOTDIR` for `a-file/below`. So `folderProblem` says `missing`, and `art state` with a `stateDir` under a file exits 0 with nothing to show instead of exiting 1 with a hint.
+
+- `folderProblem`, on `ENOENT`, walks up the path's ancestors: when the nearest one that exists is not a folder, the answer is `not-a-folder`. This runs on every platform (on POSIX the `ENOTDIR` case already answers it, so nothing changes there).
+- Its tests are the three that fail today: `files.test.ts` "a path under a file is not a folder", `exec.test.ts` "a cwd under a file is not-a-folder too", and both `state-command.test.ts` "a state folder that cannot be read" cases.
 
 ### Tests that assume POSIX
 
 - **Fake file systems keyed by `/work/app`-style paths** (`settings.test.ts` and the init and agent-pointer tests): the fakes and expectations are built with `path.resolve`, so they hold on both.
 - **Regular expressions built from a path** (the store's corrupt-document test and others): the path is escaped first, with one test helper.
 - **Permission tests that use `chmod`** (no-access folders, a script without the execute bit): skipped on `win32` with the reason in the test name's skip message, the way they already skip as root.
-- **Signals, process groups, symlink loops, and a process owned by another user:** skipped on `win32` with a reason.
+- **Signals, process groups, symlink loops, a script without the execute bit (`EFTYPE` on Windows), and a process owned by another user:** skipped on `win32` with a reason.
+- **`writeAtomic` "a reader holding the old one still has it whole":** it holds the reader open through the rename, which Windows does not allow (W3's limitation). Skipped on `win32` with that reason.
+- **`exec.test.ts` "a grandchild keeps its pipe after the drain":** on Windows the grandchild writes no marker at all, neither `ok` nor `dead`. It is not diagnosed; it is skipped on `win32` with a reason that says so, and an issue is filed to find out.
 - **`scripts/check-bin.mjs`** spawns `npm` directly: on `win32` it runs `npm.cmd` through the same escaping rules (or `shell: true` with fixed arguments; it is a script of the repo, not shipped code).
 
 ### The job
 
-When every step is green, the Windows job joins the required matrix: `windows-latest` with Node 24, every step of the Linux job except the staging dry run. `continue-on-error` goes away.
+When every step is green, the Windows job joins the matrix: `windows-latest` with Node 24, every step of the Linux job except the staging dry run. `continue-on-error` goes away, and the job is named `Windows (Node 24)`. The branch protection's required checks name jobs, so the owner adds the new one there (or approves the change being made with `gh api`).
 
 ## 4. `art new`
 
@@ -142,15 +167,20 @@ Created /work/app/commands/db/reset.js
 Next: art db reset --help
 ```
 
+- **Parsing:** with `node:util` `parseArgs` (strict, positionals allowed), as the other words parse theirs: `--description d` and `--description=d` both work, `--arg` and `--flag` are `multiple` strings, and every positional is a word, wherever it stands (`art new x --arg a y` is the words `x y` and the arg `a`). A value that starts with `-` needs the `=` form; that is `parseArgs`'s rule. An unknown flag is a usage error (exit 2).
 - **Words:** one or more, each matching `^[a-z0-9][a-z0-9-]*$`. The first word may not be a word of the shipped binary (`help`, `init`, `state`, `skill`, `doctor`, `history`, `new`): that is a usage error (exit 2) whose hint says the command would be hidden.
 - **`--description`** is required and one line (no newline); missing or empty is a usage error (exit 2).
 - **`--arg <name>`** (repeatable, in order) adds a required argument; **`--flag <name>`** (repeatable) adds a boolean flag. Names match `^[a-z][a-z0-9-]*$`. A flag named after a reserved flag (`help`, `json`, `yes`, `dry-run`, `quiet`, `log`), a duplicate name, or an arg and a flag with one name is a usage error (exit 2). Args and flags get the description `TODO: describe`.
 - **`--destructive`** writes `destructive: true`; **`--supports-dry-run`** writes `dryRun: true` and a `ctx.plan` / `ctx.dryRun` block. They are independent.
-- **The file** is `<commandsDir>/<word 1>/.../<word n>.js`. Missing folders, the commands folder included, are created. It refuses (exit 1, nothing written) when the file exists, or when a folder `<word n>` exists in the same place (a topic of that name). It never overwrites anything.
+- **The file** is `<commandsDir>/<word 1>/.../<word n>.js`. Missing folders, the commands folder included, are created. It refuses (exit 1, nothing written), with a message naming the path, when:
+  - the file exists;
+  - a folder `<word n>` exists in the same place (a topic of that name);
+  - an earlier word is already a command file (`db.js` exists and the call is `art new db reset`): a word cannot be both a command and a topic.
+- It never overwrites anything. It does not check aliases: an alias that clashes with the new id is reported by discovery's existing clash check on the next run, as for a file written by hand.
 - **The project** is found as `art state` finds it: no project is the existing no-project error (exit 1), whose hint mentions `art init`.
-- **Output:** `Created <file>` and a `Next:` line `<bin> <words> --help` (hidden by `--quiet`). Under `--json`: `{ "ok": true, "command": "new", "result": { "id": "db reset", "file": "<absolute path>" }, "next": ["<bin> db reset --help"] }`.
+- **Output:** `Created <file>` (always: it is the result) and a `Next:` line `<bin> <words> --help` (hidden by `--quiet`). When the project's `package.json` does not say `"type": "module"`, it prints `art init`'s existing `TYPE_WARNING` on stderr (hidden by `--quiet`). Under `--json`: `{ "ok": true, "command": "new", "result": { "id": "db reset", "file": "<absolute path>" }, "next": ["<bin> db reset --help"] }`.
 - It takes no `--yes` (nothing to confirm: it never overwrites), and refuses `--dry-run` and `--log` like every built-in word (exit 2).
-- It is a word of the shipped `art` only: a tool reserves nothing (unchanged), and doctor's shadow check and the "words" list gain `new`.
+- It is a word of the shipped `art` only: a tool reserves nothing (unchanged). `new` joins `BUILTINS` in `src/cli/constants.ts` and the launcher's `SHIPPED_WORDS`; `WORD_NAMES`, doctor's shadow check and the help listings derive from `BUILTINS`, so `shadow.ts` does not change.
 
 **The template** (exactly this, with the parts in brackets present only when their flag was given, and `run`'s parameter listing only what exists):
 
@@ -179,11 +209,11 @@ export default defineCommand({
 - The description is written as a single-quoted JavaScript string, with `\` and `'` escaped. Flag keys are always quoted.
 - The file is Prettier-clean under the repo's own settings, loads, and `art <words> --help` exits 0. When it has no args, `art <words> --json` exits 0 (`--yes` too when destructive).
 - The return is `{ args, flags }` with only the keys that exist, or `null` when neither does.
-- **Docs:** `help --authoring` (AGENTS.md "Adding a command") and the generated skill's "Writing a command" section mention `art new`. The init pointer mentions it only if it stays under `INIT_POINTER_MAX_BYTES` with the default bin; otherwise it is left as is.
+- **Docs:** `help --authoring` (AGENTS.md "Adding a command") and the generated skill's "Writing a command" section mention `art new`, worded as "in a project run by the shipped `art`", because `help --authoring` also serves tools, which have no `new`. The init pointer mentions it only if it stays under `INIT_POINTER_MAX_BYTES` with the default bin; otherwise it is left as is.
 
 ## 5. A changelog
 
-- **`CHANGELOG.md`** at the repository root, newest first. Each release is `## <version> (<YYYY-MM-DD>)`, the date of its tag, with the sections that apply, in this order: `Breaking`, `Added`, `Changed`, `Fixed`. Each entry is one line, and a breaking entry links to its section of docs/upgrading.md. An `## Unreleased` section at the top collects merged work.
+- **`CHANGELOG.md`** at the repository root, newest first. Each release is `## <version> (<YYYY-MM-DD>)`, the date of its tag, with the sections that apply, in this order: `Breaking`, `Added`, `Changed`, `Fixed`. Each entry is one line, and a breaking entry links to its section of docs/upgrading.md. An `## Unreleased` heading at the top collects merged work; a release PR moves its entries under the version and leaves the heading, empty.
 - **Backfilled** from the tags, the release PRs and docs/upgrading.md: 0.1.0 (tagged 2026-11-10, staged but never published, said so in one line), 0.1.1, 0.1.2, 1.0.0, 1.1.0, 1.2.0. 1.3.0 is this spec.
 - **Shipped:** `CHANGELOG.md` joins `files` in `package.json`.
 - **Enforced:** the release check fails a PR labelled `release` whose `CHANGELOG.md` has no line starting with `## <new version> (`. The message says to move the Unreleased entries under that heading. A PR without the label is not checked.
@@ -191,7 +221,7 @@ export default defineCommand({
 
 ## Implementation plan
 
-Branch `spec-05`, cut from `main` at `fc34904`, with the Windows CI commit of PR #18 on it. Every step leaves the Linux jobs green and is one commit; the Windows job is allowed to fail until step 7.
+Branch `spec-05`, cut from `main` at `fc34904`, with the Windows CI commit of PR #18 on it (PR #18 is closed once this merges). Every step leaves the Linux jobs green and is one commit; the Windows job is allowed to fail until step 7. The branch is one PR, labelled `release`, carrying the spec, the code and the version, as spec 04's PR #16 did.
 
 1. **Spec.** This file.
 2. **Changelog (5).** `CHANGELOG.md`, `files`, the release-check rule, CONTRIBUTING. Test the rule by hand on the PR (it is a workflow script).
@@ -200,7 +230,7 @@ Branch `spec-05`, cut from `main` at `fc34904`, with the Windows CI commit of PR
 5. **`art new` (4).** `src/cli/new.ts` (pure: words to a path and the template text) and `src/cli/new-command.ts` (the word). Tests: every usage error, every refusal, nested topics, created folders, each template variant run through `defineCommand` and through `art` (help exits 0, a no-arg command runs), the JSON shape, the reserved-word list, doctor's shadow check.
 6. **Windows fixes (3, W1 to W4).** One commit per bug, each with its tests. W1's escaping is pure and tested on every platform; its spawning is tested on the Windows job (a `.cmd` file that echoes its arguments, with every metacharacter).
 7. **Windows tests (3).** Portable fakes, escaped regexes, the skips, `check-bin`. The Windows job goes green and becomes required.
-8. **Docs and version.** AGENTS.md (calling: `history` on tools; adding a command: `art new`, `destructive` as a function), docs/commands.md (`destructive` function, `ctx.exec` on Windows), docs/cli.md (`art new`, `history` on tools), docs/run.md (`auditFile`, `readHistory`), docs/project.md (`audit: true` for tools), docs/upgrading.md ("to 1.3": `new` is a reserved word), README (Windows in Requirements, `art new` in Quick start), CHANGELOG 1.3.0. Version `1.3.0` in a PR labelled `release`.
+8. **Docs and version.** AGENTS.md (calling: `history` on tools; adding a command: `art new`, `destructive` as a function; and the sentences this spec makes false: "A published tool (`cli({ root })`) does not audit" and "nothing is reserved for a tool, `init`, `state`, `skill`, `doctor` and `history` included", which become "unless it turns auditing on"), docs/commands.md (`destructive` function, `ctx.exec` on Windows), docs/cli.md (`art new`, `history` on tools), docs/run.md (`auditFile`, `readHistory`), docs/project.md (`audit: true` for tools), docs/upgrading.md ("to 1.3": `new` is a reserved word), README (Windows in Requirements, `art new` in Quick start), CHANGELOG 1.3.0. Version `1.3.0` in a PR labelled `release`.
 
 ## Acceptance criteria
 
