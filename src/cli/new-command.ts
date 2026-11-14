@@ -1,21 +1,15 @@
 import path from 'node:path';
 
 import { COMMAND_EXTENSION, EXIT_CODE, NEXT_PREFIX } from '../constants.js';
-import {
-    createExclusive,
-    isFolder,
-    makeDirectory,
-    pathExists,
-    readManifest
-} from '../edges/files.js';
+import { createExclusive, isFolder, makeDirectory, pathExists } from '../edges/files.js';
 import { CommandError } from '../errors/errors.js';
-import type { EarlierCommand, NewCommandFn, NewSpec, Project } from '../models.js';
+import type { EarlierCommand, NewCommandFn, NewSpec } from '../models.js';
 import { printResult } from '../run/report.js';
 import { resolveWorld } from '../run/world.js';
 import { messageOf } from '../utils/error-message.js';
 import { MODULE_TYPE, NEW_HELP, NEW_WORD, TYPE_WARNING } from './constants.js';
 import { checkNew, commandFile, parseNewWords, renderCommand } from './new.js';
-import { findProject, noProjectError, resolveSettings } from './settings.js';
+import { projectOrThrow, resolveSettings } from './settings.js';
 import { wordHelp } from './word-help.js';
 
 /** The file exists: nothing is written over it. */
@@ -85,17 +79,6 @@ function writeCommandFile(file: string, spec: NewSpec): void {
     }
 }
 
-/** Where the project's commands are, creating nothing: the folder may not exist yet. */
-function projectOf(cwd: string): Project {
-    const project = findProject(cwd, readManifest, isFolder, 'shipped');
-
-    if (!project) {
-        throw noProjectError(cwd, 'shipped');
-    }
-
-    return project;
-}
-
 /**
  * `new <command words>... --description <text> [--arg <name>]... [--flag <name>]... [--destructive]
  * [--supports-dry-run]`: writes the file of a new command in the commands folder of the project,
@@ -113,7 +96,7 @@ export const newCommand: NewCommandFn = (words, host, cwd) => {
     }
 
     const spec = checkNew(read);
-    const project = projectOf(cwd);
+    const project = projectOrThrow(cwd, 'shipped');
     const { bin, commandsDir } = resolveSettings(project, 'shipped');
     const file = commandFile(commandsDir, spec.words);
     const id = spec.words.join(' ');

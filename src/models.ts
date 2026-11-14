@@ -1330,6 +1330,9 @@ export type ResolveStateDirFn = (project: Project) => string;
  */
 export type ResolveAuditFileFn = (project: Project, route: CliRoute) => string | undefined;
 
+/** The project of a folder, or a CommandError that says what to create (`noProjectError` of the route). */
+export type ProjectOrThrowFn = (cwd: string, route: CliRoute) => Project;
+
 /** What to say when no project is found from a folder upwards. */
 export type NoProjectErrorFn = (start: string, route: CliRoute) => CommandError;
 
@@ -1590,11 +1593,11 @@ export type SelectHistoryFn = (
 
 export type HistoryLineFn = (entry: AuditLine) => string;
 
-/** What `history` needs to know about where it runs: the project (found by the launcher), the bin to show and the route. */
-export type HistoryContext = { project: Project; bin: string; route: CliRoute };
+/** What `history` needs to know about where it runs: the project and its settings, found once by the launcher. */
+export type HistoryContext = { project: Project; settings: CliSettings };
 
 export type HistoryCommandFn = (
-    words: string[],
+    parsed: HistoryWords,
     host: CliOptions,
     context: HistoryContext
 ) => Promise<number>;

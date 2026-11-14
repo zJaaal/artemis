@@ -20,6 +20,7 @@ import type {
     IsFolderFn,
     IsInstalledPackageRootFn,
     NoProjectErrorFn,
+    ProjectOrThrowFn,
     Project,
     ReadManifestFn,
     ResolveAuditFileFn,
@@ -27,6 +28,7 @@ import type {
     ResolveSettingsFn,
     ResolveStateDirFn
 } from '../models.js';
+import { isFolder, readManifest } from '../edges/files.js';
 import { isRecord } from '../utils/is-record.js';
 import { INIT_WORD } from './constants.js';
 
@@ -201,6 +203,20 @@ export const resolveSettings: ResolveSettingsFn = (project, route) => {
  */
 export const resolveStateDir: ResolveStateDirFn = (project) =>
     path.resolve(project.root, readConfig(project).stateDir ?? DEFAULT_STATE_FOLDER);
+
+/**
+ * The project of a folder, or the no-project error for the route that says what to create. The one place
+ * the launcher and the words of the binary (`history`, `new`) find a project from.
+ */
+export const projectOrThrow: ProjectOrThrowFn = (cwd, route) => {
+    const project = findProject(cwd, readManifest, isFolder, route);
+
+    if (!project) {
+        throw noProjectError(cwd, route);
+    }
+
+    return project;
+};
 
 /** What to do when no project is found: the end user can create one, the author of a tool must declare its bin. */
 export const noProjectError: NoProjectErrorFn = (start, route) =>

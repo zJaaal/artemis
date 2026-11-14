@@ -1,8 +1,8 @@
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-import { CONFIG_KEY, LOG_FLAG, MANIFEST_FILE, URL_LIKE } from '../constants.js';
-import { isFolder, readManifest } from '../edges/files.js';
+import { CONFIG_KEY, EXIT_CODE, LOG_FLAG, MANIFEST_FILE, URL_LIKE } from '../constants.js';
+import { isFolder } from '../edges/files.js';
 import { currentProcess } from '../edges/process.js';
 import { workingDirectory } from '../edges/system.js';
 import { CommandError } from '../errors/errors.js';
@@ -31,14 +31,15 @@ import {
     SKILL_WORD,
     STATE_WORD
 } from './constants.js';
-import { historyCommand, shippedHistory } from './history-command.js';
+import { historyCommand, shippedHistory, writeHistoryHelp } from './history-command.js';
+import { parseHistoryWords } from './history.js';
 import { newCommand } from './new-command.js';
 import { skillCommand } from './skill-command.js';
 import { doctorCommand } from './doctor-command.js';
 import { initCommand } from './init-command.js';
 import { assertLeadingFlags } from './state.js';
 import { stateCommand } from './state-command.js';
-import { findProject, noProjectError, resolveAuditFile, resolveSettings } from './settings.js';
+import { projectOrThrow, resolveAuditFile, resolveSettings } from './settings.js';
 import { pointsOutside } from '../utils/points-outside.js';
 import { flagWithoutCommand } from '../utils/flag-without-command.js';
 import { versionWarning } from './version-warning.js';
@@ -93,27 +94,11 @@ const missingCommandsError = (commandsDir: string, projectRoot: string, route: C
     });
 };
 
-/** The project of a folder, or a CommandError that says what to create. */
-function projectFor(start: string, route: CliRoute): Project {
-    // The messages name no binary: it is not known here what the user typed (art, artemis or a tool's name).
-    const project = findProject(start, readManifest, isFolder, route);
-
-    if (!project) {
-        throw noProjectError(start, route);
-    }
-
-    return project;
-}
-
-/** Where a project's commands are, or a CommandError that says what to create. */
-function settingsOf(project: Project, route: CliRoute): CliSettings {
-    const settings = resolveSettings(project, route);
-
+/** The commands folder of the settings of a project must exist: or a CommandError that says what to create. */
+function assertCommandsFolder(settings: CliSettings, project: Project, route: CliRoute): void {
     if (!isFolder(settings.commandsDir)) {
         throw missingCommandsError(settings.commandsDir, project.root, route);
     }
-
-    return settings;
 }
 
 const SHIPPED_WORDS: readonly ShippedWord[] = [
@@ -199,7 +184,7 @@ export const launch: CliFn = async (options = {}) => {
             root === undefined ? (cwd ?? workingDirectory()) : folderOfRoot(root)
         );
 
-        project = projectFor(start, route);
+        project = projectOrThrow(start, route);
         auditFile = resolveAuditFile(project, route);
         settings = resolveSettings(project, route);
 
@@ -207,7 +192,7 @@ export const launch: CliFn = async (options = {}) => {
         isToolHistory = route === 'own' && auditFile !== undefined && rest[0] === HISTORY_WORD;
 
         if (!isToolHistory) {
-            settings = settingsOf(project, route);
+            assertCommandsFolder(settings, project, route);
         }
     } catch (error) {
         return reportSetupFailure(argv, error, host);
@@ -217,11 +202,15 @@ export const launch: CliFn = async (options = {}) => {
         try {
             assertLeadingFlags(leading, HISTORY_WORD);
 
-            return await historyCommand([...leading, ...rest.slice(1)], host, {
-                project,
-                bin: settings.bin,
-                route
-            });
+            const parsed = parseHistoryWords([...leading, ...rest.slice(1)]);
+
+            if (parsed.help) {
+                writeHistoryHelp(host, parsed.json, settings.bin);
+
+                return EXIT_CODE.OK;
+            }
+
+            return await historyCommand(parsed, host, { project, settings });
         } catch (error) {
             return reportSetupFailure(argv, error, host, HISTORY_WORD);
         }

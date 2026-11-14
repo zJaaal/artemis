@@ -2,7 +2,6 @@ import path from 'node:path';
 
 import { AUDIT_FILE_NAME, EXIT_CODE } from '../constants.js';
 import { discover } from '../discover/discover.js';
-import { isFolder, readManifest } from '../edges/files.js';
 import type { CliOptions, HistoryCommandFn, ShippedWord } from '../models.js';
 import { findCommand } from '../resolve/resolve.js';
 import { printResult } from '../run/report.js';
@@ -15,7 +14,7 @@ import {
 } from './constants.js';
 import { historyLine, parseHistoryWords } from './history.js';
 import { readHistory } from './read-history.js';
-import { findProject, noProjectError, resolveSettings, resolveStateDir } from './settings.js';
+import { projectOrThrow, resolveSettings, resolveStateDir } from './settings.js';
 import { shadowsWord } from './shadow.js';
 import { wordHelp } from './word-help.js';
 import { NEWLINE } from '../constants.js';
@@ -43,7 +42,7 @@ async function commandIdOf(
 }
 
 /** `history --help`: the usage text (a tool's names its bin), or under --json the manifest entry. */
-function writeHelp(host: CliOptions, json: boolean, bin: string | undefined): void {
+export function writeHistoryHelp(host: CliOptions, json: boolean, bin: string | undefined): void {
     const { io } = resolveWorld(host);
 
     io.stdout.write(`${wordHelp({ id: HISTORY_WORD, text: HISTORY_HELP, json, bin })}\n`);
@@ -52,20 +51,13 @@ function writeHelp(host: CliOptions, json: boolean, bin: string | undefined): vo
 /**
  * `history [command words]... [--limit <n>] [--json] [--quiet]`: the runs the audit trail recorded,
  * newest first. A word of the binary itself, like `state`: it needs a project, but not a commands
- * folder that loads. The launcher finds the project (from the current folder on the shipped route,
- * from the bin file of a published tool that turned auditing on) and passes it in.
+ * folder that loads. The caller has read the words (and answered `--help`) and found the project
+ * and its settings: from the current folder on the shipped route, from the bin file of a published
+ * tool that turned auditing on.
  */
-export const historyCommand: HistoryCommandFn = async (words, host, { project, bin, route }) => {
-    const parsed = parseHistoryWords(words);
+export const historyCommand: HistoryCommandFn = async (parsed, host, { project, settings }) => {
     const { io } = resolveWorld(host);
-
-    if (parsed.help) {
-        writeHelp(host, parsed.json, route === 'own' ? bin : undefined);
-
-        return EXIT_CODE.OK;
-    }
-
-    const { commandsDir } = resolveSettings(project, route);
+    const { commandsDir } = settings;
 
     if (shadowsWord(commandsDir, HISTORY_WORD) && !parsed.quiet) {
         io.stderr.write(`Warning: ${HISTORY_SHADOW_WARNING}\n`);
@@ -86,26 +78,19 @@ export const historyCommand: HistoryCommandFn = async (words, host, { project, b
 };
 
 /**
- * `history` on the shipped route: finds the project from the current folder and runs the word with it
- * and the bin the project shows. The words are read first, so `--help` and a wrong flag are answered
- * where there is no project too, as they always were.
+ * `history` on the shipped route: reads the words once, so `--help` and a wrong flag are answered
+ * where there is no project too, then finds the project from the current folder and runs the word.
  */
 export const shippedHistory: ShippedWord['run'] = (words, host, cwd) => {
     const parsed = parseHistoryWords(words);
 
     if (parsed.help) {
-        writeHelp(host, parsed.json, undefined);
+        writeHistoryHelp(host, parsed.json, undefined);
 
         return EXIT_CODE.OK;
     }
 
-    const project = findProject(cwd, readManifest, isFolder, 'shipped');
+    const project = projectOrThrow(cwd, 'shipped');
 
-    if (!project) {
-        throw noProjectError(cwd, 'shipped');
-    }
-
-    const { bin } = resolveSettings(project, 'shipped');
-
-    return historyCommand(words, host, { project, bin, route: 'shipped' });
+    return historyCommand(parsed, host, { project, settings: resolveSettings(project, 'shipped') });
 };
