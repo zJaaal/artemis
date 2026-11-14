@@ -411,6 +411,7 @@ const isAlive = (pid: number): boolean => {
 
 const GRANDCHILD_JOB_FOR_TREE = `const grandchild = require('node:child_process').spawn(process.execPath, ['-e', 'setInterval(() => {}, 1000)'], { stdio: 'ignore' }); process.stdout.write(String(grandchild.pid)); setInterval(() => {}, 1000)`;
 const TREE_TIMEOUT_MS = 3000;
+const EXIT_SETTLES_MS = 60;
 const GONE_POLL_MS = 50;
 const GONE_WITHIN_MS = 5000;
 
@@ -445,6 +446,34 @@ describe.skipIf(!isWindows)('spawnChild: stop on Windows ends the whole tree', (
             timeout: GONE_WITHIN_MS,
             interval: GONE_POLL_MS
         });
+    });
+
+    test('a child that already exited is not tree-killed: what it left running stays', async () => {
+        let grandchildPid = '';
+
+        const leaves = `const grandchild = require('node:child_process').spawn(process.execPath, ['-e', 'setInterval(() => {}, 1000)'], { stdio: ['ignore', 'inherit', 'inherit'] }); process.stdout.write(String(grandchild.pid)); process.exit(0)`;
+
+        const child = spawnChild({
+            command: process.execPath,
+            args: ['-e', leaves],
+            cwd: undefined,
+            env: undefined,
+            pipe: true,
+            timeoutMs: undefined,
+            onData: (chunk) => {
+                grandchildPid += chunk;
+            }
+        });
+
+        await vi.waitFor(() => expect(grandchildPid).not.toBe(''));
+        await new Promise((resolve) => setTimeout(resolve, EXIT_SETTLES_MS));
+        await child.stop();
+
+        const survived = isAlive(Number(grandchildPid));
+
+        process.kill(Number(grandchildPid));
+
+        expect(survived).toBe(true);
     });
 
     test('a timeout ends the tree too', async () => {

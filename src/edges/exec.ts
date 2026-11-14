@@ -213,10 +213,14 @@ export const spawnChild: SpawnChildFn = (request) => {
         stopped ||= !timedOut && !exited;
 
         if (process.platform === WINDOWS_PLATFORM) {
-            // No polite signal for a console process, and no process group: end the whole tree at once
-            killTree(child.pid);
-            // And the child itself, in case taskkill itself could not run
-            child.kill();
+            // A child that already exited has a pid that may belong to another process now: leave it, and
+            // what it left running, as on POSIX (the drain below lets go of the pipes)
+            if (!exited) {
+                // No polite signal for a console process, and no process group: end the whole tree at once
+                killTree(child.pid);
+                // And the child itself, in case taskkill itself could not run
+                child.kill();
+            }
         } else {
             child.kill('SIGTERM');
 
