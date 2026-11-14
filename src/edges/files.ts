@@ -19,6 +19,7 @@ import type {
     AppendTextFn,
     CreateExclusiveFn,
     FolderProblemFn,
+    IsFileFn,
     IsFolderFn,
     ListDirectoryFn,
     ListJsonFilesFn,
@@ -236,6 +237,10 @@ export const folderProblem: FolderProblemFn = (folder) => {
         return NO_ACCESS_CODES.includes(code ?? '') ? FOLDER_PROBLEM.NO_ACCESS : undefined;
     }
 };
+
+/** Whether the path is a regular file (or a link to one). */
+export const isFile: IsFileFn = (target) =>
+    fs.statSync(target, { throwIfNoEntry: false })?.isFile() ?? false;
 
 export const isFolder: IsFolderFn = (target) =>
     fs.statSync(target, { throwIfNoEntry: false })?.isDirectory() ?? false;

@@ -18,6 +18,7 @@ import {
 } from '../constants.js';
 import { CommandError } from '../errors/errors.js';
 import { folderProblem } from './files.js';
+import { launchOf } from './windows-launch.js';
 import type {
     ChildHandle,
     FolderProblem,
@@ -31,7 +32,8 @@ import { codeOf } from '../utils/error-code.js';
 import { messageOf } from '../utils/error-message.js';
 
 // Edge: the only place a child process starts for `ctx.exec`. It never uses a shell, so nothing in
-// `args` is interpreted, and it never lets the child it started outlive the call that asked for it (a grandchild the child started is
+// `args` is interpreted (on Windows a `.cmd` file goes through `cmd.exe` with every argument escaped,
+// see windows-launch.ts), and it never lets the child it started outlive the call that asked for it (a grandchild the child started is
 // its own business: only the direct child is signalled).
 
 /** The handle of a child that never started: it is already over, and there is nothing to stop. */
@@ -73,10 +75,13 @@ export const spawnChild: SpawnChildFn = (request) => {
     let child: ChildProcess;
 
     try {
-        child = spawn(request.command, [...request.args], {
+        const launch = launchOf(request);
+
+        child = spawn(launch.command, [...launch.args], {
             cwd: request.cwd,
             env: request.env,
             shell: false,
+            windowsVerbatimArguments: launch.verbatim,
             stdio: request.pipe ? EXEC_STDIO_PIPED : EXEC_STDIO_INHERITED
         });
     } catch (error) {
@@ -248,10 +253,13 @@ export const spawnDetached: SpawnDetachedFn = (request) => {
         };
 
         try {
-            const child = spawn(request.command, [...request.args], {
+            const launch = launchOf(request);
+
+            const child = spawn(launch.command, [...launch.args], {
                 cwd: request.cwd,
                 env: request.env,
                 shell: false,
+                windowsVerbatimArguments: launch.verbatim,
                 detached: true,
                 windowsHide: true,
                 stdio: [EXEC_DETACHED_STDIN, descriptor, descriptor]

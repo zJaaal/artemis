@@ -10,6 +10,10 @@ What changed in each release, newest first. Breaking entries link to their secti
 - A published tool turns the audit trail on with `"artemis": { "audit": true }` and then has the word `history`; `run()` callers get `readHistory` and the documented `auditFile` option.
 - `destructive` can be a function of the call's `args` and `flags`, so `start --no-prune` can skip the confirmation that `start` needs.
 
+### Fixed
+
+- `ctx.exec` starts `.cmd` and `.bat` files on Windows (`npm`, `pnpm`, `npx` and everything in `node_modules/.bin`): through `cmd.exe`, with every argument escaped so nothing in it is interpreted.
+
 ## 1.2.0 (2026-11-14)
 
 ### Breaking

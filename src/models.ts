@@ -447,6 +447,7 @@ export type WalkContext = { registry: Registry; root: string };
 
 export type ListDirectoryFn = (dir: string) => DirectoryEntry[];
 export type PathExistsFn = (path: string) => boolean;
+export type IsFileFn = (path: string) => boolean;
 export type IsFolderFn = (path: string) => boolean;
 
 export type FolderProblem = (typeof FOLDER_PROBLEM)[keyof typeof FOLDER_PROBLEM];
@@ -1625,3 +1626,32 @@ export type CommandFileFn = (commandsDir: string, words: readonly string[]) => s
 
 /** `art new <command words>... --description <text> ...`: writes the file, returns the exit code. */
 export type NewCommandFn = (words: string[], host: HostOptions, cwd: string) => number;
+
+// ---------------------------------------------------------------------------------------------
+// Windows: `.cmd` and `.bat` files
+// ---------------------------------------------------------------------------------------------
+
+/** What `ctx.exec` spawns: the program, its arguments, and whether Node must leave the arguments as they are. */
+export type Launch = {
+    command: string;
+    args: readonly string[];
+    /** `windowsVerbatimArguments`: the arguments are already a `cmd.exe` command line, escaped. */
+    verbatim: boolean;
+};
+
+/** Where a command is looked for on Windows: the folder of the call, and its environment. */
+export type CommandLookup = { cwd: string | undefined; env: NodeJS.ProcessEnv };
+
+export type LaunchRequest = Pick<SpawnRequest, 'command' | 'args' | 'cwd' | 'env'>;
+
+/** The value of an environment variable, whatever the case of its name (Windows does not care). */
+export type EnvValueFn = (env: NodeJS.ProcessEnv, name: string) => string | undefined;
+
+/** Every file a bare command could be on Windows: each folder of the call and of PATH, with each extension of PATHEXT. */
+export type WindowsCandidatesFn = (command: string, lookup: CommandLookup) => string[];
+
+/** `cmd.exe`'s arguments for running a batch file with these arguments, every one escaped so nothing in it is interpreted. */
+export type CmdArgumentsFn = (file: string, args: readonly string[]) => string[];
+
+/** How to start a command on this platform: as given, or through `cmd.exe` when it is a batch file on Windows. */
+export type LaunchOfFn = (request: LaunchRequest, platform?: NodeJS.Platform) => Launch;
