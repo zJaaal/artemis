@@ -196,7 +196,8 @@ try {
         process.kill(background.pid, 0);
         console.log('ok   a detached child is still running after art has exited');
     } finally {
-        process.kill(-background.pid, 'SIGKILL');
+        // The child leads its own process group on POSIX; Windows has no groups, so it is killed by its pid
+        process.kill(WINDOWS ? background.pid : -background.pid, 'SIGKILL');
     }
 
     assert.ok(fs.existsSync(path.join(project, 'background.log')), 'the log file of the child');
@@ -789,5 +790,6 @@ export default defineCommand({
 
     console.log('ok   errors thrown by a project’s own copy keep their hint and exit code');
 } finally {
-    fs.rmSync(root, { recursive: true, force: true });
+    // A process that was only just killed may hold its folder for a moment on Windows
+    fs.rmSync(root, { recursive: true, force: true, maxRetries: 10, retryDelay: 200 });
 }

@@ -193,7 +193,7 @@ describe('findProject, shipped route: where it looks', () => {
     });
 
     test('is undefined when there is no package.json at all', () => {
-        expect(shipped('/somewhere', manifestsAt({}), noFolders)).toBeUndefined();
+        expect(shipped(at('/somewhere'), manifestsAt({}), noFolders)).toBeUndefined();
     });
 });
 
@@ -234,7 +234,10 @@ describe('findProject: a package.json that cannot be read', () => {
 
     test('is an error on the own route too', () => {
         const search = () =>
-            own('/app/node_modules/mytool/bin', manifestsAt({}, '/app/node_modules/mytool'));
+            own(
+                at('/app/node_modules/mytool/bin'),
+                manifestsAt({}, at('/app/node_modules/mytool'))
+            );
 
         expect(thrownBy(search)).toBeInstanceOf(CommandError);
     });
@@ -242,7 +245,7 @@ describe('findProject: a package.json that cannot be read', () => {
 
 describe('findProject, own route: a tool’s bin file', () => {
     const tool = { name: 'mytool', bin: { mytool: 'bin/mytool.js' } };
-    const installed = '/app/node_modules/mytool';
+    const installed = at('/app/node_modules/mytool');
 
     test('the nearest package.json with a name, a bin or an artemis key is the tool’s package', () => {
         const project = own(`${installed}/bin`, manifestsAt({ [installed]: tool }));
@@ -251,9 +254,12 @@ describe('findProject, own route: a tool’s bin file', () => {
     });
 
     test('a bin written as a string declares one too', () => {
-        const project = own('/tool/bin', manifestsAt({ '/tool': { bin: 'bin/mytool.js' } }));
+        const project = own(
+            at('/tool/bin'),
+            manifestsAt({ [at('/tool')]: { bin: 'bin/mytool.js' } })
+        );
 
-        expect(project?.root).toBe('/tool');
+        expect(project?.root).toBe(at('/tool'));
     });
 
     test('a tool that declares no bin is still its own package: a name is enough', () => {
@@ -279,26 +285,29 @@ describe('findProject, own route: a tool’s bin file', () => {
 
     test('a marker in dist next to the bin file is skipped, with any extra keys', () => {
         const project = own(
-            '/tool/dist',
-            manifestsAt({ '/tool': tool, '/tool/dist': { type: 'module', sideEffects: false } })
+            at('/tool/dist'),
+            manifestsAt({
+                [at('/tool')]: tool,
+                [at('/tool/dist')]: { type: 'module', sideEffects: false }
+            })
         );
 
-        expect(project?.root).toBe('/tool');
+        expect(project?.root).toBe(at('/tool'));
     });
 
     test('a template without a name, bin or key is skipped too', () => {
         const project = own(
-            '/tool/templates/bin',
-            manifestsAt({ '/tool': tool, '/tool/templates': { private: true } })
+            at('/tool/templates/bin'),
+            manifestsAt({ [at('/tool')]: tool, [at('/tool/templates')]: { private: true } })
         );
 
-        expect(project?.root).toBe('/tool');
+        expect(project?.root).toBe(at('/tool'));
     });
 
     test('never climbs into the project that installed the tool', () => {
         const project = own(
             `${installed}/bin`,
-            manifestsAt({ [installed]: tool, '/app': { name: 'app', artemis: {} } })
+            manifestsAt({ [installed]: tool, [at('/app')]: { name: 'app', artemis: {} } })
         );
 
         expect(project?.root).toBe(installed);
@@ -309,7 +318,7 @@ describe('findProject, own route: a tool’s bin file', () => {
             `${installed}/bin`,
             manifestsAt({
                 [installed]: { private: true },
-                '/app': { name: 'app', bin: { app: 'a.js' } }
+                [at('/app')]: { name: 'app', bin: { app: 'a.js' } }
             })
         );
 
@@ -317,11 +326,11 @@ describe('findProject, own route: a tool’s bin file', () => {
     });
 
     test('the same for a scoped package: node_modules/@scope/pkg', () => {
-        const scoped = '/app/node_modules/@acme/mytool';
+        const scoped = at('/app/node_modules/@acme/mytool');
 
         const project = own(
             `${scoped}/bin`,
-            manifestsAt({ [scoped]: { private: true }, '/app': { name: 'app', artemis: {} } })
+            manifestsAt({ [scoped]: { private: true }, [at('/app')]: { name: 'app', artemis: {} } })
         );
 
         expect(project?.root).toBe(scoped);
@@ -330,7 +339,7 @@ describe('findProject, own route: a tool’s bin file', () => {
     test('an installed package with no readable package.json has no project, and the host is not tried', () => {
         const project = own(
             `${installed}/bin`,
-            manifestsAt({ '/app': { name: 'app', artemis: {} } })
+            manifestsAt({ [at('/app')]: { name: 'app', artemis: {} } })
         );
 
         expect(project).toBeUndefined();
@@ -341,11 +350,11 @@ describe('findProject, own route: a tool’s bin file', () => {
     });
 
     test('an empty bin declares nothing, and without a name or key it is not a tool package', () => {
-        expect(own('/tool/bin', manifestsAt({ '/tool': { bin: {} } }))).toBeUndefined();
+        expect(own(at('/tool/bin'), manifestsAt({ [at('/tool')]: { bin: {} } }))).toBeUndefined();
     });
 
     test('is undefined when no package.json has an identity', () => {
-        expect(own('/somewhere/bin', manifestsAt({}))).toBeUndefined();
+        expect(own(at('/somewhere/bin'), manifestsAt({}))).toBeUndefined();
     });
 });
 
@@ -373,10 +382,10 @@ describe('resolveSettings', () => {
     test('an absolute commandsDir is kept as it is', () => {
         const project = {
             root: at('/work/app'),
-            manifest: { artemis: { commandsDir: '/shared/commands' } }
+            manifest: { artemis: { commandsDir: at('/shared/commands') } }
         };
 
-        expect(resolveSettings(project, 'shipped').commandsDir).toBe('/shared/commands');
+        expect(resolveSettings(project, 'shipped').commandsDir).toBe(at('/shared/commands'));
     });
 
     test('an empty "artemis" key is the same as none', () => {
@@ -537,10 +546,10 @@ describe('resolveStateDir', () => {
     test('an absolute stateDir is kept as it is', () => {
         const project = {
             root: at('/work/app'),
-            manifest: { artemis: { stateDir: '/var/app-state' } }
+            manifest: { artemis: { stateDir: at('/var/app-state') } }
         };
 
-        expect(resolveStateDir(project)).toBe('/var/app-state');
+        expect(resolveStateDir(project)).toBe(at('/var/app-state'));
     });
 
     test('a stateDir with no commandsDir leaves the commands folder at its default', () => {

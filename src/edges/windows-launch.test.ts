@@ -106,8 +106,9 @@ describe('launchOf: Windows', () => {
 
 const isWindows = process.platform === WINDOWS_PLATFORM;
 
-/** The arguments a program prints back, as JSON, one array. */
+/** The arguments a program prints back, as JSON, one array: from a script file, and from `node -e`, which has no script word. */
 const ARGV_SCRIPT = 'process.stdout.write(JSON.stringify(process.argv.slice(2)))';
+const EVAL_ARGV_SCRIPT = 'process.stdout.write(JSON.stringify(process.argv.slice(1)))';
 
 /** Every character that means something to cmd.exe, a quote, backslashes and a caret, as one list of arguments. */
 const NASTY_ARGUMENTS = [
@@ -223,7 +224,7 @@ describe.skipIf(!isWindows)('ctx.exec on Windows: a .cmd file, for real', () => 
             JSON.parse(
                 await outputOf({
                     command: process.execPath,
-                    args: ['-e', ARGV_SCRIPT, 'a b', 'c&d']
+                    args: ['-e', EVAL_ARGV_SCRIPT, 'a b', 'c&d']
                 })
             )
         ).toEqual(['a b', 'c&d']);

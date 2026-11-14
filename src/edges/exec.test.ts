@@ -3,7 +3,7 @@ import path from 'node:path';
 
 import { afterEach, describe, expect, test, vi } from 'vitest';
 
-import { FOLDER_PROBLEM, WINDOWS_PLATFORM } from '../constants.js';
+import { EXEC_DRAIN_MS, FOLDER_PROBLEM, WINDOWS_PLATFORM } from '../constants.js';
 
 import type { ChildStream, SpawnRequest } from '../models.js';
 import {
@@ -34,6 +34,7 @@ const NOT_AN_EXECUTABLE = 'artemis-no-such-program';
 const SHORT_TIMEOUT_MS = 100;
 const SILENT_JOB = 'setInterval(() => {}, 1000)';
 const GAP_MS = 40;
+const EXIT_DELAY_MS = 30;
 const LATE_WRITE_MS = 600;
 const GRANDCHILD_LIFETIME_MS = 4000;
 const GRANDCHILD_JOB = `require('node:child_process').spawn(process.execPath, ['-e', 'setTimeout(() => {}, ${GRANDCHILD_LIFETIME_MS})'], { stdio: 'inherit' }); process.exit(0)`;
@@ -175,12 +176,22 @@ describe('spawnChild: how a child ends', () => {
     });
 
     test('a child that exits before its timeout is not a timeout while its output drains', async () => {
+        // The timeout counts from the spawn, and starting node takes as long as the machine takes: it is
+        // set a little after the exit, which is inside the moment the output drains
+        await runNode('process.exit(0)');
+
+        const started = Date.now();
+
+        await runNode('process.exit(0)');
+
+        const timeoutMs = Date.now() - started + EXIT_DELAY_MS + EXEC_DRAIN_MS / 2;
+
         const slowExit = GRANDCHILD_JOB.replace(
             'process.exit(0)',
-            'setTimeout(() => process.exit(0), 30)'
+            `setTimeout(() => process.exit(0), ${EXIT_DELAY_MS})`
         );
 
-        const { outcome } = await runNode(slowExit, { timeoutMs: SHORT_TIMEOUT_MS });
+        const { outcome } = await runNode(slowExit, { timeoutMs });
 
         expect(outcome.timedOut).toBe(false);
     });
@@ -238,8 +249,13 @@ describe('spawnChild: how a child ends', () => {
     test('a child killed by the timeout does not report success', async () => {
         const { outcome } = await runNode(SILENT_JOB, { timeoutMs: SHORT_TIMEOUT_MS });
 
-        expect(outcome).toMatchObject({ timedOut: true, signal: 'SIGTERM' });
         expect(outcome.code).not.toBe(0);
+    });
+
+    test.skipIf(NO_SIGNALS)('a child killed by the timeout names the signal', async () => {
+        const { outcome } = await runNode(SILENT_JOB, { timeoutMs: SHORT_TIMEOUT_MS });
+
+        expect(outcome).toMatchObject({ timedOut: true, signal: 'SIGTERM' });
     });
 });
 
