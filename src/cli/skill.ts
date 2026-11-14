@@ -51,6 +51,8 @@ export const buildSkill: BuildSkillFn = (manifest: Manifest, pkg, commandsDir) =
         [
             `# ${bin}`,
             '',
+            `Run \`${bin}\` as \`npx ${bin}\` in this project, or as \`${bin}\` when it is installed globally.`,
+            '',
             `- Find commands: \`${bin} help --json --brief\`. One command in full: \`${bin} help <command> --json\`.`,
             '- Call with `--json`: one object on stdout. `ok: false` has `error` and often `hint`: do what the hint says.',
             '- Exit codes: 0 ok, 1 the command failed, 2 the command line was wrong.',

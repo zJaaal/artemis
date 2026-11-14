@@ -87,6 +87,14 @@ describe('buildSkill: the fixed part', () => {
 
         expect(build(manifest, none)).toContain('`mytool help --json --brief`');
     });
+
+    test('says to run the bin through npx in the project, or bare when installed globally', () => {
+        const manifest = { ...manifestOf([]), bin: 'mytool' };
+
+        expect(build(manifest, none)).toContain(
+            'Run `mytool` as `npx mytool` in this project, or as `mytool` when it is installed globally.'
+        );
+    });
 });
 
 describe('buildSkill: the destructive section', () => {
