@@ -433,3 +433,8 @@ export const CMD_TRAILING_BACKSLASHES = /(?=(\\+?)?)\1$/;
 export const CMD_CARET = '^$1';
 export const CMD_DOUBLED_BACKSLASHES = '$1$1';
 export const CMD_ESCAPED_QUOTE = '$1$1\\"';
+
+/** Windows refuses to rename over a file another process has open (EPERM, EACCES or EBUSY): try again, briefly. */
+export const ATOMIC_RENAME_RETRIES = 10;
+export const ATOMIC_RENAME_RETRY_MS = 20;
+export const ATOMIC_RENAME_RETRY_CODES: readonly string[] = ['EPERM', 'EACCES', 'EBUSY'];

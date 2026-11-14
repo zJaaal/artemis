@@ -476,6 +476,19 @@ export type AppendTextFn = (file: string, text: string) => void;
 export type RemoveFileFn = (file: string) => void;
 /** Replaces a file with this text so that nobody ever reads it half written. */
 export type WriteAtomicFn = (file: string, text: string) => void;
+
+/** What renaming a file into place needs from the machine: the rename, a pause, and the platform. Injected so a test fakes them. */
+export type RenameEdges = {
+    rename: (from: string, to: string) => void;
+    sleep: (ms: number) => void;
+    platform: NodeJS.Platform;
+};
+
+/** Renames `from` over `to`; on Windows it tries again when another process has `to` open. */
+export type RenameWithRetryFn = (from: string, to: string, edges?: RenameEdges) => void;
+
+/** Waits, blocking the thread: `writeAtomic` is synchronous. */
+export type SleepSyncFn = (ms: number) => void;
 /** The `*.json` files of a folder, by name: never a temporary file or a lock. A missing folder has none. */
 export type ListJsonFilesFn = (dir: string) => string[];
 export type HomeDirectoryFn = () => string;

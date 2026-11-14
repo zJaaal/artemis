@@ -3,17 +3,22 @@ import fs from 'node:fs';
 import path from 'node:path';
 
 import {
+    ATOMIC_RENAME_RETRIES,
+    ATOMIC_RENAME_RETRY_CODES,
+    ATOMIC_RENAME_RETRY_MS,
     ERROR_CODE,
     FOLDER_PROBLEM,
     NO_ACCESS_CODES,
     JSON_EXTENSION,
     MANIFEST_FILE,
-    TEMP_SUFFIX
+    TEMP_SUFFIX,
+    WINDOWS_PLATFORM
 } from '../constants.js';
 import { CommandError } from '../errors/errors.js';
 import { messageOf } from '../utils/error-message.js';
 import { isRecord } from '../utils/is-record.js';
 import { codeOf } from '../utils/error-code.js';
+import { sleepSync } from './sleep.js';
 
 import type {
     AppendTextFn,
@@ -31,6 +36,8 @@ import type {
     ReadTextIfExistsFn,
     RealPathFn,
     RemoveFileFn,
+    RenameEdges,
+    RenameWithRetryFn,
     WriteAtomicFn,
     WriteTextFn
 } from '../models.js';
@@ -93,6 +100,39 @@ export const removeFile: RemoveFileFn = (file) => {
     fs.rmSync(file, { force: true });
 };
 
+const REAL_RENAME_EDGES: RenameEdges = {
+    rename: fs.renameSync,
+    sleep: sleepSync,
+    platform: process.platform
+};
+
+/** Whether a failed rename is the kind Windows reports while another process has the target open. */
+const isBusyRename = (error: unknown): boolean =>
+    ATOMIC_RENAME_RETRY_CODES.includes(codeOf(error) ?? '');
+
+/**
+ * Renames `from` over `to`. On Windows a rename over a file another process has open fails with
+ * EPERM, EACCES or EBUSY until that process lets go, so those are tried again `ATOMIC_RENAME_RETRIES`
+ * times, `ATOMIC_RENAME_RETRY_MS` apart, and then the last error is thrown. Anywhere else, one try.
+ */
+export const renameWithRetry: RenameWithRetryFn = (from, to, edges = REAL_RENAME_EDGES) => {
+    const retries = edges.platform === WINDOWS_PLATFORM ? ATOMIC_RENAME_RETRIES : 0;
+
+    for (let attempt = 0; ; attempt++) {
+        try {
+            edges.rename(from, to);
+
+            return;
+        } catch (error) {
+            if (attempt >= retries || !isBusyRename(error)) {
+                throw error;
+            }
+
+            edges.sleep(ATOMIC_RENAME_RETRY_MS);
+        }
+    }
+};
+
 /**
  * Writes the text next to the file and renames it into place, so a crash or a reader never sees
  * half a file. The temporary file is named after the process, and removed whatever happens.
@@ -102,7 +142,7 @@ export const writeAtomic: WriteAtomicFn = (file, text) => {
 
     try {
         fs.writeFileSync(staging, text);
-        fs.renameSync(staging, file);
+        renameWithRetry(staging, file);
     } finally {
         fs.rmSync(staging, { force: true });
     }
