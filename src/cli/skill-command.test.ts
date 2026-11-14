@@ -5,7 +5,7 @@ import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 
 import { EXIT_CODE, SKILL_MAX_BYTES } from '../constants.js';
 import { COMMANDS_FIXTURE_DIR } from '../test/constants.js';
-import { makeProject } from '../test/project.js';
+import { commandSource, makeProject, writeCommand } from '../test/project.js';
 import { createSink } from '../test/sink.js';
 import { createTempFolders } from '../test/temp.js';
 import type { Envelope } from '../test/models.js';
@@ -70,11 +70,33 @@ describe('art skill: the Writing a command section and the size', () => {
         expect(out).toContain('`mytool help --authoring`');
     });
 
+    test('says that `new` writes the file of a command', async () => {
+        const { out } = await art(['skill'], newProject());
+
+        expect(out).toContain('`art new <words> --description "..."` writes the file to fill in');
+    });
+
     test('the whole skill of the fixture project is under SKILL_MAX_BYTES', async () => {
         const root = newProject({ artemis: { commandsDir: COMMANDS_FIXTURE_DIR } });
         const { out } = await art(['skill'], root);
 
         expect(Buffer.byteLength(out)).toBeLessThan(SKILL_MAX_BYTES);
+    });
+});
+
+describe('art skill: a command that is destructive by call', () => {
+    test('is listed with the destructive ones', async () => {
+        const root = newProject();
+
+        writeCommand(
+            path.join(root, 'commands'),
+            'start',
+            commandSource(
+                "destructive: ({ flags }) => !flags.keep, flags: { keep: { type: 'boolean' } }"
+            )
+        );
+
+        expect((await art(['skill'], root)).out).toMatch(/`art start`.*A command of a test/);
     });
 });
 

@@ -3,22 +3,29 @@ import fs from 'node:fs';
 import path from 'node:path';
 
 import {
+    ATOMIC_RENAME_RETRIES,
+    ATOMIC_RENAME_RETRY_CODES,
+    ATOMIC_RENAME_RETRY_MS,
     ERROR_CODE,
     FOLDER_PROBLEM,
     NO_ACCESS_CODES,
     JSON_EXTENSION,
     MANIFEST_FILE,
-    TEMP_SUFFIX
+    TEMP_SUFFIX,
+    WINDOWS_PLATFORM
 } from '../constants.js';
 import { CommandError } from '../errors/errors.js';
 import { messageOf } from '../utils/error-message.js';
 import { isRecord } from '../utils/is-record.js';
 import { codeOf } from '../utils/error-code.js';
+import { sleepSync } from './sleep.js';
 
 import type {
     AppendTextFn,
     CreateExclusiveFn,
+    FolderProblem,
     FolderProblemFn,
+    IsFileFn,
     IsFolderFn,
     ListDirectoryFn,
     ListJsonFilesFn,
@@ -30,6 +37,8 @@ import type {
     ReadTextIfExistsFn,
     RealPathFn,
     RemoveFileFn,
+    RenameEdges,
+    RenameWithRetryFn,
     WriteAtomicFn,
     WriteTextFn
 } from '../models.js';
@@ -92,6 +101,39 @@ export const removeFile: RemoveFileFn = (file) => {
     fs.rmSync(file, { force: true });
 };
 
+const REAL_RENAME_EDGES: RenameEdges = {
+    rename: fs.renameSync,
+    sleep: sleepSync,
+    platform: process.platform
+};
+
+/** Whether a failed rename is the kind Windows reports while another process has the target open. */
+const isBusyRename = (error: unknown): boolean =>
+    ATOMIC_RENAME_RETRY_CODES.includes(codeOf(error) ?? '');
+
+/**
+ * Renames `from` over `to`. On Windows a rename over a file another process has open fails with
+ * EPERM, EACCES or EBUSY until that process lets go, so those are tried again `ATOMIC_RENAME_RETRIES`
+ * times, `ATOMIC_RENAME_RETRY_MS` apart, and then the last error is thrown. Anywhere else, one try.
+ */
+export const renameWithRetry: RenameWithRetryFn = (from, to, edges = REAL_RENAME_EDGES) => {
+    const retries = edges.platform === WINDOWS_PLATFORM ? ATOMIC_RENAME_RETRIES : 0;
+
+    for (let attempt = 0; ; attempt++) {
+        try {
+            edges.rename(from, to);
+
+            return;
+        } catch (error) {
+            if (attempt >= retries || !isBusyRename(error)) {
+                throw error;
+            }
+
+            edges.sleep(ATOMIC_RENAME_RETRY_MS);
+        }
+    }
+};
+
 /**
  * Writes the text next to the file and renames it into place, so a crash or a reader never sees
  * half a file. The temporary file is named after the process, and removed whatever happens.
@@ -101,7 +143,7 @@ export const writeAtomic: WriteAtomicFn = (file, text) => {
 
     try {
         fs.writeFileSync(staging, text);
-        fs.renameSync(staging, file);
+        renameWithRetry(staging, file);
     } finally {
         fs.rmSync(staging, { force: true });
     }
@@ -148,10 +190,14 @@ export const createExclusive: CreateExclusiveFn = (file, text) => {
 export const modifiedAt: ModifiedAtFn = (file) =>
     fs.statSync(file, { throwIfNoEntry: false })?.mtimeMs;
 
-/** The real path of a folder; one that does not exist yet has none, so it is resolved as given. */
+/**
+ * The real path of a folder, as the disk says it: `realpathSync.native` expands the short names of
+ * Windows (`RUNNER~1` is `runneradmin`) and returns the case the disk has. One that does not exist
+ * yet has none, so it is resolved as given.
+ */
 export const realPathOrResolve: RealPathFn = (folder) => {
     try {
-        return fs.realpathSync(folder);
+        return fs.realpathSync.native(folder);
     } catch {
         // Nothing to lose: a folder that does not exist yet is used by its resolved path.
         return path.resolve(folder);
@@ -205,6 +251,28 @@ export const readManifest: ReadManifestFn = (dir) => {
     return text === undefined ? undefined : parseManifest(file, text);
 };
 
+/** What a path that is not there is: missing, or not a folder when the nearest part that exists is a file (Windows says ENOENT for both). */
+function missingOrBlocked(folder: string): FolderProblem {
+    const parent = path.dirname(folder);
+
+    if (parent === folder) {
+        return FOLDER_PROBLEM.MISSING;
+    }
+
+    try {
+        const found = fs.statSync(parent, { throwIfNoEntry: false });
+
+        if (found === undefined) {
+            return missingOrBlocked(parent);
+        }
+
+        return found.isDirectory() ? FOLDER_PROBLEM.MISSING : FOLDER_PROBLEM.NOT_A_FOLDER;
+    } catch {
+        // ignoreUnreadableParent: if a part of the path cannot even be looked at, it is plainly not there
+        return FOLDER_PROBLEM.MISSING;
+    }
+}
+
 /**
  * Why a child cannot run in a folder, or undefined when it can (or when the disk says something
  * else, which the spawn then reports in its own words). Three kinds: the folder is not there, it is
@@ -224,7 +292,7 @@ export const folderProblem: FolderProblemFn = (folder) => {
         const code = codeOf(error);
 
         if (code === ERROR_CODE.MISSING) {
-            return FOLDER_PROBLEM.MISSING;
+            return missingOrBlocked(folder);
         }
 
         if (code === ERROR_CODE.NOT_A_DIRECTORY) {
@@ -236,6 +304,10 @@ export const folderProblem: FolderProblemFn = (folder) => {
         return NO_ACCESS_CODES.includes(code ?? '') ? FOLDER_PROBLEM.NO_ACCESS : undefined;
     }
 };
+
+/** Whether the path is a regular file (or a link to one). */
+export const isFile: IsFileFn = (target) =>
+    fs.statSync(target, { throwIfNoEntry: false })?.isFile() ?? false;
 
 export const isFolder: IsFolderFn = (target) =>
     fs.statSync(target, { throwIfNoEntry: false })?.isDirectory() ?? false;

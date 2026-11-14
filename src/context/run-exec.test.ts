@@ -13,7 +13,7 @@ import {
     EXIT_CODE
 } from '../constants.js';
 import { art, envelope } from '../test/art.js';
-import { NO_EXECUTE_MODE, ROOT_UID } from '../test/constants.js';
+import { NO_EXECUTE_MODE, NO_PERMISSION_BITS, NO_SIGNALS, ROOT_UID } from '../test/constants.js';
 import { withMode } from '../test/permissions.js';
 import { createSink } from '../test/sink.js';
 import { failure } from './run-exec.js';
@@ -236,7 +236,7 @@ describe('ctx.exec: where a child starts', () => {
 });
 
 describe('ctx.exec: a child killed by a signal', () => {
-    test('names the signal, not an exit code', async () => {
+    test.skipIf(NO_SIGNALS)('names the signal, not an exit code', async () => {
         const run = await art(['exec', "process.kill(process.pid, 'SIGKILL')", '--json']);
 
         expect(envelope(run)).toMatchObject({
@@ -305,7 +305,7 @@ describe('ctx.exec: a cwd that is not a folder, or cannot be entered', () => {
         });
     });
 
-    test.skipIf(isRoot)(
+    test.skipIf(isRoot || NO_PERMISSION_BITS)(
         'a folder this user cannot enter says so, naming it, with a hint',
         async () => {
             const cwd = folders.make('artemis-exec-cwd-');

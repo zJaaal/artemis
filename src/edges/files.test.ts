@@ -1,11 +1,23 @@
+import { spawn } from 'node:child_process';
 import fs from 'node:fs';
 import path from 'node:path';
 
 import { afterEach, describe, expect, test } from 'vitest';
 
-import { FOLDER_PROBLEM } from '../constants.js';
+import {
+    ATOMIC_RENAME_RETRIES,
+    ATOMIC_RENAME_RETRY_MS,
+    FOLDER_PROBLEM,
+    WINDOWS_PLATFORM
+} from '../constants.js';
 
-import { NO_EXECUTE_MODE, ROOT_UID, UNREADABLE_MODE } from '../test/constants.js';
+import {
+    NO_EXECUTE_MODE,
+    NO_PERMISSION_BITS,
+    REFUSES_RENAME_OVER_OPEN_FILE,
+    ROOT_UID,
+    UNREADABLE_MODE
+} from '../test/constants.js';
 import { withMode } from '../test/permissions.js';
 import { createTempFolders } from '../test/temp.js';
 import { thrownBy } from '../test/thrown.js';
@@ -22,6 +34,7 @@ import {
     realPathOrResolve,
     removeFile,
     listJsonFiles,
+    renameWithRetry,
     writeAtomic,
     writeText
 } from './files.js';
@@ -263,6 +276,95 @@ describe('isFolder', () => {
     });
 });
 
+/** A rename that fails with a code `busyFor` times, then works; and the pauses it was given. */
+const flakyRename = (code: string, busyFor: number, platform: NodeJS.Platform) => {
+    const calls: string[] = [];
+    const pauses: number[] = [];
+    let failures = 0;
+
+    return {
+        calls,
+        pauses,
+        edges: {
+            platform,
+            sleep: (ms: number) => pauses.push(ms),
+            rename: (from: string, to: string) => {
+                calls.push(`${from} -> ${to}`);
+
+                if (failures++ < busyFor) {
+                    throw Object.assign(new Error(`${code}: busy`), { code });
+                }
+            }
+        }
+    };
+};
+
+const isWindows = process.platform === WINDOWS_PLATFORM;
+
+/** Opens the file named by the last argument, says so, and lets go well within the time writeAtomic retries for. */
+const HOLD_MS = 80;
+const HOLD_THE_FILE = `const fs = require('node:fs'); const fd = fs.openSync(process.argv.at(-1), 'r'); process.stdout.write('open'); setTimeout(() => fs.closeSync(fd), ${HOLD_MS})`;
+
+describe('renameWithRetry', () => {
+    test.each(['EPERM', 'EACCES', 'EBUSY'])(
+        'on Windows a rename that fails with %s is tried again',
+        (code) => {
+            const { edges, calls } = flakyRename(code, 3, 'win32');
+
+            renameWithRetry('a', 'b', edges);
+
+            expect(calls).toHaveLength(4);
+        }
+    );
+
+    test('with ATOMIC_RENAME_RETRY_MS between the tries', () => {
+        const { edges, pauses } = flakyRename('EPERM', 3, 'win32');
+
+        renameWithRetry('a', 'b', edges);
+
+        expect(pauses).toEqual([
+            ATOMIC_RENAME_RETRY_MS,
+            ATOMIC_RENAME_RETRY_MS,
+            ATOMIC_RENAME_RETRY_MS
+        ]);
+    });
+
+    test('it gives up after ATOMIC_RENAME_RETRIES retries, and throws the last error', () => {
+        const { edges, calls } = flakyRename('EBUSY', Number.POSITIVE_INFINITY, 'win32');
+
+        expect([thrownBy(() => renameWithRetry('a', 'b', edges)), calls.length]).toEqual([
+            expect.objectContaining({ code: 'EBUSY' }),
+            ATOMIC_RENAME_RETRIES + 1
+        ]);
+    });
+
+    test('another error is thrown at once', () => {
+        const { edges, calls } = flakyRename('ENOENT', 1, 'win32');
+
+        expect([thrownBy(() => renameWithRetry('a', 'b', edges)), calls.length]).toEqual([
+            expect.objectContaining({ code: 'ENOENT' }),
+            1
+        ]);
+    });
+
+    test.each(['linux', 'darwin'] as const)('on %s EPERM is not tried again', (platform) => {
+        const { edges, calls } = flakyRename('EPERM', 1, platform);
+
+        expect([thrownBy(() => renameWithRetry('a', 'b', edges)), calls.length]).toEqual([
+            expect.objectContaining({ code: 'EPERM' }),
+            1
+        ]);
+    });
+
+    test('a rename that works the first time is one call and no pause', () => {
+        const { edges, calls, pauses } = flakyRename('EPERM', 0, 'win32');
+
+        renameWithRetry('a', 'b', edges);
+
+        expect([calls.length, pauses]).toEqual([1, []]);
+    });
+});
+
 describe('writeAtomic', () => {
     test('creates the file with the whole text', () => {
         const file = path.join(folders.make('artemis-files-'), 'doc.json');
@@ -289,17 +391,39 @@ describe('writeAtomic', () => {
         expect(fs.readdirSync(dir)).toEqual(['doc.json']);
     });
 
-    test('is a different file than the one being replaced until the rename: a reader holding the old one still has it whole', () => {
-        const file = path.join(folders.make('artemis-files-'), 'doc.json');
+    test.skipIf(REFUSES_RENAME_OVER_OPEN_FILE)(
+        'is a different file than the one being replaced until the rename: a reader holding the old one still has it whole',
+        () => {
+            const file = path.join(folders.make('artemis-files-'), 'doc.json');
 
-        fs.writeFileSync(file, 'old');
-        const reader = fs.openSync(file, 'r');
+            fs.writeFileSync(file, 'old');
+            const reader = fs.openSync(file, 'r');
 
-        writeAtomic(file, 'new');
+            writeAtomic(file, 'new');
 
-        expect(fs.readFileSync(reader, 'utf8')).toBe('old');
-        fs.closeSync(reader);
-    });
+            expect(fs.readFileSync(reader, 'utf8')).toBe('old');
+            fs.closeSync(reader);
+        }
+    );
+
+    test.skipIf(!isWindows)(
+        'a reader in another process that lets go within the retries does not fail the write',
+        async () => {
+            const file = path.join(folders.make('artemis-files-'), 'doc.json');
+
+            fs.writeFileSync(file, 'old');
+
+            const reader = spawn(process.execPath, ['-e', HOLD_THE_FILE, file], {
+                stdio: ['ignore', 'pipe', 'inherit']
+            });
+
+            await new Promise((resolve) => reader.stdout.once('data', resolve));
+            writeAtomic(file, 'new');
+            await new Promise((resolve) => reader.once('exit', resolve));
+
+            expect(fs.readFileSync(file, 'utf8')).toBe('new');
+        }
+    );
 
     test('a failed write leaves no temporary file and the target untouched', () => {
         const dir = folders.make('artemis-files-');
@@ -410,6 +534,20 @@ describe('folderProblem', () => {
         );
     });
 
+    test('a folder several levels below one that exists is missing, not blocked', () => {
+        expect(folderProblem(path.join(folders.make('artemis-files-'), 'a', 'b', 'c'))).toBe(
+            FOLDER_PROBLEM.MISSING
+        );
+    });
+
+    test('a path several levels below a file is not a folder, however the platform words it', () => {
+        const file = path.join(folders.make('artemis-files-'), 'plain.txt');
+
+        fs.writeFileSync(file, 'x');
+
+        expect(folderProblem(path.join(file, 'a', 'b'))).toBe(FOLDER_PROBLEM.NOT_A_FOLDER);
+    });
+
     test('a file is not a folder', () => {
         const file = path.join(folders.make('artemis-files-'), 'plain.txt');
 
@@ -436,21 +574,29 @@ describe('folderProblem', () => {
         expect(folderProblem(first)).toBeUndefined();
     });
 
-    test.skipIf(isRoot)('a folder with no execute bit is no-access', async () => {
-        const folder = folders.make('artemis-files-');
+    test.skipIf(isRoot || NO_PERMISSION_BITS)(
+        'a folder with no execute bit is no-access',
+        async () => {
+            const folder = folders.make('artemis-files-');
 
-        expect(await withMode(folder, NO_EXECUTE_MODE, () => folderProblem(folder))).toBe(
-            FOLDER_PROBLEM.NO_ACCESS
-        );
-    });
+            expect(await withMode(folder, NO_EXECUTE_MODE, () => folderProblem(folder))).toBe(
+                FOLDER_PROBLEM.NO_ACCESS
+            );
+        }
+    );
 
-    test.skipIf(isRoot)('a folder under one with mode 0 is no-access', async () => {
-        const locked = path.join(folders.make('artemis-files-'), 'locked');
+    test.skipIf(isRoot || NO_PERMISSION_BITS)(
+        'a folder under one with mode 0 is no-access',
+        async () => {
+            const locked = path.join(folders.make('artemis-files-'), 'locked');
 
-        fs.mkdirSync(path.join(locked, 'sub'), { recursive: true });
+            fs.mkdirSync(path.join(locked, 'sub'), { recursive: true });
 
-        expect(
-            await withMode(locked, UNREADABLE_MODE, () => folderProblem(path.join(locked, 'sub')))
-        ).toBe(FOLDER_PROBLEM.NO_ACCESS);
-    });
+            expect(
+                await withMode(locked, UNREADABLE_MODE, () =>
+                    folderProblem(path.join(locked, 'sub'))
+                )
+            ).toBe(FOLDER_PROBLEM.NO_ACCESS);
+        }
+    );
 });

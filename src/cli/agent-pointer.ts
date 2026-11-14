@@ -28,7 +28,7 @@ export const pointerText: PointerText = (bin) =>
     [
         '## Commands',
         '',
-        `This project's commands run through \`${bin}\`. Start with \`npx ${bin} ${POINTER_MARKER}\`, call one with \`--json\`, and pass \`--dry-run\` before \`--yes\` on a destructive one. To write a new one: \`npx ${bin} help --authoring\`.`
+        `This project's commands run through \`${bin}\`. Start with \`npx ${bin} ${POINTER_MARKER}\`, call one with \`--json\`, and pass \`--dry-run\` before \`--yes\` on a destructive one. To write a new one: \`npx ${bin} new <words> --description "..."\`, and \`npx ${bin} help --authoring\` has the rules.`
     ].join(LF_EOL);
 
 /** The line ending a file uses: CRLF when its first line ends with one. */

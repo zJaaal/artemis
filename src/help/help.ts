@@ -12,6 +12,7 @@ import {
     BRIEF_TOPIC_LABEL,
     BRIEF_TOPIC_MORE_SUFFIX,
     GLOBAL_FLAGS_TEXT,
+    DESTRUCTIVE_BY_CALL_NOTE,
     DESTRUCTIVE_NOTE,
     DRY_RUN_NOTE,
     ID_SEPARATOR,
@@ -22,6 +23,7 @@ import {
     TABLE_INDENT,
     USAGE_REPEAT
 } from '../constants.js';
+import { canDestroy } from '../utils/can-destroy.js';
 import { isWithin, topicPrefixes } from '../utils/topics.js';
 import { searchCommands } from './search.js';
 import type {
@@ -244,8 +246,12 @@ function subjectHelp(bin: string, subject: HelpSubject, style: Style): string {
     const { description, args, flags, aliases, examples } = subject;
     const sections = [description, `${style.bold('Usage')}  ${bin}${ID_SEPARATOR}${subject.usage}`];
 
-    if (subject.destructive) {
-        sections.push(`${style.bold('Destructive')}  ${DESTRUCTIVE_NOTE}`);
+    if (canDestroy(subject.destructive)) {
+        const byCall = typeof subject.destructive === 'function';
+
+        sections.push(
+            `${style.bold('Destructive')}  ${DESTRUCTIVE_NOTE}${byCall ? ` ${DESTRUCTIVE_BY_CALL_NOTE}` : ''}`
+        );
     }
 
     if (subject.dryRun) {
@@ -318,7 +324,7 @@ const describeWord = (word: DescribedWord): ManifestCommand => ({
     args: describeArgs(word.args),
     flags: describeFlags(word.flags),
     ...(word.examples.length ? { examples: word.examples } : {}),
-    ...(word.destructive ? { destructive: true as const } : {}),
+    ...(canDestroy(word.destructive) ? { destructive: true as const } : {}),
     ...(word.dryRun ? { dryRun: true as const } : {})
 });
 

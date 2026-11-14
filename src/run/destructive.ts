@@ -1,7 +1,12 @@
 import { CANCELLED_MESSAGE, DESTRUCTIVE_CONFIRM_HINT, DRY_RUN_FIRST_HINT } from '../constants.js';
 import { createPrompter } from '../context/context.js';
 import { CommandError } from '../errors/errors.js';
-import type { ConfirmDestructiveFn, DestructivePlan, PlanDestructiveFn } from '../models.js';
+import type {
+    ConfirmDestructiveFn,
+    DestructivePlan,
+    PlanDestructiveFn,
+    ResolveDestructiveFn
+} from '../models.js';
 
 /**
  * What to do before a command runs, from what it declares and how it was called. Under `--dry-run`
@@ -14,6 +19,29 @@ export const planDestructive: PlanDestructiveFn = (call) => {
     }
 
     return call.interactive ? 'ask' : 'refuse';
+};
+
+/**
+ * What `destructive` says for this call. A boolean is itself; a function is called with the parsed
+ * `args` and `flags` and must answer true or false, anything else is a bug in the command (a
+ * `TypeError`, exit 1, like any plain Error), and so is a function that throws.
+ */
+export const resolveDestructive: ResolveDestructiveFn = (entry, { args, flags }) => {
+    const { destructive } = entry.definition;
+
+    if (typeof destructive !== 'function') {
+        return destructive;
+    }
+
+    const answer: unknown = destructive({ args, flags });
+
+    if (typeof answer !== 'boolean') {
+        throw new TypeError(
+            `destructive() of "${entry.id}" returned ${String(answer)}; it must return true or false`
+        );
+    }
+
+    return answer;
 };
 
 const changesData = (bin: string, id: string): string => `${bin} ${id} changes or deletes data`;

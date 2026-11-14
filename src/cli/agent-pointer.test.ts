@@ -3,15 +3,16 @@ import { describe, expect, test } from 'vitest';
 import { INIT_POINTER_MAX_BYTES, POINTER_MARKER } from '../constants.js';
 import type { PointerInput, TextFile } from '../models.js';
 import { appendedText, gitignoreLine, planPointer, pointerText } from './agent-pointer.js';
+import { at } from '../test/paths.js';
 
-const file = (name: string, text: string, real = `/work/${name}`): TextFile => ({
-    path: `/work/${name}`,
+const file = (name: string, text: string, real = at(`/work/${name}`)): TextFile => ({
+    path: at(`/work/${name}`),
     real,
     text
 });
 
 const base = (overrides: Partial<PointerInput> = {}): PointerInput => ({
-    dir: '/work',
+    dir: at('/work'),
     bin: 'art',
     agents: undefined,
     claude: undefined,
@@ -28,7 +29,7 @@ describe('pointerText', () => {
             [
                 '## Commands',
                 '',
-                "This project's commands run through `art`. Start with `npx art help --json --brief`, call one with `--json`, and pass `--dry-run` before `--yes` on a destructive one. To write a new one: `npx art help --authoring`."
+                'This project\'s commands run through `art`. Start with `npx art help --json --brief`, call one with `--json`, and pass `--dry-run` before `--yes` on a destructive one. To write a new one: `npx art new <words> --description "..."`, and `npx art help --authoring` has the rules.'
             ].join('\n')
         );
     });
@@ -72,27 +73,27 @@ describe('appendedText', () => {
 
 describe('gitignoreLine', () => {
     test('is the audit files under the state folder, relative to the project', () => {
-        expect(gitignoreLine('/work', '/work/state')).toBe('/state/audit*.jsonl');
+        expect(gitignoreLine(at('/work'), at('/work/state'))).toBe('/state/audit*.jsonl');
     });
 
     test('a nested state folder keeps its path, with forward slashes', () => {
-        expect(gitignoreLine('/work', '/work/data/state')).toBe('/data/state/audit*.jsonl');
+        expect(gitignoreLine(at('/work'), at('/work/data/state'))).toBe('/data/state/audit*.jsonl');
     });
 
     test('the project folder itself is the root of the line', () => {
-        expect(gitignoreLine('/work', '/work')).toBe('/audit*.jsonl');
+        expect(gitignoreLine(at('/work'), at('/work'))).toBe('/audit*.jsonl');
     });
 
     test('a state folder outside the project has no line', () => {
-        expect(gitignoreLine('/work', '/elsewhere/state')).toBeUndefined();
+        expect(gitignoreLine(at('/work'), '/elsewhere/state')).toBeUndefined();
     });
 
     test('a state folder whose name only starts with two dots is inside the project', () => {
-        expect(gitignoreLine('/work', '/work/..state')).toBe('/..state/audit*.jsonl');
+        expect(gitignoreLine(at('/work'), at('/work/..state'))).toBe('/..state/audit*.jsonl');
     });
 
     test('a sibling folder that only starts like the project is outside it', () => {
-        expect(gitignoreLine('/work/app', '/work/app-state')).toBeUndefined();
+        expect(gitignoreLine(at('/work/app'), at('/work/app-state'))).toBeUndefined();
     });
 });
 
@@ -102,7 +103,7 @@ describe('planPointer: AGENTS.md and CLAUDE.md', () => {
             {
                 kind: 'file',
                 mode: 'create',
-                path: '/work/AGENTS.md',
+                path: at('/work/AGENTS.md'),
                 text: `# AGENTS.md\n\n${pointer}\n`
             }
         ]);
@@ -110,7 +111,7 @@ describe('planPointer: AGENTS.md and CLAUDE.md', () => {
 
     test('AGENTS.md only: the pointer is appended', () => {
         expect(planPointer(base({ agents: file('AGENTS.md', '# Mine\n') }))).toEqual([
-            { kind: 'file', mode: 'append', path: '/work/AGENTS.md', text: `\n${pointer}\n` }
+            { kind: 'file', mode: 'append', path: at('/work/AGENTS.md'), text: `\n${pointer}\n` }
         ]);
     });
 
@@ -126,23 +127,25 @@ describe('planPointer: AGENTS.md and CLAUDE.md', () => {
 
     test('CLAUDE.md without the import: the pointer is appended to it, and AGENTS.md is not created', () => {
         expect(planPointer(base({ claude: file('CLAUDE.md', '# Claude\n') }))).toEqual([
-            { kind: 'file', mode: 'append', path: '/work/CLAUDE.md', text: `\n${pointer}\n` }
+            { kind: 'file', mode: 'append', path: at('/work/CLAUDE.md'), text: `\n${pointer}\n` }
         ]);
     });
 
     test('CLAUDE.md that imports AGENTS.md is left alone', () => {
         const claude = file('CLAUDE.md', '@AGENTS.md\n');
-        const agents = file('AGENTS.md', 'x\n', '/work/real-agents');
+        const agents = file('AGENTS.md', 'x\n', at('/work/real-agents'));
 
         expect(planPointer(base({ claude, agents })).map((step) => step.path)).toEqual([
-            '/work/AGENTS.md'
+            at('/work/AGENTS.md')
         ]);
     });
 
     test('the import must start a line: a mention in prose is not one', () => {
         const claude = file('CLAUDE.md', 'see @AGENTS.md later\n');
 
-        expect(planPointer(base({ claude })).map((step) => step.path)).toEqual(['/work/CLAUDE.md']);
+        expect(planPointer(base({ claude })).map((step) => step.path)).toEqual([
+            at('/work/CLAUDE.md')
+        ]);
     });
 
     test('CLAUDE.md importing a missing AGENTS.md: AGENTS.md is created, CLAUDE.md untouched', () => {
@@ -152,7 +155,7 @@ describe('planPointer: AGENTS.md and CLAUDE.md', () => {
             {
                 kind: 'file',
                 mode: 'create',
-                path: '/work/AGENTS.md',
+                path: at('/work/AGENTS.md'),
                 text: `# AGENTS.md\n\n${pointer}\n`
             }
         ]);
@@ -163,7 +166,10 @@ describe('planPointer: AGENTS.md and CLAUDE.md', () => {
             base({ agents: file('AGENTS.md', 'a\n'), claude: file('CLAUDE.md', 'c\n') })
         );
 
-        expect(steps.map((step) => step.path)).toEqual(['/work/AGENTS.md', '/work/CLAUDE.md']);
+        expect(steps.map((step) => step.path)).toEqual([
+            at('/work/AGENTS.md'),
+            at('/work/CLAUDE.md')
+        ]);
     });
 
     test('CLAUDE.md that already has the pointer is left alone, whatever AGENTS.md says', () => {
@@ -171,11 +177,11 @@ describe('planPointer: AGENTS.md and CLAUDE.md', () => {
             base({ agents: file('AGENTS.md', 'a\n'), claude: file('CLAUDE.md', `${pointer}\n`) })
         );
 
-        expect(steps.map((step) => step.path)).toEqual(['/work/AGENTS.md']);
+        expect(steps.map((step) => step.path)).toEqual([at('/work/AGENTS.md')]);
     });
 
     test('a link: two names for one real file are written once', () => {
-        const real = '/work/AGENTS.md';
+        const real = at('/work/AGENTS.md');
 
         const steps = planPointer(
             base({
@@ -209,7 +215,7 @@ describe('planPointer: .gitignore', () => {
         );
 
         expect(steps).toEqual([
-            { kind: 'file', mode: 'create', path: '/work/.gitignore', text: `${line}\n` }
+            { kind: 'file', mode: 'create', path: at('/work/.gitignore'), text: `${line}\n` }
         ]);
     });
 
@@ -223,7 +229,7 @@ describe('planPointer: .gitignore', () => {
         );
 
         expect(steps).toEqual([
-            { kind: 'file', mode: 'append', path: '/work/.gitignore', text: `\n${line}\n` }
+            { kind: 'file', mode: 'append', path: at('/work/.gitignore'), text: `\n${line}\n` }
         ]);
     });
 

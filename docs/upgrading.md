@@ -2,6 +2,19 @@
 
 # Upgrading
 
+## Upgrading to 1.3
+
+`1.3.0` reserves one more word (a minor release, not a major one: Artemis has no outside users yet):
+
+- **`new` is a word of the shipped `art`.** `art new <command words>... --description <text>` writes the file of a new command. A project command or topic called `new` is hidden there, with `art doctor` reporting it: rename it. A published tool reserves nothing, so a tool's `new` is still its own.
+
+**Nothing else to change**, and new things you can use:
+
+- **`destructive` can be a function** of the call's `args` and `flags`: `destructive: ({ flags }) => !flags['no-prune']` asks (or needs `--yes`) only when it answers `true`. Everywhere a command is described it still reads `destructive: true`.
+- **A published tool can audit.** `"artemis": { "audit": true }` in the tool's own `package.json` records each run in the state folder of its package and gives the tool the word `history` (a tool command called `history` is then hidden behind it). Auditing stays off for a tool by default, because the state folder of a tool installed from npm is inside `node_modules`: set an absolute `stateDir` for such a tool. `run()` callers get the documented `auditFile` option and `readHistory(auditFile, { command, limit })`.
+- **Windows works.** `ctx.exec` starts `.cmd` and `.bat` files (`npm`, `pnpm`, `node_modules/.bin`) through `cmd.exe` with every argument escaped, stopping a child ends its whole tree, the worktrees kit compares paths the way Windows does, and the store's atomic write tries again while another process has the file open. A `stateDir` under a file now fails with "The state folder ... is not a folder" on every platform (it said "Cannot read the state folder" where the system said `ENOTDIR`).
+- **`CHANGELOG.md`** lists what changed in each release, and ships in the package.
+
 ## Upgrading to 1.2
 
 `1.2.0` changes the shape of `help --json`, so a reader that indexes it has to change (a minor release, not a major one: Artemis has no outside users yet):

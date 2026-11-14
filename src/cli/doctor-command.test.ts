@@ -3,9 +3,9 @@ import path from 'node:path';
 
 import { afterEach, describe, expect, test } from 'vitest';
 
-import { EXIT_CODE } from '../constants.js';
+import { EXIT_CODE, HEALTH_PREVIEW_RUNS } from '../constants.js';
 import type { DoctorCheck } from '../models.js';
-import { makeProject } from '../test/project.js';
+import { commandSource, makeProject, writeCommand } from '../test/project.js';
 import { createSink } from '../test/sink.js';
 import { createTempFolders } from '../test/temp.js';
 import type { Envelope } from '../test/models.js';
@@ -364,6 +364,39 @@ describe('art doctor: the health of the commands, from the audit trail', () => {
         fs.writeFileSync(path.join(root, 'commands', 'history.js'), 'export default 1;\n');
 
         expect(statusOf((await art(['doctor', '--json'], root)).out, 'words')).toBe('warn');
+    });
+});
+
+describe('art doctor: a command that is destructive by call', () => {
+    const dryRun = {
+        time: '2026-11-12T12:00:00.000Z',
+        command: 'start',
+        argv: [],
+        ran: true,
+        dryRun: true,
+        yes: false,
+        exitCode: 0,
+        ms: 5
+    };
+
+    test('counts as destructive: only ever previewed is reported', async () => {
+        const root = newProject();
+        const file = path.join(root, 'state', 'audit.jsonl');
+
+        writeCommand(
+            path.join(root, 'commands'),
+            'start',
+            commandSource(
+                "destructive: ({ flags }) => !flags.keep, flags: { keep: { type: 'boolean' } }, dryRun: true"
+            )
+        );
+
+        fs.mkdirSync(path.dirname(file), { recursive: true });
+        fs.writeFileSync(file, `${JSON.stringify(dryRun)}\n`.repeat(HEALTH_PREVIEW_RUNS));
+
+        expect(statusOf((await art(['doctor', '--json'], root)).out, 'history-previewed')).toBe(
+            'warn'
+        );
     });
 });
 

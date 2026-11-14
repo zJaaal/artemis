@@ -14,10 +14,15 @@ import {
     EXEC_STDIO_INHERITED,
     EXEC_STDIO_PIPED,
     EXIT_CODE,
-    LOG_FILE_HINT
+    LOG_FILE_HINT,
+    TASKKILL_ARGUMENTS,
+    TASKKILL_COMMAND,
+    TASKKILL_PID_FLAG,
+    WINDOWS_PLATFORM
 } from '../constants.js';
 import { CommandError } from '../errors/errors.js';
 import { folderProblem } from './files.js';
+import { launchOf } from './windows-launch.js';
 import type {
     ChildHandle,
     FolderProblem,
@@ -25,14 +30,16 @@ import type {
     SpawnChildFn,
     SpawnDetachedFn,
     SpawnFinish,
+    KillTreeFn,
     SpawnOutcome
 } from '../models.js';
 import { codeOf } from '../utils/error-code.js';
 import { messageOf } from '../utils/error-message.js';
 
 // Edge: the only place a child process starts for `ctx.exec`. It never uses a shell, so nothing in
-// `args` is interpreted, and it never lets the child it started outlive the call that asked for it (a grandchild the child started is
-// its own business: only the direct child is signalled).
+// `args` is interpreted (on Windows a `.cmd` file goes through `cmd.exe` with every argument escaped,
+// see windows-launch.ts), and it never lets the child it started outlive the call that asked for it (a grandchild the child started is
+// its own business on every platform but Windows, which has no process groups: there the whole tree is ended).
 
 /** The handle of a child that never started: it is already over, and there is nothing to stop. */
 const notStarted = (error: unknown): ChildHandle => ({
@@ -62,7 +69,37 @@ const noFolder = (cwdProblem: FolderProblem): ChildHandle => ({
     stop: () => Promise.resolve()
 });
 
-/** Starts a child. `done` resolves when it has ended; `stop` ends it politely, then for good. */
+/**
+ * Ends a process and everything it started, with `taskkill /T /F`: the one way on Windows, where there
+ * are no process groups to signal. It waits for taskkill without blocking the event loop, so the
+ * children of a run are ended together. A child that never started has no pid: nothing to end.
+ */
+export const killTree: KillTreeFn = (pid) => {
+    if (pid === undefined) {
+        return Promise.resolve();
+    }
+
+    return new Promise((resolve) => {
+        const killer = spawn(
+            TASKKILL_COMMAND,
+            [TASKKILL_PID_FLAG, String(pid), ...TASKKILL_ARGUMENTS],
+            {
+                stdio: 'ignore',
+                windowsHide: true
+            }
+        );
+
+        // ignoreTreeAlreadyGone: taskkill fails when the process ended in the meantime, and then there is
+        // nothing left to end; it also fails to start where there is no taskkill, and the child is killed after it
+        killer.once('error', () => resolve());
+        killer.once('close', () => resolve());
+    });
+};
+
+/**
+ * Starts a child. `done` resolves when it has ended; `stop` ends it politely, then for good (on
+ * Windows, which has no polite signal, with its whole tree at once).
+ */
 export const spawnChild: SpawnChildFn = (request) => {
     const problem = request.cwd === undefined ? undefined : folderProblem(request.cwd);
 
@@ -73,10 +110,13 @@ export const spawnChild: SpawnChildFn = (request) => {
     let child: ChildProcess;
 
     try {
-        child = spawn(request.command, [...request.args], {
+        const launch = launchOf(request);
+
+        child = spawn(launch.command, [...launch.args], {
             cwd: request.cwd,
             env: request.env,
             shell: false,
+            windowsVerbatimArguments: launch.verbatim,
             stdio: request.pipe ? EXEC_STDIO_PIPED : EXEC_STDIO_INHERITED
         });
     } catch (error) {
@@ -182,12 +222,24 @@ export const spawnChild: SpawnChildFn = (request) => {
 
         // A child that already ended on its own, with output still being read, did not end because of this
         stopped ||= !timedOut && !exited;
-        child.kill('SIGTERM');
 
-        killTimer ??= setTimeout(
-            () => child.kill('SIGKILL'),
-            request.killGraceMs ?? EXEC_KILL_GRACE_MS
-        );
+        if (process.platform === WINDOWS_PLATFORM) {
+            // A child that already exited has a pid that may belong to another process now: leave it, and
+            // what it left running, as on POSIX (the drain below lets go of the pipes)
+            if (!exited) {
+                // No polite signal for a console process, and no process group: end the whole tree at once
+                await (request.killTree ?? killTree)(child.pid);
+                // And the child itself, in case taskkill itself could not run
+                child.kill();
+            }
+        } else {
+            child.kill('SIGTERM');
+
+            killTimer ??= setTimeout(
+                () => child.kill('SIGKILL'),
+                request.killGraceMs ?? EXEC_KILL_GRACE_MS
+            );
+        }
 
         await done;
     };
@@ -248,10 +300,13 @@ export const spawnDetached: SpawnDetachedFn = (request) => {
         };
 
         try {
-            const child = spawn(request.command, [...request.args], {
+            const launch = launchOf(request);
+
+            const child = spawn(launch.command, [...launch.args], {
                 cwd: request.cwd,
                 env: request.env,
                 shell: false,
+                windowsVerbatimArguments: launch.verbatim,
                 detached: true,
                 windowsHide: true,
                 stdio: [EXEC_DETACHED_STDIN, descriptor, descriptor]

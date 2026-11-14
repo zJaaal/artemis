@@ -13,7 +13,8 @@ export const createTempFolders = (): TempFolders => {
 
     return {
         make: (prefix) => {
-            const folder = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), prefix)));
+            // The native real path: the form the code under test reports (on Windows `runneradmin`, not `RUNNER~1`)
+            const folder = fs.realpathSync.native(fs.mkdtempSync(path.join(os.tmpdir(), prefix)));
 
             made.push(folder);
 

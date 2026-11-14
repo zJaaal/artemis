@@ -9,6 +9,7 @@
 
 ## Releasing
 
+- A PR that changes behavior adds a line under `## Unreleased` in `CHANGELOG.md`; a release PR moves those lines under a `## <version> (<YYYY-MM-DD>)` heading (the release check fails a labelled PR without it).
 - A release is a PR with the `release` label that bumps `version` in `package.json`. The "Release check" workflow keeps the two together: a labelled PR must bump to a new, higher, untagged version, and a PR without the label must leave `version` alone. Code PRs merge without a release and wait for the next release PR.
 - Merging a release PR runs the Release workflow: the checks, then `npm stage publish --provenance`, then the tag `v<version>` on the merged commit. Any other merge stages nothing.
 - Nothing is public until the owner approves the staged package with 2FA: `npx -y npm@12.2.1 stage approve @zjaaal/artemis@<version>`.

@@ -227,6 +227,14 @@ export type RunFn<TArgs extends ArgDefinitions, TFlags extends FlagDefinitions> 
     input: RunInput<TArgs, TFlags>
 ) => unknown;
 
+/**
+ * `destructive` as a function of the call: it gets the parsed `args` and `flags` of `run` (typed from the
+ * definition) and says whether this call changes or deletes data.
+ */
+export type DestructiveFn<TArgs extends ArgDefinitions, TFlags extends FlagDefinitions> = (
+    input: Pick<RunInput<TArgs, TFlags>, 'args' | 'flags'>
+) => boolean;
+
 // Trade-off, accepted: the index signature keeps extra fields passing through untouched (the dotCMS
 // `step` convention) but means a typo in a field name is not a type error. Known fields stay typed.
 export type CommandDefinition<
@@ -239,8 +247,11 @@ export type CommandDefinition<
     flags?: TFlags;
     aliases?: readonly string[];
     examples?: readonly string[];
-    /** Changes or deletes data the user cannot get back. It asks in a terminal and needs `--yes` otherwise. Default false. */
-    destructive?: boolean;
+    /**
+     * Changes or deletes data the user cannot get back. It asks in a terminal and needs `--yes` otherwise.
+     * A function decides per call, from the parsed `args` and `flags`. Default false.
+     */
+    destructive?: boolean | DestructiveFn<TArgs, TFlags>;
     /** Honors `ctx.dryRun`: under `--dry-run` it reports what it would do and does none of it. Default false. */
     dryRun?: boolean;
     [extra: string]: unknown;
@@ -255,7 +266,7 @@ export type Command<
     flags: TFlags;
     aliases: readonly string[];
     examples: readonly string[];
-    destructive: boolean;
+    destructive: boolean | DestructiveFn<TArgs, TFlags>;
     dryRun: boolean;
 };
 
@@ -436,6 +447,7 @@ export type WalkContext = { registry: Registry; root: string };
 
 export type ListDirectoryFn = (dir: string) => DirectoryEntry[];
 export type PathExistsFn = (path: string) => boolean;
+export type IsFileFn = (path: string) => boolean;
 export type IsFolderFn = (path: string) => boolean;
 
 export type FolderProblem = (typeof FOLDER_PROBLEM)[keyof typeof FOLDER_PROBLEM];
@@ -448,6 +460,12 @@ export type CreateExclusiveFn = (file: string, text: string) => boolean;
 /** When a file was last written, in ms since the epoch, or undefined when it is not there. */
 export type ModifiedAtFn = (file: string) => number | undefined;
 export type RealPathFn = (path: string) => string;
+
+/** Whether two paths (already real paths) are one folder: case does not count on Windows, and everywhere else it does. */
+export type SamePathFn = (a: string, b: string, platform: NodeJS.Platform) => boolean;
+
+/** The platform this process runs on (`process.platform`). */
+export type PlatformFn = () => NodeJS.Platform;
 export type WorkingDirectoryFn = () => string;
 export type ProcessIdFn = () => number;
 export type ErrorCodeFn = (error: unknown) => string | undefined;
@@ -458,6 +476,22 @@ export type AppendTextFn = (file: string, text: string) => void;
 export type RemoveFileFn = (file: string) => void;
 /** Replaces a file with this text so that nobody ever reads it half written. */
 export type WriteAtomicFn = (file: string, text: string) => void;
+
+/** What renaming a file into place needs from the machine: the rename, a pause, and the platform. Injected so a test fakes them. */
+export type RenameEdges = {
+    rename: (from: string, to: string) => void;
+    sleep: (ms: number) => void;
+    platform: NodeJS.Platform;
+};
+
+/** Renames `from` over `to`; on Windows it tries again when another process has `to` open. */
+export type RenameWithRetryFn = (from: string, to: string, edges?: RenameEdges) => void;
+
+/** Waits, blocking the thread: `writeAtomic` is synchronous. */
+export type SleepSyncFn = (ms: number) => void;
+
+/** Ends a process and every process it started (Windows has no process groups), without blocking. A process that never started has no pid, and nothing to end. */
+export type KillTreeFn = (pid: number | undefined) => Promise<void>;
 /** The `*.json` files of a folder, by name: never a temporary file or a lock. A missing folder has none. */
 export type ListJsonFilesFn = (dir: string) => string[];
 export type HomeDirectoryFn = () => string;
@@ -523,7 +557,7 @@ export type HelpSubject = {
     flags: FlagDefinitions;
     aliases: readonly string[];
     examples: readonly string[];
-    destructive?: boolean;
+    destructive?: boolean | DestructiveFn<ArgDefinitions, FlagDefinitions>;
     dryRun?: boolean;
 };
 
@@ -592,6 +626,17 @@ export type DestructiveCall = {
     /** Whether anyone can answer: a terminal, and neither `--yes` nor `--json`. */
     interactive: boolean;
 };
+
+/** What `destructive` is worth: a function counts as destructive, because the reader cannot run it. */
+export type CanDestroyFn = (
+    value: boolean | DestructiveFn<ArgDefinitions, FlagDefinitions> | undefined
+) => boolean;
+
+/** The answer of a `destructive` function for one call, as a boolean, or the bug that it is not one. */
+export type ResolveDestructiveFn = (
+    entry: CommandEntry,
+    parsed: Pick<ParsedCommandLine, 'args' | 'flags'>
+) => boolean;
 
 export type DestructivePlan = 'run' | 'ask' | 'refuse';
 export type PlanDestructiveFn = (call: DestructiveCall) => DestructivePlan;
@@ -891,6 +936,8 @@ export type SpawnRequest = {
     timeoutMs: number | undefined;
     /** How long a child gets after SIGTERM before SIGKILL. Default: `EXEC_KILL_GRACE_MS`. */
     killGraceMs?: number;
+    /** How a tree of processes is ended on Windows. Default: `killTree` (taskkill). A test passes its own to see whether it is called. */
+    killTree?: KillTreeFn;
     /** Called with each chunk of output as it arrives (piped only). */
     onData: (chunk: string, stream: ChildStream) => void;
 };
@@ -1153,7 +1200,7 @@ export type DescribedWord = {
     args: readonly ArgDefinition[];
     flags: FlagDefinitions;
     examples: readonly string[];
-    destructive?: boolean | undefined;
+    destructive?: boolean | DestructiveFn<ArgDefinitions, FlagDefinitions> | undefined;
     dryRun?: boolean | undefined;
 };
 
@@ -1279,8 +1326,14 @@ export type FindProjectFn = (
 /** The folder the store kit keeps its documents in (absolute). Throws a CommandError when the "artemis" key has a bad shape. */
 export type ResolveStateDirFn = (project: Project) => string;
 
-/** Where the audit trail goes (absolute), or undefined when the project turned it off. */
-export type ResolveAuditFileFn = (project: Project) => string | undefined;
+/**
+ * Where the audit trail goes (absolute), or undefined when it is off. The shipped route records unless
+ * the project says `"audit": false`; a project's own bin file (a published tool) only with `"audit": true`.
+ */
+export type ResolveAuditFileFn = (project: Project, route: CliRoute) => string | undefined;
+
+/** The project of a folder, or a CommandError that says what to create (`noProjectError` of the route). */
+export type ProjectOrThrowFn = (cwd: string, route: CliRoute) => Project;
 
 /** What to say when no project is found from a folder upwards. */
 export type NoProjectErrorFn = (start: string, route: CliRoute) => CommandError;
@@ -1313,11 +1366,6 @@ export type CliOptions = HostOptions & {
 };
 
 export type CliFn = (options?: CliOptions) => Promise<number>;
-
-/** Finds the settings for a folder, or throws a CommandError that says what to create or set. */
-/** What a folder's project says: the settings to run with, and the project they came from. */
-export type FoundSettings = { settings: CliSettings; project: Project };
-export type SettingsForFn = (start: string, route: CliRoute) => FoundSettings;
 
 /** The folder a `root` points at: itself when it is a folder, else the folder of the file. */
 export type FolderOfRootFn = (root: string | URL) => string;
@@ -1401,7 +1449,13 @@ export type IsInstalledPackageRootFn = (dir: string) => boolean;
 export type PackageNameForFn = (dir: string) => string;
 
 /** What `<word> --help` prints for a built-in word: its usage text, or under --json its manifest entry. */
-export type WordHelpFn = (word: { id: string; text: string; json: boolean }) => string;
+export type WordHelpFn = (word: {
+    id: string;
+    text: string;
+    json: boolean;
+    /** A tool's own bin: the text's leading `Usage: ` becomes `Usage: <bin> `. The shipped words pass none. */
+    bin?: string | undefined;
+}) => string;
 
 /** `art init [folder] [--json]`. Returns the exit code. */
 export type InitCommandFn = (words: string[], options: CliOptions, cwd: string) => number;
@@ -1540,4 +1594,97 @@ export type SelectHistoryFn = (
 ) => AuditLine[];
 
 export type HistoryLineFn = (entry: AuditLine) => string;
-export type HistoryCommandFn = (words: string[], host: CliOptions, cwd: string) => Promise<number>;
+
+/** What `history` needs to know about where it runs: the project and its settings, found once by the launcher. */
+export type HistoryContext = { project: Project; settings: CliSettings };
+
+export type HistoryCommandFn = (
+    parsed: HistoryWords,
+    host: CliOptions,
+    context: HistoryContext
+) => Promise<number>;
+
+/** What `readHistory` takes besides the file: one command id, and how many runs at most. */
+export type ReadHistoryOptions = { command?: string | undefined; limit?: number | undefined };
+
+/** The runs `readHistory` found, newest first, and how many lines of the file were not runs. */
+export type HistoryRead = { entries: AuditLine[]; skipped: number };
+
+/** The recorded runs of an audit file, newest first. A missing file has none. */
+export type ReadHistoryFn = (auditFile: string, options?: ReadHistoryOptions) => HistoryRead;
+
+// ---------------------------------------------------------------------------------------------
+// `art new`
+// ---------------------------------------------------------------------------------------------
+
+/** The words after `new`, as typed: nothing is checked yet but the shape of the flags. */
+export type NewWords = {
+    words: string[];
+    description: string | undefined;
+    args: string[];
+    flags: string[];
+    destructive: boolean;
+    supportsDryRun: boolean;
+    json: boolean;
+    quiet: boolean;
+    help: boolean;
+};
+
+/** What `new` writes a command from, once every word, name and the description are valid. */
+export type NewSpec = {
+    words: string[];
+    description: string;
+    args: string[];
+    flags: string[];
+    destructive: boolean;
+    supportsDryRun: boolean;
+};
+
+export type ParseNewWordsFn = (words: readonly string[]) => NewWords;
+
+/** Checks what was typed after `new`; a UsageError (exit 2) says what is wrong. */
+export type CheckNewFn = (read: NewWords) => NewSpec;
+
+/** The source of a new command file: the stub of the spec, as Prettier leaves it. */
+export type RenderCommandFn = (spec: NewSpec) => string;
+
+/** Where the file of a command id goes: `<commandsDir>/<word 1>/.../<word n>.js`. */
+export type CommandFileFn = (commandsDir: string, words: readonly string[]) => string;
+
+/** `art new <command words>... --description <text> ...`: writes the file, returns the exit code. */
+export type NewCommandFn = (words: string[], host: HostOptions, cwd: string) => number;
+
+// ---------------------------------------------------------------------------------------------
+// Windows: `.cmd` and `.bat` files
+// ---------------------------------------------------------------------------------------------
+
+/** What `ctx.exec` spawns: the program, its arguments, and whether Node must leave the arguments as they are. */
+export type Launch = {
+    command: string;
+    args: readonly string[];
+    /** `windowsVerbatimArguments`: the arguments are already a `cmd.exe` command line, escaped. */
+    verbatim: boolean;
+};
+
+/** Where a command is looked for on Windows: the folder of the call, and its environment. */
+export type CommandLookup = { cwd: string | undefined; env: NodeJS.ProcessEnv };
+
+export type LaunchRequest = Pick<SpawnRequest, 'command' | 'args' | 'cwd' | 'env'>;
+
+/** The value of an environment variable, whatever the case of its name (Windows does not care). */
+export type EnvValueFn = (env: NodeJS.ProcessEnv, name: string) => string | undefined;
+
+/** Every file a bare command could be on Windows: each folder of the call and of PATH, with each extension of PATHEXT. */
+export type WindowsCandidatesFn = (command: string, lookup: CommandLookup) => string[];
+
+/** `cmd.exe`'s arguments for running a batch file with these arguments, every one escaped so nothing in it is interpreted. */
+export type CmdArgumentsFn = (file: string, args: readonly string[]) => string[];
+
+/** How to start a command on this platform: as given, or through `cmd.exe` when it is a batch file on Windows. */
+export type LaunchOfFn = (request: LaunchRequest, platform?: NodeJS.Platform) => Launch;
+
+/** `--x=value` taken apart: the name, and the value when there was an equals sign. */
+export type InlineFlag = { name: string; inline: string | undefined };
+
+/** An earlier word of a new command's id that is already a command file: the words up to it, and its file. */
+export type EarlierCommand = { prefix: string; file: string };

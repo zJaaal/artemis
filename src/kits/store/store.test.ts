@@ -4,6 +4,7 @@ import path from 'node:path';
 import { afterEach, describe, expect, test } from 'vitest';
 
 import { CommandError } from '../../errors/errors.js';
+import { escapeForRegExp } from '../../test/paths.js';
 import { describeStoreContract } from '../../test/store-contract.js';
 import { createTempFolders } from '../../test/temp.js';
 import { thrownBy } from '../../test/thrown.js';
@@ -171,7 +172,9 @@ describe('defineStore: a corrupt document', () => {
         const doc = corrupt();
 
         expect(thrownBy(() => doc.read())).toMatchObject({
-            message: expect.stringMatching(new RegExp(`^${doc.file} is not valid JSON: `))
+            message: expect.stringMatching(
+                new RegExp(`^${escapeForRegExp(doc.file)} is not valid JSON: `)
+            )
         });
     });
 

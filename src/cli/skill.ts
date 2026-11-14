@@ -21,7 +21,7 @@ const authoringSection = (bin: string, commandsDir: string): string =>
     [
         '## Writing a command',
         '',
-        `**Write a command when you do the same job twice.** If you ran the same steps twice in a session, put them in \`${commandsDir}/<topic>/<name>.js\` and call that instead. \`${bin} help --authoring\` has the rules: a one-line \`description\`, \`args\` and \`flags\` with descriptions, \`destructive: true\` for anything that deletes, \`dryRun: true\` with \`ctx.plan\` and \`ctx.dryRun\`, \`ctx.exec\` for child processes, and \`CommandError(message, { hint })\` for a failure the caller can fix. Make the result answer the question you ran it for, not a log.`
+        `**Write a command when you do the same job twice.** If you ran the same steps twice in a session, put them in \`${commandsDir}/<topic>/<name>.js\` and call that instead; \`${bin} new <words> --description "..."\` writes the file to fill in. \`${bin} help --authoring\` has the rules: a one-line \`description\`, \`args\` and \`flags\` with descriptions, \`destructive: true\` for anything that deletes, \`dryRun: true\` with \`ctx.plan\` and \`ctx.dryRun\`, \`ctx.exec\` for child processes, and \`CommandError(message, { hint })\` for a failure the caller can fix. Make the result answer the question you ran it for, not a log.`
     ].join('\n');
 
 const destructiveLine = (bin: string, command: ManifestCommand): string => {

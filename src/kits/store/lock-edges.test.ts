@@ -3,6 +3,7 @@ import { spawnSync } from 'node:child_process';
 import { describe, expect, test } from 'vitest';
 
 import { isProcessAlive, now, pause, sleep } from './lock-edges.js';
+import { NO_OTHER_USERS_PROCESS } from '../../test/constants.js';
 
 /** The pid of a process that ran and finished: real, and certainly not alive. */
 const finishedProcessId = (): number => spawnSync(process.execPath, ['-e', '']).pid;
@@ -21,9 +22,12 @@ describe('isProcessAlive', () => {
         expect(isProcessAlive(finishedProcessId())).toBe(false);
     });
 
-    test('a process owned by someone else still counts as alive', () => {
-        expect(isProcessAlive(INIT_PID)).toBe(true);
-    });
+    test.skipIf(NO_OTHER_USERS_PROCESS)(
+        'a process owned by someone else still counts as alive',
+        () => {
+            expect(isProcessAlive(INIT_PID)).toBe(true);
+        }
+    );
 });
 
 describe('now and pause', () => {

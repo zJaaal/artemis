@@ -5,6 +5,7 @@ import { afterEach, describe, expect, test } from 'vitest';
 
 import { CommandError } from '../errors/errors.js';
 import type { InitInput } from '../models.js';
+import { at } from '../test/paths.js';
 import { createSink } from '../test/sink.js';
 import { createTempFolders } from '../test/temp.js';
 import { thrownBy } from '../test/thrown.js';
@@ -23,10 +24,10 @@ afterEach(() => folders.cleanUp());
 
 /** A folder that has nothing yet: the starting point of most cases. */
 const fresh = (overrides: Partial<InitInput> = {}): InitInput => ({
-    dir: '/work/My App',
+    dir: at('/work/My App'),
     manifestText: undefined,
     manifest: undefined,
-    commandsDir: '/work/My App/commands',
+    commandsDir: at('/work/My App/commands'),
     commandsDirExists: false,
     commandsDirIsEmpty: false,
     shadowsCommand: false,
@@ -46,19 +47,19 @@ const fileStep = (plan: ReturnType<typeof planInit>, file: string) =>
 
 describe('packageNameFor', () => {
     test('is the folder name, lowercase', () => {
-        expect(packageNameFor('/work/MyApp')).toBe('myapp');
+        expect(packageNameFor(at('/work/MyApp'))).toBe('myapp');
     });
 
     test('replaces spaces and odd characters with dashes', () => {
-        expect(packageNameFor('/work/My Cool App!')).toBe('my-cool-app');
+        expect(packageNameFor(at('/work/My Cool App!'))).toBe('my-cool-app');
     });
 
     test('drops dashes, dots and underscores at the edges', () => {
-        expect(packageNameFor('/work/__app--')).toBe('app');
+        expect(packageNameFor(at('/work/__app--'))).toBe('app');
     });
 
     test('falls back to a plain name when nothing usable is left', () => {
-        expect(packageNameFor('/work/***')).toBe('project');
+        expect(packageNameFor(at('/work/***'))).toBe('project');
     });
 });
 
@@ -88,7 +89,7 @@ describe('planInit: a folder with nothing in it', () => {
     });
 
     test('the new package.json is named after the folder, private, a module, and declares the project', () => {
-        const step = fileStep(planInit(fresh()), '/work/My App/package.json');
+        const step = fileStep(planInit(fresh()), at('/work/My App/package.json'));
 
         expect(JSON.parse(step?.kind === 'file' ? step.text : '{}')).toEqual({
             name: 'my-app',
@@ -99,7 +100,7 @@ describe('planInit: a folder with nothing in it', () => {
     });
 
     test('the sample command is the one in the constants, so `hello` works at once', () => {
-        const step = fileStep(planInit(fresh()), '/work/My App/commands/hello.js');
+        const step = fileStep(planInit(fresh()), at('/work/My App/commands/hello.js'));
 
         expect(step?.kind === 'file' && step.text).toBe(SAMPLE_COMMAND_SOURCE);
     });
@@ -115,7 +116,7 @@ describe('planInit: a package.json that already exists', () => {
     const text = '{\n    "name": "app",\n    "version": "1.0.0",\n    "type": "module"\n}\n';
 
     test('only gains the artemis key, at the end, and keeps every other key', () => {
-        const step = fileStep(planInit(withManifest(text)), '/work/My App/package.json');
+        const step = fileStep(planInit(withManifest(text)), at('/work/My App/package.json'));
 
         expect(JSON.parse(step?.kind === 'file' ? step.text : '{}')).toEqual({
             name: 'app',
@@ -126,7 +127,7 @@ describe('planInit: a package.json that already exists', () => {
     });
 
     test('changes nothing but the one added line: indentation and final newline are kept', () => {
-        const step = fileStep(planInit(withManifest(text)), '/work/My App/package.json');
+        const step = fileStep(planInit(withManifest(text)), at('/work/My App/package.json'));
 
         expect(step?.kind === 'file' && step.text).toBe(
             '{\n    "name": "app",\n    "version": "1.0.0",\n    "type": "module",\n    "artemis": { "commandsDir": "commands" }\n}\n'
@@ -146,7 +147,7 @@ describe('planInit: a package.json that already exists', () => {
     test('adds no final newline to a file that had none', () => {
         const step = fileStep(
             planInit(withManifest('{"name":"app","type":"module"}')),
-            '/work/My App/package.json'
+            at('/work/My App/package.json')
         );
 
         expect(step?.kind === 'file' && step.text.endsWith('\n')).toBe(false);
@@ -155,8 +156,8 @@ describe('planInit: a package.json that already exists', () => {
     test('is left alone when it already declares the project', () => {
         const plan = planInit(withManifest('{ "name": "app", "type": "module", "artemis": {} }'));
 
-        expect(fileStep(plan, '/work/My App/package.json')).toBeUndefined();
-        expect(plan.kept).toContain('/work/My App/package.json');
+        expect(fileStep(plan, at('/work/My App/package.json'))).toBeUndefined();
+        expect(plan.kept).toContain(at('/work/My App/package.json'));
     });
 
     test('warns, and does not change it, when it is not a module', () => {
@@ -175,7 +176,7 @@ describe('planInit: the commands folder', () => {
         const plan = planInit(fresh({ commandsDirExists: true, commandsDirIsEmpty: false }));
 
         expect(plan.steps.some((step) => step.path.endsWith('hello.js'))).toBe(false);
-        expect(plan.kept).toContain('/work/My App/commands');
+        expect(plan.kept).toContain(at('/work/My App/commands'));
     });
 
     test('one that exists but is empty gets the sample, and is not created again', () => {
@@ -190,13 +191,13 @@ describe('planInit: the commands folder', () => {
     test('is the configured folder, not always commands', () => {
         const plan = planInit(
             withManifest('{ "name": "app", "type": "module" }', {
-                commandsDir: '/work/My App/tools'
+                commandsDir: at('/work/My App/tools')
             })
         );
 
         expect(
             plan.steps.filter((step) => step.kind === 'folder').map((step) => step.path)
-        ).toEqual(['/work/My App/tools']);
+        ).toEqual([at('/work/My App/tools')]);
     });
 });
 

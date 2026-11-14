@@ -1,20 +1,30 @@
 import fs from 'node:fs';
 import path from 'node:path';
 
-import { afterEach, describe, expect, test } from 'vitest';
+import { afterEach, describe, expect, test, vi } from 'vitest';
 
-import { FOLDER_PROBLEM } from '../constants.js';
+import { EXEC_DRAIN_MS, FOLDER_PROBLEM, WINDOWS_PLATFORM } from '../constants.js';
 
 import type { ChildStream, SpawnRequest } from '../models.js';
-import { NO_EXECUTE_MODE, ROOT_UID, UNREADABLE_MODE } from '../test/constants.js';
+import {
+    NO_EXECUTE_BIT,
+    NO_EXECUTE_MODE,
+    NO_PERMISSION_BITS,
+    NO_SIGNALS,
+    NO_SYMLINK_LOOPS,
+    ROOT_UID,
+    UNDIAGNOSED_GRANDCHILD_PIPE,
+    UNREADABLE_MODE
+} from '../test/constants.js';
 import { withMode } from '../test/permissions.js';
 import { createTempFolders } from '../test/temp.js';
-import { spawnChild } from './exec.js';
+import { killTree, spawnChild } from './exec.js';
 
 const folders = createTempFolders();
 
 /** A folder that cannot be read is readable to root, so those tests do not apply there. */
 const isRoot = process.getuid?.() === ROOT_UID;
+const isWindows = process.platform === WINDOWS_PLATFORM;
 
 afterEach(() => folders.cleanUp());
 
@@ -24,6 +34,7 @@ const NOT_AN_EXECUTABLE = 'artemis-no-such-program';
 const SHORT_TIMEOUT_MS = 100;
 const SILENT_JOB = 'setInterval(() => {}, 1000)';
 const GAP_MS = 40;
+const EXIT_DELAY_MS = 30;
 const LATE_WRITE_MS = 600;
 const GRANDCHILD_LIFETIME_MS = 4000;
 const GRANDCHILD_JOB = `require('node:child_process').spawn(process.execPath, ['-e', 'setTimeout(() => {}, ${GRANDCHILD_LIFETIME_MS})'], { stdio: 'inherit' }); process.exit(0)`;
@@ -94,20 +105,23 @@ describe('spawnChild: how a child ends', () => {
         });
     });
 
-    test("a cwd that is a symlink loop is a start error in Node's own words, not a permission problem", async () => {
-        const root = folders.make('artemis-exec-');
-        const first = path.join(root, 'a');
+    test.skipIf(NO_SYMLINK_LOOPS)(
+        "a cwd that is a symlink loop is a start error in Node's own words, not a permission problem",
+        async () => {
+            const root = folders.make('artemis-exec-');
+            const first = path.join(root, 'a');
 
-        fs.symlinkSync(path.join(root, 'b'), first);
-        fs.symlinkSync(first, path.join(root, 'b'));
+            fs.symlinkSync(path.join(root, 'b'), first);
+            fs.symlinkSync(first, path.join(root, 'b'));
 
-        const { outcome } = await runNode('process.exit(0)', { cwd: first });
+            const { outcome } = await runNode('process.exit(0)', { cwd: first });
 
-        expect(outcome).toMatchObject({
-            cwdProblem: undefined,
-            startError: expect.stringMatching(/ELOOP/)
-        });
-    });
+            expect(outcome).toMatchObject({
+                cwdProblem: undefined,
+                startError: expect.stringMatching(/ELOOP/)
+            });
+        }
+    );
 
     test('a cwd under a file is not-a-folder too', async () => {
         const file = path.join(folders.make('artemis-exec-'), 'plain.txt');
@@ -119,7 +133,7 @@ describe('spawnChild: how a child ends', () => {
         expect(outcome).toMatchObject({ cwdProblem: FOLDER_PROBLEM.NOT_A_FOLDER });
     });
 
-    test.skipIf(isRoot)(
+    test.skipIf(isRoot || NO_PERMISSION_BITS)(
         'a folder under one that cannot be read is no-access, not a raw error',
         async () => {
             const locked = path.join(folders.make('artemis-exec-'), 'locked');
@@ -134,7 +148,7 @@ describe('spawnChild: how a child ends', () => {
         }
     );
 
-    test.skipIf(isRoot)(
+    test.skipIf(isRoot || NO_PERMISSION_BITS)(
         'a folder this user cannot enter (no execute bit) is no-access',
         async () => {
             const folder = folders.make('artemis-exec-');
@@ -162,49 +176,81 @@ describe('spawnChild: how a child ends', () => {
     });
 
     test('a child that exits before its timeout is not a timeout while its output drains', async () => {
+        // The timeout counts from the spawn, and starting node takes as long as the machine takes: it is
+        // set a little after the exit, which is inside the moment the output drains
+        await runNode('process.exit(0)');
+
+        const started = Date.now();
+
+        await runNode('process.exit(0)');
+
+        const timeoutMs = Date.now() - started + EXIT_DELAY_MS + EXEC_DRAIN_MS / 2;
+
         const slowExit = GRANDCHILD_JOB.replace(
             'process.exit(0)',
-            'setTimeout(() => process.exit(0), 30)'
+            `setTimeout(() => process.exit(0), ${EXIT_DELAY_MS})`
         );
 
-        const { outcome } = await runNode(slowExit, { timeoutMs: SHORT_TIMEOUT_MS });
+        const { outcome } = await runNode(slowExit, { timeoutMs });
 
         expect(outcome.timedOut).toBe(false);
     });
 
-    test('a grandchild keeps its pipe after the drain: its late write does not kill it', async () => {
-        const marker = path.join(folders.make('artemis-exec-'), 'marker');
-        const grandchild = `process.stdout.on('error', () => {}); setTimeout(() => process.stdout.write('late', (error) => require('node:fs').writeFileSync(process.argv[1], error ? 'dead' : 'ok')), ${LATE_WRITE_MS})`;
-        const parent = `require('node:child_process').spawn(process.execPath, ['-e', ${JSON.stringify(grandchild)}, process.argv[1]], { stdio: 'inherit' }); process.exit(0)`;
+    test.skipIf(UNDIAGNOSED_GRANDCHILD_PIPE)(
+        'a grandchild keeps its pipe after the drain: its late write does not kill it',
+        async () => {
+            const marker = path.join(folders.make('artemis-exec-'), 'marker');
+            const grandchild = `process.stdout.on('error', () => {}); setTimeout(() => process.stdout.write('late', (error) => require('node:fs').writeFileSync(process.argv[1], error ? 'dead' : 'ok')), ${LATE_WRITE_MS})`;
+            const parent = `require('node:child_process').spawn(process.execPath, ['-e', ${JSON.stringify(grandchild)}, process.argv[1]], { stdio: 'inherit' }); process.exit(0)`;
 
-        await runNode(parent, {}, [marker]);
-        await new Promise((resolve) => setTimeout(resolve, LATE_WRITE_MS * 2));
+            await runNode(parent, {}, [marker]);
+            await new Promise((resolve) => setTimeout(resolve, LATE_WRITE_MS * 2));
 
-        expect(fs.readFileSync(marker, 'utf8')).toBe('ok');
-    });
+            expect(fs.readFileSync(marker, 'utf8')).toBe('ok');
+        }
+    );
 
-    test('a script that is not executable is a start error, not an exit code', async () => {
-        const script = path.join(folders.make('artemis-exec-'), 'run.sh');
+    test.skipIf(NO_EXECUTE_BIT)(
+        'a script that is not executable is a start error, not an exit code',
+        async () => {
+            const script = path.join(folders.make('artemis-exec-'), 'run.sh');
 
-        fs.writeFileSync(script, '#!/bin/sh\nexit 0\n', { mode: 0o644 });
+            fs.writeFileSync(script, '#!/bin/sh\nexit 0\n', { mode: 0o644 });
 
-        const { outcome } = await runNode('', { command: script, args: [] });
+            const { outcome } = await runNode('', { command: script, args: [] });
 
-        expect(outcome.startError).toMatch(/EACCES/);
-    });
+            expect(outcome.startError).toMatch(/EACCES/);
+        }
+    );
 
     test('a child that already exited with an error is not reported as stopped', async () => {
+        let printed = '';
+
+        // writeSync: the line cannot be lost to process.exit, so seeing it means the child is exiting
         const child = spawnChild({
             command: process.execPath,
-            args: ['-e', GRANDCHILD_JOB.replace('process.exit(0)', 'process.exit(2)')],
+            args: [
+                '-e',
+                GRANDCHILD_JOB.replace(
+                    'process.exit(0)',
+                    "require('node:fs').writeSync(1, 'bye\\n'); process.exit(2)"
+                )
+            ],
             cwd: undefined,
             env: undefined,
             pipe: true,
             timeoutMs: undefined,
-            onData: () => undefined
+            onData: (chunk) => {
+                printed += chunk;
+            }
         });
 
-        await new Promise((resolve) => setTimeout(resolve, GAP_MS * 2));
+        // Not a fixed sleep: a slow machine (the Windows runner) can take longer than any gap to start node
+        await vi.waitFor(() => expect(printed).toContain('bye'), {
+            timeout: GRANDCHILD_LIFETIME_MS
+        });
+
+        await new Promise((resolve) => setTimeout(resolve, GAP_MS));
         await child.stop();
 
         expect(await child.done).toMatchObject({ code: 2, stopped: false });
@@ -219,8 +265,13 @@ describe('spawnChild: how a child ends', () => {
     test('a child killed by the timeout does not report success', async () => {
         const { outcome } = await runNode(SILENT_JOB, { timeoutMs: SHORT_TIMEOUT_MS });
 
-        expect(outcome).toMatchObject({ timedOut: true, signal: 'SIGTERM' });
         expect(outcome.code).not.toBe(0);
+    });
+
+    test.skipIf(NO_SIGNALS)('a child killed by the timeout names the signal', async () => {
+        const { outcome } = await runNode(SILENT_JOB, { timeoutMs: SHORT_TIMEOUT_MS });
+
+        expect(outcome).toMatchObject({ timedOut: true, signal: 'SIGTERM' });
     });
 });
 
@@ -292,10 +343,23 @@ describe('spawnChild: stop', () => {
 
         await child.stop();
 
-        expect(await child.done).toMatchObject({
-            stopped: true,
-            signal: expect.stringMatching(/^SIG/)
+        expect(await child.done).toMatchObject({ stopped: true });
+    });
+
+    test.skipIf(NO_SIGNALS)('names the signal that ended it', async () => {
+        const child = spawnChild({
+            command: process.execPath,
+            args: ['-e', SILENT_JOB],
+            cwd: undefined,
+            env: undefined,
+            pipe: true,
+            timeoutMs: undefined,
+            onData: () => undefined
         });
+
+        await child.stop();
+
+        expect(await child.done).toMatchObject({ signal: expect.stringMatching(/^SIG/) });
     });
 
     test('is harmless once the child has already ended', async () => {
@@ -314,34 +378,165 @@ describe('spawnChild: stop', () => {
         await expect(child.stop()).resolves.toBeUndefined();
     });
 
-    test('sends SIGKILL after the grace period to a child that ignores SIGTERM', async () => {
-        const script = `process.on('SIGTERM', () => {});
+    test.skipIf(NO_SIGNALS)(
+        'sends SIGKILL after the grace period to a child that ignores SIGTERM',
+        async () => {
+            const script = `process.on('SIGTERM', () => {});
 process.stdout.write('ready');
 ${SILENT_JOB}`;
 
-        let markReady: () => void = () => undefined;
+            let markReady: () => void = () => undefined;
 
-        const ready = new Promise<void>((resolve) => {
-            markReady = resolve;
-        });
+            const ready = new Promise<void>((resolve) => {
+                markReady = resolve;
+            });
+
+            const child = spawnChild({
+                command: process.execPath,
+                args: ['-e', script],
+                cwd: undefined,
+                env: undefined,
+                pipe: true,
+                timeoutMs: undefined,
+                killGraceMs: SHORT_TIMEOUT_MS,
+                onData: () => markReady()
+            });
+
+            await ready;
+            await child.stop();
+
+            expect(await child.done).toMatchObject({
+                stopped: true,
+                signal: expect.stringMatching(/^SIG/)
+            });
+        }
+    );
+});
+
+/** Whether a process is still there: signal 0 only asks. */
+const isAlive = (pid: number): boolean => {
+    try {
+        process.kill(pid, 0);
+
+        return true;
+    } catch {
+        // ignoreProcessGone: the error of signal 0 is how a process that is gone answers
+        return false;
+    }
+};
+
+const GRANDCHILD_JOB_FOR_TREE = `const grandchild = require('node:child_process').spawn(process.execPath, ['-e', 'setInterval(() => {}, 1000)'], { stdio: 'ignore' }); process.stdout.write(String(grandchild.pid)); setInterval(() => {}, 1000)`;
+const TREE_TIMEOUT_MS = 3000;
+const EXIT_SETTLES_MS = 60;
+const GONE_POLL_MS = 50;
+const GONE_WITHIN_MS = 5000;
+
+describe('killTree', () => {
+    test('a child that never started has no pid, and there is nothing to end', async () => {
+        await expect(killTree(undefined)).resolves.toBeUndefined();
+    });
+});
+
+describe.skipIf(!isWindows)('spawnChild: stop on Windows ends the whole tree', () => {
+    test('a grandchild the child started is gone after stop', async () => {
+        let grandchildPid = '';
 
         const child = spawnChild({
             command: process.execPath,
-            args: ['-e', script],
+            args: ['-e', GRANDCHILD_JOB_FOR_TREE],
             cwd: undefined,
             env: undefined,
             pipe: true,
             timeoutMs: undefined,
-            killGraceMs: SHORT_TIMEOUT_MS,
-            onData: () => markReady()
+            onData: (chunk) => {
+                grandchildPid += chunk;
+            }
         });
 
-        await ready;
+        await vi.waitFor(() => expect(grandchildPid).not.toBe(''));
+        expect(isAlive(Number(grandchildPid))).toBe(true);
+
         await child.stop();
 
-        expect(await child.done).toMatchObject({
-            stopped: true,
-            signal: expect.stringMatching(/^SIG/)
+        await vi.waitFor(() => expect(isAlive(Number(grandchildPid))).toBe(false), {
+            timeout: GONE_WITHIN_MS,
+            interval: GONE_POLL_MS
+        });
+    });
+
+    test('a child that already exited is not tree-killed: its pid may belong to another process now', async () => {
+        const killed: (number | undefined)[] = [];
+        let wrote = false;
+
+        const child = spawnChild({
+            command: process.execPath,
+            args: ['-e', "process.stdout.write('x'); process.exit(0)"],
+            cwd: undefined,
+            env: undefined,
+            pipe: true,
+            timeoutMs: undefined,
+            killTree: (pid) => {
+                killed.push(pid);
+
+                return Promise.resolve();
+            },
+            onData: () => {
+                wrote = true;
+            }
+        });
+
+        await vi.waitFor(() => expect(wrote).toBe(true));
+        // It exits right after writing; its output is still draining for a moment, which is when stop is called
+        await new Promise((resolve) => setTimeout(resolve, EXIT_SETTLES_MS));
+        await child.stop();
+
+        expect(killed).toEqual([]);
+    });
+
+    test('a child that is still running is tree-killed, with its pid', async () => {
+        const killed: (number | undefined)[] = [];
+
+        const child = spawnChild({
+            command: process.execPath,
+            args: ['-e', SILENT_JOB],
+            cwd: undefined,
+            env: undefined,
+            pipe: true,
+            timeoutMs: undefined,
+            killTree: (pid) => {
+                killed.push(pid);
+
+                return Promise.resolve();
+            },
+            onData: () => undefined
+        });
+
+        await child.stop();
+
+        expect(killed).toHaveLength(1);
+    });
+
+    test('a timeout ends the tree too', async () => {
+        let grandchildPid = '';
+
+        const child = spawnChild({
+            command: process.execPath,
+            args: ['-e', GRANDCHILD_JOB_FOR_TREE],
+            cwd: undefined,
+            env: undefined,
+            pipe: true,
+            timeoutMs: TREE_TIMEOUT_MS,
+            onData: (chunk) => {
+                grandchildPid += chunk;
+            }
+        });
+
+        expect(await child.done).toMatchObject({ timedOut: true });
+        expect(grandchildPid).not.toBe('');
+
+        await vi.waitFor(() => expect(isAlive(Number(grandchildPid))).toBe(false), {
+            timeout: GONE_WITHIN_MS,
+            interval: GONE_POLL_MS
         });
     });
 });

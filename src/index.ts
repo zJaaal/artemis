@@ -11,20 +11,25 @@ export { defineCommand, defineTopic } from './define/define.js';
 export { CommandError, UsageError } from './errors/errors.js';
 export type {
     ArgDefinition,
+    AuditLine,
     Command,
     CommandContext,
     CommandDefinition,
+    DestructiveFn,
     ExecFn,
     ExecOptions,
     ExecResult,
     ExitCode,
     FlagDefinition,
+    HistoryRead,
     InferArgs,
     InferFlags,
     NextFn,
     PlanFn,
+    ReadHistoryOptions,
     RunInput,
     RunOptions,
     TopicDefinition
 } from './models.js';
+export { readHistory } from './cli/read-history.js';
 export { run } from './run/run.js';

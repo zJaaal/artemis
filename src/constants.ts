@@ -203,6 +203,8 @@ export const NOTE_SEPARATOR = '; ';
 /** What help says about the two markers of a command definition. */
 export const DESTRUCTIVE_NOTE =
     'Changes or deletes data that cannot be recovered. It asks first; pass --yes to confirm without a question.';
+/** Said after the Destructive line of a command whose `destructive` is a function of the call. */
+export const DESTRUCTIVE_BY_CALL_NOTE = '(depends on the arguments and flags)';
 export const DRY_RUN_NOTE = 'Says what it would do and changes nothing.';
 
 /** The tail of the line a brief manifest ends with: how to get one command in full. */
@@ -395,3 +397,54 @@ export const NEW_AGENTS_TITLE = '# AGENTS.md';
 export const INIT_POINTER_MAX_BYTES = 400;
 export const CRLF_EOL = '\r\n';
 export const LF_EOL = '\n';
+
+// ---------------------------------------------------------------------------------------------
+// Windows: starting `.cmd` and `.bat` files, and stopping a tree of processes
+// ---------------------------------------------------------------------------------------------
+
+/** What `process.platform` says on Windows. */
+export const WINDOWS_PLATFORM = 'win32';
+
+/** What Windows looks for when a command has no extension and PATHEXT says nothing. */
+export const DEFAULT_PATHEXT = '.COM;.EXE;.BAT;.CMD';
+export const PATHEXT_VARIABLE = 'PATHEXT';
+export const PATH_VARIABLE = 'PATH';
+export const COMSPEC_VARIABLE = 'ComSpec';
+export const DEFAULT_COMSPEC = 'cmd.exe';
+
+/** The separator of PATH and PATHEXT on Windows. */
+export const WINDOWS_LIST_SEPARATOR = ';';
+
+/** A file that only `cmd.exe` can start: a batch file. */
+export const CMD_SCRIPT_PATTERN = /\.(?:cmd|bat)$/i;
+
+/** An npm shim in `node_modules/.bin`: it hands its arguments to a second `cmd.exe`, so they are escaped twice. */
+export const CMD_SHIM_PATTERN = /node_modules[\\/]\.bin[\\/][^\\/]+\.cmd$/i;
+
+/** Every character `cmd.exe` gives a meaning to (and space), as `cross-spawn` lists them: each gets a `^` before it. */
+export const CMD_META_CHARACTERS = /([()\][%!^"`<>&|;, *?])/g;
+
+/** The arguments that make `cmd.exe` run one command line and stop (`/d` no AutoRun, `/s` keep the quotes, `/c` run). */
+export const CMD_SWITCHES: readonly string[] = ['/d', '/s', '/c'];
+
+/** The two rules for quoting an argument that `cmd.exe` hands to a program (https://qntm.org/cmd): backslashes before a quote, and at the end. */
+export const CMD_QUOTE_BACKSLASHES = /(?=(\\+?)?)\1"/g;
+export const CMD_TRAILING_BACKSLASHES = /(?=(\\+?)?)\1$/;
+export const CMD_CARET = '^$1';
+export const CMD_DOUBLED_BACKSLASHES = '$1$1';
+export const CMD_ESCAPED_QUOTE = '$1$1\\"';
+
+/** Windows refuses to rename over a file another process has open (EPERM, EACCES or EBUSY): try again, briefly. */
+export const ATOMIC_RENAME_RETRIES = 10;
+export const ATOMIC_RENAME_RETRY_MS = 20;
+export const ATOMIC_RENAME_RETRY_CODES: readonly string[] = ['EPERM', 'EACCES', 'EBUSY'];
+
+/** Windows has no process groups and no polite signal: `taskkill /T /F` ends a process and everything it started. */
+export const TASKKILL_COMMAND = 'taskkill';
+export const TASKKILL_ARGUMENTS: readonly string[] = ['/T', '/F'];
+export const TASKKILL_PID_FLAG = '/pid';
+
+/** The double quote that wraps an argument for `cmd.exe`. */
+export const DOUBLE_QUOTE = '"';
+/** A command with no path separator in it: a name to look up, not a path. */
+export const BARE_COMMAND_PATTERN = /^[^\\/]+$/;
