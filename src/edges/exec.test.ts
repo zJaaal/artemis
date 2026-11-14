@@ -448,32 +448,56 @@ describe.skipIf(!isWindows)('spawnChild: stop on Windows ends the whole tree', (
         });
     });
 
-    test('a child that already exited is not tree-killed: what it left running stays', async () => {
-        let grandchildPid = '';
-
-        const leaves = `const grandchild = require('node:child_process').spawn(process.execPath, ['-e', 'setInterval(() => {}, 1000)'], { stdio: ['ignore', 'inherit', 'inherit'] }); process.stdout.write(String(grandchild.pid)); process.exit(0)`;
+    test('a child that already exited is not tree-killed: its pid may belong to another process now', async () => {
+        const killed: (number | undefined)[] = [];
+        let wrote = false;
 
         const child = spawnChild({
             command: process.execPath,
-            args: ['-e', leaves],
+            args: ['-e', "process.stdout.write('x'); process.exit(0)"],
             cwd: undefined,
             env: undefined,
             pipe: true,
             timeoutMs: undefined,
-            onData: (chunk) => {
-                grandchildPid += chunk;
+            killTree: (pid) => {
+                killed.push(pid);
+
+                return Promise.resolve();
+            },
+            onData: () => {
+                wrote = true;
             }
         });
 
-        await vi.waitFor(() => expect(grandchildPid).not.toBe(''));
+        await vi.waitFor(() => expect(wrote).toBe(true));
+        // It exits right after writing; its output is still draining for a moment, which is when stop is called
         await new Promise((resolve) => setTimeout(resolve, EXIT_SETTLES_MS));
         await child.stop();
 
-        const survived = isAlive(Number(grandchildPid));
+        expect(killed).toEqual([]);
+    });
 
-        process.kill(Number(grandchildPid));
+    test('a child that is still running is tree-killed, with its pid', async () => {
+        const killed: (number | undefined)[] = [];
 
-        expect(survived).toBe(true);
+        const child = spawnChild({
+            command: process.execPath,
+            args: ['-e', SILENT_JOB],
+            cwd: undefined,
+            env: undefined,
+            pipe: true,
+            timeoutMs: undefined,
+            killTree: (pid) => {
+                killed.push(pid);
+
+                return Promise.resolve();
+            },
+            onData: () => undefined
+        });
+
+        await child.stop();
+
+        expect(killed).toHaveLength(1);
     });
 
     test('a timeout ends the tree too', async () => {

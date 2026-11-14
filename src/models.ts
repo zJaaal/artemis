@@ -936,6 +936,8 @@ export type SpawnRequest = {
     timeoutMs: number | undefined;
     /** How long a child gets after SIGTERM before SIGKILL. Default: `EXEC_KILL_GRACE_MS`. */
     killGraceMs?: number;
+    /** How a tree of processes is ended on Windows. Default: `killTree` (taskkill). A test passes its own to see whether it is called. */
+    killTree?: KillTreeFn;
     /** Called with each chunk of output as it arrives (piped only). */
     onData: (chunk: string, stream: ChildStream) => void;
 };

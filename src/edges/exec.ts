@@ -228,7 +228,7 @@ export const spawnChild: SpawnChildFn = (request) => {
             // what it left running, as on POSIX (the drain below lets go of the pipes)
             if (!exited) {
                 // No polite signal for a console process, and no process group: end the whole tree at once
-                await killTree(child.pid);
+                await (request.killTree ?? killTree)(child.pid);
                 // And the child itself, in case taskkill itself could not run
                 child.kill();
             }
