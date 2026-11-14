@@ -27,8 +27,10 @@ const isRoot = process.getuid?.() === ROOT_UID;
 afterEach(() => folders.cleanUp());
 
 const HELLO_SCRIPT = "process.stdout.write('hi\\n')";
+
 const NOISY_FAILURE =
     "for (let i = 1; i <= 100; i++) console.log('line ' + i); process.exitCode = 1";
+
 const FOREVER_SCRIPT = 'setInterval(() => {}, 1000)';
 const SHORT_TIMEOUT_MS = '100';
 const LONG_LINE_LENGTH = 1000;
