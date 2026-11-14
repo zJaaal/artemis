@@ -107,7 +107,7 @@ The first CI run on `windows-latest` (Node 24) sorted into these. W2, W3 and W5 
 
 - On `win32` only, before spawning, `ctx.exec` resolves a bare command (no path separator, no extension) through `PATH` and `PATHEXT` (default `.COM;.EXE;.BAT;.CMD`), in the call's `cwd` and `env`. A command with a path or an extension is used as given.
 - When the resolved file is `.cmd` or `.bat`, it runs as `cmd.exe /d /s /c "<file> <args>"` with `windowsVerbatimArguments: true`, with `cross-spawn`'s escaping, all of it:
-  - the metacharacters are `( ) [ ] % ! ^ " \` < > & | ; , * ?` and space (`/([()\][%!^"`<>&|;, *?])/g`);
+  - the metacharacters are ``( ) [ ] % ! ^ " ` < > & | ; , * ?`` and space (``/([()\][%!^"`<>&|;, *?])/g``);
   - the file path: each metacharacter prefixed with `^`;
   - each argument: backslashes before a `"` doubled and the `"` escaped as `\"`, trailing backslashes doubled, the whole wrapped in `"..."`, then each metacharacter prefixed with `^`;
   - **shims are escaped twice:** when the file matches `/node_modules[\\/]\.bin[\\/][^\\/]+\.cmd$/i` (an npm `.bin` shim, which hands its arguments to another `cmd.exe`), the metacharacter step runs a second time on each argument.
