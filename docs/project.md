@@ -24,12 +24,12 @@ All settings are optional, under the `artemis` key of that `package.json`:
 }
 ```
 
-| Setting       | What it does                                                                                                          | Default                                                                |
-| ------------- | --------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------- |
-| `commandsDir` | The commands folder, relative to the folder of that `package.json`.                                                   | `commands`                                                             |
-| `bin`         | The name help and usage lines show.                                                                                   | `art` (see [Your own command name](#your-own-command-name) for a tool) |
-| `stateDir`    | Where the store kit keeps its documents, relative to that folder. Read by `art state` and `defineStore({ project })`. | `state`                                                                |
-| `audit`       | `false` stops `art` from appending each run to `audit.jsonl` in the state folder (what `art history` reads).          | `true`                                                                 |
+| Setting       | What it does                                                                                                                                                                 | Default                                                                |
+| ------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------- |
+| `commandsDir` | The commands folder, relative to the folder of that `package.json`.                                                                                                          | `commands`                                                             |
+| `bin`         | The name help and usage lines show.                                                                                                                                          | `art` (see [Your own command name](#your-own-command-name) for a tool) |
+| `stateDir`    | Where the store kit keeps its documents, relative to that folder. Read by `art state` and `defineStore({ project })`.                                                        | `state`                                                                |
+| `audit`       | `false` stops `art` from appending each run to `audit.jsonl` in the state folder (what `art history` reads). A published tool records nothing unless it says `true` (below). | `true` (a tool: `false`)                                               |
 
 `art` always shows `art` (or your `bin` setting) in help, even in a project that publishes a CLI of its own, so what the help tells you to type is what you typed.
 
@@ -61,10 +61,10 @@ and point `package.json` at it, with `@zjaaal/artemis` as a dependency:
     "name": "mytool",
     "type": "module",
     "bin": { "mytool": "bin/mytool.js" },
-    "dependencies": { "@zjaaal/artemis": "^1.2.0" }
+    "dependencies": { "@zjaaal/artemis": "^1.3.0" }
 }
 ```
 
-`root` is where your bin file is: your tool runs **its own** `commands/`, wherever the user happens to be standing, not the commands of whatever project the user is in. It finds its package through the nearest `package.json` with a name, a `bin` or an `artemis` key, and never looks past its own folder in `node_modules`, so it never climbs into the project that installed it, even if you forgot to declare a `bin`. Make sure `commands/` ships with your package (check `files` in your `package.json`): a tool published without its commands fails with "Commands folder not found" and a hint for you, instead of running the commands of the project that installed it. Nothing is reserved for a tool: `init` and every other word is yours. Help and usage lines show `mytool`, taken from the single key of your `bin` object, or from your package name (without its `@scope/`) when `bin` is a plain string or has several keys, or from `"artemis": { "bin" }` if you set it. `cli` resolves to the exit code and never calls `process.exit`; it also takes `argv` and the host options of `run()` (`stdout`, `stderr`, `interactive`, `color`, `env`) if you need them.
+`root` is where your bin file is: your tool runs **its own** `commands/`, wherever the user happens to be standing, not the commands of whatever project the user is in. It finds its package through the nearest `package.json` with a name, a `bin` or an `artemis` key, and never looks past its own folder in `node_modules`, so it never climbs into the project that installed it, even if you forgot to declare a `bin`. Make sure `commands/` ships with your package (check `files` in your `package.json`): a tool published without its commands fails with "Commands folder not found" and a hint for you, instead of running the commands of the project that installed it. Nothing is reserved for a tool: `init` and every other word is yours, unless you turn auditing on: `"artemis": { "audit": true }` in your `package.json` makes the tool record each run in `audit.jsonl` in its state folder, and gives it the word `history` (`mytool history`), which hides a command of yours with that name (with a warning) and shows up as `builtins: ["history"]` in its help. A tool installed from npm has its state folder inside `node_modules`, so set an absolute `"stateDir"` for it, or leave auditing off: nothing detects it. Help and usage lines show `mytool`, taken from the single key of your `bin` object, or from your package name (without its `@scope/`) when `bin` is a plain string or has several keys, or from `"artemis": { "bin" }` if you set it. `cli` resolves to the exit code and never calls `process.exit`; it also takes `argv` and the host options of `run()` (`stdout`, `stderr`, `interactive`, `color`, `env`) if you need them.
 
 For full control of the commands folder, the streams and the exit code, call [`run(argv, options)`](run.md) from your own bin file.

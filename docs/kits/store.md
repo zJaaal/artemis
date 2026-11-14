@@ -28,6 +28,8 @@ A document is `<dir>/<name>.json`. A name is lowercase letters, digits and dashe
 
 `locked` and `update` take **synchronous work only**: a function that returns a promise is a `TypeError`, because the lock would be released before it settled. Long or async work goes in `store.lock`. Promise work that was refused is fenced off: a `write`, `update`, `locked` or `reset` called from it after the refusal throws, through any document, so it cannot write later. A write it made before its first `await` ran inside the lock and stays.
 
+**On Windows** a rename over a file that another process has open fails (`EPERM`, `EACCES`, `EBUSY`), so `write` tries it again 10 times, 20 ms apart, before it gives up with the last error. A reader that holds the file open for longer than that (about 200 ms) still makes the write fail: that is a limit of Windows.
+
 **Versions.** A document is plain JSON (version 0) unless it says otherwise, so every file you have today works as it is. From version 1 on the file is `{ "$version": n, "data": ... }`, and you give the steps that bring an older file up:
 
 ```js

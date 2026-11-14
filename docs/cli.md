@@ -35,7 +35,7 @@ Global flags may be typed before or after the command name: `art --json math add
 | `art help --agents`                  | the calling contract: the "Calling a command" section of the [AGENTS.md](../AGENTS.md) of the running copy |
 | `art help --authoring`               | how to write a command and set a project up: the other two sections of that AGENTS.md                      |
 
-On the shipped `art`, `help` also lists the words the binary handles itself (`init`, `state`, `skill`, `doctor` and `history`) under **Built-in**, and `help --json` adds them as a top-level `builtins` array in the same shape as `commands`. `art help state` and `art help init` (with or without `--json`) describe them like a command, and a typo close to one suggests it. A tool published with its own bin file has no `builtins`.
+On the shipped `art`, `help` also lists the words the binary handles itself (`init`, `state`, `skill`, `doctor`, `history` and `new`) under **Built-in**, and `help --json` adds them as a top-level `builtins` array in the same shape as `commands`. `art help state` and `art help init` (with or without `--json`) describe them like a command, and a typo close to one suggests it. A tool published with its own bin file has no `builtins`, unless it turns auditing on (`"artemis": { "audit": true }`): then it has `builtins: ["history"]`, and the word.
 
 ### The JSON contract
 
@@ -130,7 +130,7 @@ A key whose value is its default is left out of an entry: `aliases` and `example
             "dryRun": true
         }
     ],
-    "builtins": ["init", "state", "skill", "doctor", "history"], // the shipped art only
+    "builtins": ["init", "state", "skill", "doctor", "history", "new"], // the shipped art only (a tool with auditing on: history)
     "globalFlags": "--help --json --yes --dry-run --quiet --log <file>",
     "more": "art help <command> --json",
     "search": "art help --search <words> --json"
@@ -230,6 +230,18 @@ $ art history --json              # { entries, skipped }: the lines as written, 
 ```
 
 With no audit file it says "Nothing recorded yet." (`entries: []` under `--json`). `art state` does not list the audit files, and `--dry-run` and `--log` are refused (exit `2`).
+
+On a published tool (the `cli({ root })` of [Your own command name](project.md#your-own-command-name)) the trail is off unless the tool's own `package.json` says `"artemis": { "audit": true }`. Then the tool has the word `history` too, with the same output, filters and flags and its own name in the usage line (`mytool history --json`); a command or topic of the tool called `history` is hidden behind the word, with the same warning. Its state folder is inside its package, so for a tool installed from npm set an absolute `stateDir` (or leave auditing off): nothing detects it. A program that calls [`run()`](run.md) gets `readHistory` to build its own.
+
+### `art new`: write a command
+
+```console
+$ art new db reset --description "Delete the local database and rebuild it" --destructive --supports-dry-run
+Created /work/app/commands/db/reset.js
+Next: art db reset --help
+```
+
+`art new <command words>... --description <text> [--arg <name>]... [--flag <name>]... [--destructive] [--supports-dry-run] [--json] [--quiet]` is a word of the shipped `art` that writes one command file, `<commandsDir>/<word 1>/.../<word n>.js`, creating the folders. Each word is lowercase letters, digits and dashes, and the first may not be a word of the binary (`help`, `init`, `state`, `skill`, `doctor`, `history`, `new`). `--arg <name>` adds a required argument and `--flag <name>` a boolean flag (repeat them; each is described `TODO: describe`); `--destructive` writes `destructive: true` and `--supports-dry-run` writes `dryRun: true` with a `ctx.plan` and `ctx.dryRun` block. The file is a working stub: it loads, `art <words> --help` works, and the body says where the work goes. It never overwrites anything: a file that exists, a topic folder of that name, or an earlier word that is already a command is exit `1` with nothing written. A wrong command line (a bad word, no `--description`, a reserved flag, `--yes`, `--dry-run`, `--log`) is exit `2`. Under `--json`: `{ "ok": true, "command": "new", "result": { "id": "db reset", "file": "..." }, "next": ["art db reset --help"] }`. A tool reserves nothing, so it has no `new`.
 
 ### `art skill` and `art doctor`
 

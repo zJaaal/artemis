@@ -128,7 +128,7 @@ $ npx art hello --json
 $ npx art help
 ```
 
-A command is one file in `commands/`, with arguments and flags that `help` and `help --json` describe:
+`npx art new greet --description "Greet someone" --flag shout` writes the file of a command for you (a working stub, never over a file that exists). A command is one file in `commands/`, with arguments and flags that `help` and `help --json` describe:
 
 ```js
 // commands/greet.js
@@ -186,11 +186,12 @@ Everything an agent needs to call a command and to write one is in [AGENTS.md](A
 - [Projects and settings](https://github.com/zJaaal/artemis/blob/main/docs/project.md): where `art` finds the project, the `artemis` settings, and shipping the CLI under your own name.
 - [`run(argv, options)`](https://github.com/zJaaal/artemis/blob/main/docs/run.md): full control of your own bin file, and testing your commands.
 - Kits, opt-in pieces imported from their own subpath: [Store](https://github.com/zJaaal/artemis/blob/main/docs/kits/store.md), [Worktrees](https://github.com/zJaaal/artemis/blob/main/docs/kits/worktrees.md), [Terminal](https://github.com/zJaaal/artemis/blob/main/docs/kits/terminal.md).
-- [Upgrading](https://github.com/zJaaal/artemis/blob/main/docs/upgrading.md): to 1.2 and 1.1, and from 0.1.
+- [Upgrading](https://github.com/zJaaal/artemis/blob/main/docs/upgrading.md): to 1.3, 1.2 and 1.1, and from 0.1.
 
 ## Requirements
 
 - Node 22 or newer. ESM only: use `import`, not `require`.
+- Linux and Windows are tested in CI on every change (Linux with Node 22 and 24, Windows with Node 24); it runs on macOS too. On Windows, `ctx.exec` starts `.cmd` files (`npm`, `pnpm`, `node_modules/.bin`) through `cmd.exe` with every argument escaped.
 - Command files are plain `.js` files (discovery loads `.js` only).
 
 ## Development

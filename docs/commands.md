@@ -57,17 +57,17 @@ export default defineCommand({
 
 ### Definition fields
 
-| Field         | Required | What it is                                                                                |
-| ------------- | -------- | ----------------------------------------------------------------------------------------- |
-| `description` | yes      | One line, shown by `help` and `help --json`.                                              |
-| `run`         | yes      | `({ args, flags, ctx }) => result`. May be `async`. The result is printed under `--json`. |
-| `args`        |          | Positional arguments, in order.                                                           |
-| `flags`       |          | Flags, by name.                                                                           |
-| `aliases`     |          | Other names the command answers to.                                                       |
-| `examples`    |          | Example invocations, without the binary name. Shown by `--help` and `help --json`.        |
-| `destructive` |          | `true` for a command that changes or deletes data nobody can get back. Enforced (below).  |
-| `dryRun`      |          | `true` when the command honors `--dry-run` (below).                                       |
-| anything else |          | Passes through untouched, so a project can build its own conventions on top.              |
+| Field         | Required | What it is                                                                                                          |
+| ------------- | -------- | ------------------------------------------------------------------------------------------------------------------- |
+| `description` | yes      | One line, shown by `help` and `help --json`.                                                                        |
+| `run`         | yes      | `({ args, flags, ctx }) => result`. May be `async`. The result is printed under `--json`.                           |
+| `args`        |          | Positional arguments, in order.                                                                                     |
+| `flags`       |          | Flags, by name.                                                                                                     |
+| `aliases`     |          | Other names the command answers to.                                                                                 |
+| `examples`    |          | Example invocations, without the binary name. Shown by `--help` and `help --json`.                                  |
+| `destructive` |          | `true` for a command that changes or deletes data nobody can get back, or a function of the call. Enforced (below). |
+| `dryRun`      |          | `true` when the command honors `--dry-run` (below).                                                                 |
+| anything else |          | Passes through untouched, so a project can build its own conventions on top.                                        |
 
 **Args** (`{ name, description?, required?, default?, choices? }`): a required arg cannot have a default, and a required arg cannot come after an optional one. `choices` limits the allowed values.
 
@@ -82,6 +82,21 @@ export default defineCommand({
 `defineCommand` throws a `TypeError` right away, with a message that names the problem, if a definition breaks one of these rules.
 
 **`destructive: true`** is enforced before `run`: in a terminal Artemis asks ("art wipe changes or deletes data that cannot be recovered. Continue?", default no; declining is `Cancelled.`, exit `1`), with `--yes` it runs, and with nobody to answer (a pipe, an agent, `--json`) it fails before `run` with the hint "Pass --yes to confirm." and, when the command supports a dry run, "Pass --dry-run first to see what it would do.". Drop your own confirm. `ctx.invoke` of a destructive command passes the caller's `--yes` and `--dry-run` along; without them it asks again or fails the caller, because a confirmation covers the command the user named, not the ones it calls.
+
+**`destructive` as a function** decides per call, for a command that deletes only some of the time. It gets the parsed `args` and `flags`, typed from the definition (defaults applied), and answers `true` or `false`:
+
+```js
+export default defineCommand({
+    description: 'Start dotCMS (data is pruned unless --no-prune)',
+    destructive: ({ flags }) => !flags['no-prune'],
+    flags: { 'no-prune': { type: 'boolean', description: 'Keep the data' } },
+    run({ flags, ctx }) {
+        // ...
+    }
+});
+```
+
+It is called once per call, after the command line parsed and before the confirmation step, so a confirmation, a refusal and `--yes` work as they do for `true`; it is called with `--yes` and `--dry-run` too, so a broken function fails the same way on every call, but its answer only matters when neither is passed. `ctx.invoke` calls the function of the invoked command with that command's own `args` and `flags`. A function that throws, or returns anything but a boolean, is a bug in the command: it fails before `run` like a plain `Error` from `run` (exit `1`, a stack), and a non-boolean answer says `destructive() of "<id>" returned <value>; it must return true or false`. Everywhere a command is described (`--help`, `help --json`, the brief listing, `art skill`, `art doctor`) a function counts as `destructive: true`, because the reader cannot run it: text help adds "(depends on the arguments and flags)", and the manifest says `destructive: true` with no new key.
 
 **`dryRun: true`** says the command honors `ctx.dryRun`. `--dry-run` on any other command is a usage error (exit `2`), so nothing ever runs by surprise. Under `--dry-run` nothing is asked, `ctx.plan(step)` collects steps, `ctx.exec` starts no child (it adds itself to the plan), and the envelope gets `dryRun: true` and `plan` (`[]` when nothing was planned). In text mode the plan prints as a list after the command's own output (or "Nothing to do."), and `--quiet` never hides it. A call that must run to tell you what it would do (`git rev-parse`) passes `readOnly: true` to `ctx.exec`: it runs for real, captured, and adds nothing to the plan. A command that needs the output of any other call checks `ctx.dryRun`. `ctx.invoke` of a command with `dryRun: true` passes `--dry-run` along and appends its plan to the caller's; invoking one without it under `--dry-run` fails the caller with exit `1`.
 
@@ -105,7 +120,7 @@ export default defineCommand({
 | `ctx.dryRun`                   | Whether `--dry-run` was passed (only ever `true` for a command with `dryRun: true`).                                                                                                                                                     |
 | `ctx.plan(step)`               | Under `--dry-run`, describes one thing the command would do. A no-op otherwise.                                                                                                                                                          |
 | `ctx.next(...lines)`           | Suggests what to run after this succeeds: what follows the bin (`'dotcms wait --instance x --json'`), which Artemis adds. Goes out as `next` in the envelope; printed as `Next:` lines on stderr in text mode.                           |
-| `ctx.exec(cmd, args, options)` | Runs a child process, never through a shell. Its output follows `--quiet`, `--log` and `--json`. See "Running children" below.                                                                                                           |
+| `ctx.exec(cmd, args, options)` | Runs a child process, never through a shell (on Windows, a `.cmd` file goes through `cmd.exe`, escaped). Its output follows `--quiet`, `--log` and `--json`. See "Running children" below.                                               |
 | `ctx.style`                    | Color helpers (`bold`, `dim`, `red`, `green`, `yellow`, `cyan`); plain text when color is off.                                                                                                                                           |
 | `ctx.commands`                 | Every discovered command, for building lists of commands to run in order.                                                                                                                                                                |
 | `ctx.invoke(id, argv)`         | Runs another command by id or alias and returns its result. It inherits `--json`, `--yes`, `--dry-run`, `--quiet` and the `--log` file. A bad call (unknown command, wrong arguments, `--help`) fails the calling command with exit `1`. |
@@ -116,7 +131,9 @@ export default defineCommand({
 const { code, output } = await ctx.exec('docker', ['compose', 'up', '-d'], { cwd: '/srv/app' });
 ```
 
-`args` is an array and nothing in it is interpreted (no shell), so a value with spaces or `$(...)` reaches the child as one unchanged string. Options: `cwd`, `env` (default: the process environment), `capture` (return the output instead of showing it), `readOnly` (the call changes nothing, so it runs even under `--dry-run`, captured), `reject` (default `true`: a non-zero exit throws; `false` returns `{ code }`), `timeoutMs` (SIGTERM, then SIGKILL after 5 s; always throws) and `errorPattern` (below). It resolves to `{ code, output, skipped }` (and `errorLines` with `reject: false`, below): `output` is stdout and stderr interleaved, and empty when the output went to the terminal or the call was skipped.
+`args` is an array and nothing in it is interpreted (no shell), so a value with spaces or `$(...)` reaches the child as one unchanged string.
+
+**On Windows** `npm`, `pnpm`, `npx`, `yarn` and everything in `node_modules/.bin` are `.cmd` files, which Node will not start without a shell. So there a bare command (no path, no extension) is looked up through the folder of the call (`cwd`), `PATH` and `PATHEXT` (default `.COM;.EXE;.BAT;.CMD`) in the `env` of the call, and a `.cmd` or `.bat` file, found that way or given with its path, runs as `cmd.exe /d /s /c "<file> <args>"` (the `ComSpec` of the call's environment, or `cmd.exe`), with every argument quoted and escaped the way `cross-spawn` does it, so that nothing in it is interpreted by `cmd.exe`: `a&b`, `%PATH%`, `"q"` and `^` reach the program unchanged. So "never through a shell" holds for everything but a Windows `.cmd` file, which goes through `cmd.exe` with that escaping. `.exe` files start directly, as everywhere. Stopping a child (the end of `run`, a timeout) ends its whole tree there with `taskkill /T /F`, since Windows has no process groups and no polite signal for a console process: the child gets no chance to clean up. A detached child is never stopped by Artemis. Options: `cwd`, `env` (default: the process environment), `capture` (return the output instead of showing it), `readOnly` (the call changes nothing, so it runs even under `--dry-run`, captured), `reject` (default `true`: a non-zero exit throws; `false` returns `{ code }`), `timeoutMs` (SIGTERM, then SIGKILL after 5 s; always throws) and `errorPattern` (below). It resolves to `{ code, output, skipped }` (and `errorLines` with `reject: false`, below): `output` is stdout and stderr interleaved, and empty when the output went to the terminal or the call was skipped.
 
 How the child's output travels is the first row that applies:
 

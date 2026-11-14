@@ -4,18 +4,26 @@ What changed in each release, newest first. Breaking entries link to their secti
 
 ## Unreleased
 
+## 1.3.0 (2026-11-14)
+
+### Breaking
+
+- `new` is a word of the shipped `art`: a command or topic called `new` is hidden there ([upgrading](docs/upgrading.md#upgrading-to-13)).
+
 ### Added
 
-- `art new <command words>... --description <text>` writes the file of a new command, never over one that exists. `new` is a word of the shipped `art` now: a command or topic called `new` is hidden there.
+- `art new <command words>... --description <text>` writes the file of a new command, never over one that exists.
 - A published tool turns the audit trail on with `"artemis": { "audit": true }` and then has the word `history`; `run()` callers get `readHistory` and the documented `auditFile` option.
 - `destructive` can be a function of the call's `args` and `flags`, so `start --no-prune` can skip the confirmation that `start` needs.
+- `CHANGELOG.md`, backfilled to 0.1.0 and shipped in the package.
+- Windows is tested in CI, with the same steps as Linux.
 
 ### Fixed
 
 - `ctx.exec` starts `.cmd` and `.bat` files on Windows (`npm`, `pnpm`, `npx` and everything in `node_modules/.bin`): through `cmd.exe`, with every argument escaped so nothing in it is interpreted.
+- Stopping a child of `ctx.exec` on Windows ends everything it started too (`taskkill /T /F`), where before a dev server's workers survived.
 - The worktrees kit recognizes a checkout on Windows: paths are the real paths the disk reports (short names expanded) and compare without regard to case.
 - The store's atomic write tries again on Windows when another process has the file open (EPERM, EACCES, EBUSY), instead of failing at once.
-- Stopping a child of `ctx.exec` on Windows ends everything it started too (`taskkill /T /F`), where before a dev server's workers survived.
 - A path under a file is "not a folder" on Windows too (it said "missing"), so `art state` with a `stateDir` under a file fails with a hint on every platform: "The state folder ... is not a folder" replaces "Cannot read the state folder".
 
 ## 1.2.0 (2026-11-14)
