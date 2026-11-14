@@ -27,10 +27,12 @@ import {
     HISTORY_BUILTINS,
     HISTORY_WORD,
     INIT_WORD,
+    NEW_WORD,
     SKILL_WORD,
     STATE_WORD
 } from './constants.js';
 import { historyCommand, shippedHistory } from './history-command.js';
+import { newCommand } from './new-command.js';
 import { skillCommand } from './skill-command.js';
 import { doctorCommand } from './doctor-command.js';
 import { initCommand } from './init-command.js';
@@ -119,7 +121,8 @@ const SHIPPED_WORDS: readonly ShippedWord[] = [
     { word: STATE_WORD, run: (words, host, cwd) => stateCommand(words, host, cwd) },
     { word: SKILL_WORD, run: skillCommand },
     { word: DOCTOR_WORD, run: doctorCommand },
-    { word: HISTORY_WORD, run: shippedHistory }
+    { word: HISTORY_WORD, run: shippedHistory },
+    { word: NEW_WORD, run: newCommand }
 ];
 
 /** Prints the one-line version warning to stderr, when the running Artemis is not the project's. */

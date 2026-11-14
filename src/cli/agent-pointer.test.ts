@@ -28,7 +28,7 @@ describe('pointerText', () => {
             [
                 '## Commands',
                 '',
-                "This project's commands run through `art`. Start with `npx art help --json --brief`, call one with `--json`, and pass `--dry-run` before `--yes` on a destructive one. To write a new one: `npx art help --authoring`."
+                'This project\'s commands run through `art`. Start with `npx art help --json --brief`, call one with `--json`, and pass `--dry-run` before `--yes` on a destructive one. To write a new one: `npx art new <words> --description "..."`, and `npx art help --authoring` has the rules.'
             ].join('\n')
         );
     });

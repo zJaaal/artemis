@@ -142,6 +142,58 @@ export const NOTHING_RECORDED = 'Nothing recorded yet.';
 export const HISTORY_DRY_RUN_TEXT = 'dry run';
 export const HISTORY_LIMIT_PREFIX = `${HISTORY_FLAGS.limit}=`;
 
+/** `new` writes the file of a new command, so an agent need not remember the layout. */
+export const NEW_WORD = 'new';
+export const NEW_USAGE_LINE = `${NEW_WORD} <command words>... --description <text> [--arg <name>]... [--flag <name>]... [--destructive] [--supports-dry-run] [--json] [--quiet]`;
+export const NEW_HELP = `Usage: ${NEW_USAGE_LINE}
+
+Writes the file of a new command in the commands folder of the project: one word per level, so "${NEW_WORD} db reset" is commands/db/reset.js, run as "db reset". The file is a working stub: it loads, has --help, and says where the work goes. It never overwrites a file, and refuses a name that is already a command or a topic.
+
+  --description <text>   what the command does, one line (required)
+  --arg <name>           a required argument (repeat for more)
+  --flag <name>          a boolean flag (repeat for more)
+  --destructive          writes "destructive: true"
+  --supports-dry-run     writes "dryRun: true" and a ctx.plan / ctx.dryRun block`;
+
+export const NEW_FLAGS = {
+    json: '--json',
+    help: '--help',
+    helpShort: '-h',
+    quiet: '--quiet',
+    description: '--description',
+    arg: '--arg',
+    flag: '--flag',
+    destructive: '--destructive',
+    supportsDryRun: '--supports-dry-run'
+} as const;
+
+/** The flags of `new` that take a value, as `--x value` or `--x=value`. */
+export const NEW_VALUE_FLAGS: readonly string[] = [
+    NEW_FLAGS.description,
+    NEW_FLAGS.arg,
+    NEW_FLAGS.flag
+];
+
+/** What a command word, and the name of an arg or a flag, may look like. */
+export const NEW_WORD_PATTERN = /^[a-z0-9][a-z0-9-]*$/;
+export const NEW_NAME_PATTERN = /^[a-z][a-z0-9-]*$/;
+
+/** A name an object can use as a key without quotes (what Prettier leaves unquoted). */
+export const IDENTIFIER_PATTERN = /^[a-z][a-z0-9]*$/;
+
+/** A line break: a description is one line. */
+export const NEWLINE_PATTERN = /[\r\n]/;
+
+export const NEW_PLACEHOLDER = 'TODO: describe';
+export const NEW_PLAN_PLACEHOLDER = 'TODO: describe each step this command takes';
+export const NEW_WORK_COMMENT =
+    '// TODO: the work. ctx.exec runs a program; throw new CommandError(message, { hint }) for a failure the caller can fix.';
+export const COMMAND_FILE_EXTENSION = '.js';
+
+/** The width Prettier wraps at in this repository, and the indent of one level: a new file is written to match. */
+export const NEW_PRINT_WIDTH = 100;
+export const NEW_INDENT = '    ';
+
 /** The words of the shipped binary that help lists under "Built-in" and `help --json` under "builtins". */
 export const BUILTINS: readonly Builtin[] = [
     {
@@ -200,6 +252,36 @@ export const BUILTINS: readonly Builtin[] = [
             }
         },
         examples: [HISTORY_WORD, `${HISTORY_WORD} db reset`, `${HISTORY_WORD} --limit 5 --json`]
+    },
+    {
+        id: NEW_WORD,
+        usage: NEW_USAGE_LINE,
+        description: 'Write the file of a new command, ready to fill in',
+        args: [
+            {
+                name: 'words',
+                required: true,
+                description: 'The words of the command id (several words are a topic and a command)'
+            }
+        ],
+        flags: {
+            description: {
+                type: 'string',
+                description: 'What the command does, one line (required)'
+            },
+            arg: {
+                type: 'string',
+                multiple: true,
+                description: 'A required argument (repeatable)'
+            },
+            flag: { type: 'string', multiple: true, description: 'A boolean flag (repeatable)' },
+            destructive: { type: 'boolean', description: 'Mark it destructive' },
+            'supports-dry-run': { type: 'boolean', description: 'Mark it as honoring --dry-run' }
+        },
+        examples: [
+            `${NEW_WORD} hello --description "Say hello"`,
+            `${NEW_WORD} db reset --description "Delete the local database" --destructive --supports-dry-run`
+        ]
     }
 ];
 

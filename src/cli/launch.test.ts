@@ -16,6 +16,7 @@ import {
     DOCTOR_USAGE_LINE,
     HISTORY_USAGE_LINE,
     INIT_USAGE_LINE,
+    NEW_USAGE_LINE,
     SKILL_USAGE_LINE,
     STATE_USAGE_LINE
 } from './constants.js';
@@ -243,7 +244,8 @@ describe('cli: the built-in words in help', () => {
             'state',
             'skill',
             'doctor',
-            'history'
+            'history',
+            'new'
         ]);
     });
 
@@ -265,7 +267,8 @@ describe('cli: the built-in words in help', () => {
             STATE_USAGE_LINE,
             SKILL_USAGE_LINE,
             DOCTOR_USAGE_LINE,
-            HISTORY_USAGE_LINE
+            HISTORY_USAGE_LINE,
+            NEW_USAGE_LINE
         ]);
     });
 

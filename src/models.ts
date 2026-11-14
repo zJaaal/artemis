@@ -1584,3 +1584,44 @@ export type HistoryRead = { entries: AuditLine[]; skipped: number };
 
 /** The recorded runs of an audit file, newest first. A missing file has none. */
 export type ReadHistoryFn = (auditFile: string, options?: ReadHistoryOptions) => HistoryRead;
+
+// ---------------------------------------------------------------------------------------------
+// `art new`
+// ---------------------------------------------------------------------------------------------
+
+/** The words after `new`, as typed: nothing is checked yet but the shape of the flags. */
+export type NewWords = {
+    words: string[];
+    description: string | undefined;
+    args: string[];
+    flags: string[];
+    destructive: boolean;
+    supportsDryRun: boolean;
+    json: boolean;
+    quiet: boolean;
+    help: boolean;
+};
+
+/** What `new` writes a command from, once every word, name and the description are valid. */
+export type NewSpec = {
+    words: string[];
+    description: string;
+    args: string[];
+    flags: string[];
+    destructive: boolean;
+    supportsDryRun: boolean;
+};
+
+export type ParseNewWordsFn = (words: readonly string[]) => NewWords;
+
+/** Checks what was typed after `new`; a UsageError (exit 2) says what is wrong. */
+export type CheckNewFn = (read: NewWords) => NewSpec;
+
+/** The source of a new command file: the stub of the spec, as Prettier leaves it. */
+export type RenderCommandFn = (spec: NewSpec) => string;
+
+/** Where the file of a command id goes: `<commandsDir>/<word 1>/.../<word n>.js`. */
+export type CommandFileFn = (commandsDir: string, words: readonly string[]) => string;
+
+/** `art new <command words>... --description <text> ...`: writes the file, returns the exit code. */
+export type NewCommandFn = (words: string[], host: HostOptions, cwd: string) => number;

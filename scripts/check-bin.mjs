@@ -244,6 +244,16 @@ try {
     assert.equal(json(withArgument).error, 'init takes no arguments, but got "somewhere"');
     console.log('ok   init takes no arguments, and says so');
 
+    // `new` writes the file of a command, and the installed art runs it at once, with no copy of the framework.
+    const scaffold = json(
+        execute(art, ['new', 'scaffolded', 'one', '--description', 'A scaffold', '--json'], fresh)
+    );
+
+    assert.equal(scaffold.result.id, 'scaffolded one', 'new says the id it wrote');
+    assert.equal(json(execute(art, ['scaffolded', 'one', '--json'], fresh)).ok, true);
+    assert.equal(execute(art, ['new', 'scaffolded', 'one', '--description', 'x'], fresh).code, 1);
+    console.log('ok   art new writes a command that runs at once, and never overwrites it');
+
     // The store kit and `art state`: a command writes a document through defineStore({ project }) under a
     // global art with no local copy, and `art state` reads, shows and resets it from the same folder.
     const stateful = makeProject('stateful', { artemis: { stateDir: 'data' } });
@@ -311,7 +321,7 @@ export default defineCommand({
 
     assert.deepEqual(
         builtins.map((builtin) => builtin.id),
-        ['init', 'state', 'skill', 'doctor', 'history'],
+        ['init', 'state', 'skill', 'doctor', 'history', 'new'],
         'help --json lists the built-in words'
     );
 

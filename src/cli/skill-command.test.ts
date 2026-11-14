@@ -70,6 +70,12 @@ describe('art skill: the Writing a command section and the size', () => {
         expect(out).toContain('`mytool help --authoring`');
     });
 
+    test('says that `new` writes the file of a command', async () => {
+        const { out } = await art(['skill'], newProject());
+
+        expect(out).toContain('`art new <words> --description "..."` writes the file to fill in');
+    });
+
     test('the whole skill of the fixture project is under SKILL_MAX_BYTES', async () => {
         const root = newProject({ artemis: { commandsDir: COMMANDS_FIXTURE_DIR } });
         const { out } = await art(['skill'], root);

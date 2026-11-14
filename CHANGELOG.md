@@ -6,6 +6,7 @@ What changed in each release, newest first. Breaking entries link to their secti
 
 ### Added
 
+- `art new <command words>... --description <text>` writes the file of a new command, never over one that exists. `new` is a word of the shipped `art` now: a command or topic called `new` is hidden there.
 - A published tool turns the audit trail on with `"artemis": { "audit": true }` and then has the word `history`; `run()` callers get `readHistory` and the documented `auditFile` option.
 - `destructive` can be a function of the call's `args` and `flags`, so `start --no-prune` can skip the confirmation that `start` needs.
 
