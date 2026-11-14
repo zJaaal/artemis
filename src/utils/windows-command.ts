@@ -71,16 +71,22 @@ const splitList = (list: string): string[] =>
         .filter((entry) => entry !== '');
 
 /**
- * Every file a bare command (no path separator, no extension) could be on Windows, in the order it
- * is looked for: the folder of the call, then each folder of PATH, each with every extension of
- * PATHEXT. A command with a path or an extension has none: it is used as given.
+ * Every file a bare command (no path separator) could be on Windows, in the order it is looked for:
+ * the folder of the call, then each folder of PATH. A name without an extension gets each extension
+ * of PATHEXT; a name with one (`eslint.cmd`) is looked for as it is. A command with a path is used as
+ * given, so it has none.
  */
 export const windowsCandidates: WindowsCandidatesFn = (command, { cwd, env }) => {
-    if (!BARE_COMMAND_PATTERN.test(command) || path.win32.extname(command) !== '') {
+    if (!BARE_COMMAND_PATTERN.test(command)) {
         return [];
     }
 
     const folders = [cwd ?? '.', ...splitList(envValue(env, PATH_VARIABLE) ?? '')];
+
+    if (path.win32.extname(command) !== '') {
+        return folders.map((folder) => path.win32.join(folder, command));
+    }
+
     const extensions = splitList(envValue(env, PATHEXT_VARIABLE) ?? DEFAULT_PATHEXT);
 
     return folders.flatMap((folder) =>

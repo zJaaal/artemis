@@ -196,7 +196,20 @@ describe('windowsCandidates: where a bare command could be', () => {
         expect(windowsCandidates('./npm', { cwd: 'C:\\app', env })).toEqual([]);
     });
 
-    test('a command with an extension is used as given', () => {
-        expect(windowsCandidates('npm.cmd', { cwd: 'C:\\app', env })).toEqual([]);
+    test('a bare name with an extension is looked for as it is: the folder of the call, then PATH, no PATHEXT', () => {
+        expect(windowsCandidates('eslint.cmd', { cwd: 'C:\\app', env })).toEqual([
+            'C:\\app\\eslint.cmd',
+            'C:\\Tools\\eslint.cmd',
+            'C:\\Program Files\\nodejs\\eslint.cmd'
+        ]);
+    });
+
+    test('so a shim found in a node_modules/.bin folder of PATH is a shim', () => {
+        const [, found] = windowsCandidates('eslint.cmd', {
+            cwd: 'C:\\app',
+            env: { PATH: 'C:\\app\\node_modules\\.bin' }
+        });
+
+        expect(isCmdShim(found ?? '')).toBe(true);
     });
 });

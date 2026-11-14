@@ -193,6 +193,16 @@ describe.skipIf(!isWindows)('ctx.exec on Windows: a .cmd file, for real', () => 
         ).toEqual(['x']);
     });
 
+    test('a shim called by its name with an extension, from PATH, gets its arguments literally', async () => {
+        const { folder } = folderWithEcho(path.join('node_modules', '.bin'));
+        const bin = path.join(folder, 'node_modules', '.bin');
+        const env = { ...process.env, PATH: `${bin};${process.env.PATH ?? ''}` };
+
+        expect(JSON.parse(await outputOf({ command: 'echoargs.cmd', args: ['a&b'], env }))).toEqual(
+            ['a&b']
+        );
+    });
+
     test('a shim in node_modules/.bin gets the same arguments back', async () => {
         const { cmd } = folderWithEcho(path.join('node_modules', '.bin'));
 
