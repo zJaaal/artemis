@@ -1,6 +1,6 @@
 <h1 align="center">Artemis</h1>
 
-<p align="center"><strong>Drop a file, get a command an agent can call.</strong></p>
+<p align="center"><strong>A toolbox for the commands your agents run, instead of a pile of scripts.</strong></p>
 
 <p align="center">
   <a href="https://github.com/zJaaal/artemis/actions/workflows/ci.yml"><img alt="CI" src="https://github.com/zJaaal/artemis/actions/workflows/ci.yml/badge.svg"></a>
@@ -12,7 +12,7 @@
 
 > **Agents:** start with `art help --json --brief`; `art help --agents` prints the calling contract and `art help --authoring` how to write a command (or read [AGENTS.md](AGENTS.md)), the short version of this file.
 
-Artemis is a small framework for the commands a project's people and AI agents run over and over. One file in `commands/` is one command. Every command gets, without extra code, the parts that hand-written scripts usually skip: `--help`, one JSON result, exit codes that mean something, a confirmation before anything destructive, and a dry run that does nothing.
+Artemis is a small Node framework for the commands a project's people and AI agents run over and over: start the dev stack, reset the database, prune old data. One file in `commands/` is one command. Every command gets the parts that hand-written scripts usually skip, `--help`, one JSON result, exit codes that mean something, a confirmation before a command marked `destructive` and a dry run that does nothing. The author marks a command destructive once, in its definition, and from then on the framework enforces it, so no caller has to remember a rule.
 
 ```console
 $ art db reset --json
@@ -22,11 +22,21 @@ $ art db reset --dry-run --json
 {"ok":true,"command":"db reset","result":null,"dryRun":true,"plan":["delete .data/db.json","run 5 migrations","load the seed"]}
 ```
 
-What to expect, and what not to:
+## What you get
 
-- **It makes commands safe to hand to an agent.** A command marked `destructive` cannot run without `--yes` when nobody is there to answer, and a dry run is checked by the framework, not left to the script. This holds for commands an agent writes itself.
-- **It does not make an agent cheaper on its own.** A command saves work when it replaces several steps an agent would otherwise repeat each time. For a job that is one call anyway, it costs about the same as a script. Finding commands (`help --json`) costs tokens too, more as you add commands.
-- **It is not a sandbox.** Commands run with your permissions, like any script.
+- **Safe defaults that are enforced, not requested.** A command marked `destructive` does not run without `--yes` when nobody is there to answer, and `--dry-run` only works on a command that declares it honors it. This holds for the commands an agent writes for itself, too.
+- **One way to find tools.** `art help --json --brief` lists every command with how to call it, `art help --search "<words>"` finds the best few for a goal, and a large project folds into topics. A folder of scripts has to be read file by file.
+- **Errors an agent can act on.** With `--json`, every call prints exactly one object; a failure carries a `hint` that says what to do, and the exit code says whether the command failed (`1`) or the call was wrong (`2`).
+- **A record of what ran.** Every run is appended to an audit file: `art history` shows what ran, what was only previewed and what failed, and `art doctor` points out commands that keep failing.
+- **Tools that outlive the session.** The next agent, or a teammate, finds and calls a command through `help`, without reading its code.
+
+## What to expect, and what not to
+
+- **It does not save tokens on its own.** An agent calling Artemis commands spends about what it spends calling well-written scripts. A command saves work against doing a multi-step job by hand every time, because the steps are worked out once. Finding commands costs tokens too, more as you add them (`--search` and topics keep it down).
+- **Scripts can be just as safe, if every one of them follows the same rules.** Agents that are given those rules in writing mostly follow them; agents that are not mostly skip them (no `--help`, no confirmation before deleting). The difference Artemis makes is that the rules are built in and checked, instead of a paragraph each project has to carry and each agent has to follow.
+- **A confirmation stops accidents, not decisions.** An agent can pass `--yes` itself, and nothing stops it from running a database client or `rm` directly. If some actions must only happen through a command, say so in your agent's permission settings (allow `npx art *`, deny the raw tools).
+- **Agents do not write commands unless asked.** The `SKILL.md` that `art skill` writes tells agents to turn a repeated job into a command; capable models sometimes act on it after doing the same job a few times, most do not. Ask for a command when you want one.
+- **It is not a sandbox.** Commands run with your permissions, like any script. Review the ones an agent writes.
 
 Every file is a command, every folder is a group of commands, and there is no registry to keep up to date: Artemis finds whatever you drop in the folder. Everything an agent needs to call a command (arguments, flags, defaults, allowed values, examples) is machine-readable, and people get a normal CLI with `--help`.
 
@@ -44,7 +54,6 @@ commands/
 - **Next to a skill, for the steps that never change.** A skill is instructions a model follows, and it can skip or change a step. A command runs the same steps every time. Keep skills for work that needs judgment, and let them call commands for the fixed parts.
 - **Close to an MCP server, without the server.** Both give an agent tools with a name, a description and typed arguments. Here there is no server, no protocol and no process to keep running: a tool is a file, and calling it is a shell command. It is not an MCP implementation.
 - **Local and private, with one caveat.** The work happens on your machine, with your files and credentials, and Artemis itself sends nothing anywhere. What reaches the model is whatever a command returns, so return what the agent needs and not everything the command saw.
-- **Commands are scripts.** They run with your permissions. Treat a command file like any script you run, and review the ones an agent writes.
 
 ## Why it is built this way
 
@@ -79,7 +88,7 @@ Created /work/my-project/commands
 Created /work/my-project/commands/hello.js
 ```
 
-`init` creates a `package.json` (or adds one line, the `artemis` key, to the one you have, leaving everything else as it was), the `commands/` folder and a sample command. It never overwrites anything, and running it again changes nothing. It also tells you if your `package.json` does not say `"type": "module"`: command files are ES modules, and without it Node prints a warning about each one on stderr. `init` takes no arguments, so go to the folder first (`--json` is the only flag; there is nothing to confirm). (`init` is reserved: a command file called `init.js` cannot be run through `art`, and `init` warns you if you have one.)
+`init` creates a `package.json` (or adds one line, the `artemis` key, to the one you have, leaving everything else as it was), the `commands/` folder and a sample command. It never overwrites anything, and running it again changes nothing. It also tells you if your `package.json` does not say `"type": "module"`: command files are ES modules, and without it Node prints a warning about each one on stderr. `init` takes no arguments, so go to the folder first (`--json` is the only flag; there is nothing to confirm). It also adds a short `## Commands` note for agents to `AGENTS.md` (and to `CLAUDE.md` when it has one that does not import `AGENTS.md`) and an `audit*.jsonl` line to `.gitignore`. (`init`, `state`, `skill`, `doctor` and `history` are words of `art` itself: a command file with one of those names cannot be run through `art`, and `art doctor` tells you if you have one.)
 
 **2. Run the sample, then write your own.**
 
@@ -130,7 +139,14 @@ Any other `package.json` is simply not a candidate and is skipped: a `{ "type": 
 All settings are optional, under the `artemis` key of that `package.json`:
 
 ```json
-{ "artemis": { "commandsDir": "tools/commands", "bin": "mytool", "stateDir": "data" } }
+{
+    "artemis": {
+        "commandsDir": "tools/commands",
+        "bin": "mytool",
+        "stateDir": "data",
+        "audit": false
+    }
+}
 ```
 
 | Setting       | What it does                                                                                                          | Default                                        |
@@ -138,6 +154,7 @@ All settings are optional, under the `artemis` key of that `package.json`:
 | `commandsDir` | The commands folder, relative to the folder of that `package.json`.                                                   | `commands`                                     |
 | `bin`         | The name help and usage lines show.                                                                                   | `art` (see "Your own command name" for a tool) |
 | `stateDir`    | Where the store kit keeps its documents, relative to that folder. Read by `art state` and `defineStore({ project })`. | `state`                                        |
+| `audit`       | `false` stops `art` from appending each run to `audit.jsonl` in the state folder (what `art history` reads).          | `true`                                         |
 
 `art` always shows `art` (or your `bin` setting) in help, even in a project that publishes a CLI of its own, so what the help tells you to type is what you typed.
 
@@ -169,7 +186,7 @@ and point `package.json` at it, with `@zjaaal/artemis` as a dependency:
     "name": "mytool",
     "type": "module",
     "bin": { "mytool": "bin/mytool.js" },
-    "dependencies": { "@zjaaal/artemis": "^0.1.0" }
+    "dependencies": { "@zjaaal/artemis": "^1.2.0" }
 }
 ```
 
@@ -196,7 +213,7 @@ Everything an agent needs to call a command and to write one is in [AGENTS.md](A
 - [Using the CLI](https://github.com/zJaaal/artemis/blob/main/docs/cli.md): global flags, help, the JSON contract, exit codes, `art state`, `art history`, prompts, `art skill` and `art doctor`.
 - [`run(argv, options)`](https://github.com/zJaaal/artemis/blob/main/docs/run.md): full control of your own bin file, and testing your commands.
 - Kits, opt-in pieces imported from their own subpath: [Store](https://github.com/zJaaal/artemis/blob/main/docs/kits/store.md), [Worktrees](https://github.com/zJaaal/artemis/blob/main/docs/kits/worktrees.md), [Terminal](https://github.com/zJaaal/artemis/blob/main/docs/kits/terminal.md).
-- [Upgrading](https://github.com/zJaaal/artemis/blob/main/docs/upgrading.md): to 1.1, and from 0.1.
+- [Upgrading](https://github.com/zJaaal/artemis/blob/main/docs/upgrading.md): to 1.2 and 1.1, and from 0.1.
 
 ## Requirements
 
