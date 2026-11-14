@@ -1,10 +1,17 @@
 import path from 'node:path';
 
-import { HELP_WORD, RESERVED_FLAGS, TERMINATOR } from '../constants.js';
+import {
+    COMMAND_EXTENSION,
+    DOUBLE_QUOTE,
+    HELP_WORD,
+    RESERVED_FLAGS,
+    TERMINATOR
+} from '../constants.js';
 import { UsageError } from '../errors/errors.js';
 import type {
     CheckNewFn,
     CommandFileFn,
+    InlineFlag,
     NewSpec,
     NewWords,
     ParseNewWordsFn,
@@ -12,7 +19,8 @@ import type {
 } from '../models.js';
 import { isFlagToken } from '../utils/flag-token.js';
 import {
-    COMMAND_FILE_EXTENSION,
+    BACKSLASH,
+    EQUALS_SIGN,
     IDENTIFIER_PATTERN,
     NEW_FLAGS,
     NEW_INDENT,
@@ -26,6 +34,7 @@ import {
     NEW_WORD,
     NEW_WORD_PATTERN,
     NEW_WORK_COMMENT,
+    SINGLE_QUOTE,
     WORD_NAMES
 } from './constants.js';
 
@@ -46,11 +55,9 @@ const NO_WORDS: NewWords = {
     help: false
 };
 
-const EQUALS = '=';
-
 /** `--x=value` as its name and value; `--x` has no inline value. */
-function splitInline(word: string): { name: string; inline: string | undefined } {
-    const at = word.indexOf(EQUALS);
+function splitInline(word: string): InlineFlag {
+    const at = word.indexOf(EQUALS_SIGN);
 
     return word.startsWith(TERMINATOR) && at > 0
         ? { name: word.slice(0, at), inline: word.slice(at + 1) }
@@ -244,12 +251,8 @@ export const commandFile: CommandFileFn = (commandsDir, words) => {
     const folders = words.slice(0, -1);
     const name = words.at(-1) ?? '';
 
-    return path.join(commandsDir, ...folders, `${name}${COMMAND_FILE_EXTENSION}`);
+    return path.join(commandsDir, ...folders, `${name}${COMMAND_EXTENSION}`);
 };
-
-const SINGLE = "'";
-const DOUBLE = '"';
-const BACKSLASH = '\\';
 
 const countOf = (text: string, character: string): number => text.split(character).length - 1;
 
@@ -258,7 +261,8 @@ const countOf = (text: string, character: string): number => text.split(characte
  * the text has more single than double quotes. Backslashes and the quote used are escaped.
  */
 function quoted(text: string): string {
-    const quote = countOf(text, SINGLE) > countOf(text, DOUBLE) ? DOUBLE : SINGLE;
+    const quote =
+        countOf(text, SINGLE_QUOTE) > countOf(text, DOUBLE_QUOTE) ? DOUBLE_QUOTE : SINGLE_QUOTE;
 
     const escaped = text
         .replaceAll(BACKSLASH, `${BACKSLASH}${BACKSLASH}`)

@@ -184,11 +184,18 @@ export const IDENTIFIER_PATTERN = /^[a-z][a-z0-9]*$/;
 /** A line break: a description is one line. */
 export const NEWLINE_PATTERN = /[\r\n]/;
 
+/** What `"type"` says in a package.json of ES modules. */
+export const MODULE_TYPE = 'module';
+/** Separates a flag from its value in `--x=value`. */
+export const EQUALS_SIGN = '=';
+/** The characters of a JavaScript string literal that `new` writes: the quotes and the escape. */
+export const SINGLE_QUOTE = "'";
+export const BACKSLASH = '\\';
+
 export const NEW_PLACEHOLDER = 'TODO: describe';
 export const NEW_PLAN_PLACEHOLDER = 'TODO: describe each step this command takes';
 export const NEW_WORK_COMMENT =
     '// TODO: the work. ctx.exec runs a program; throw new CommandError(message, { hint }) for a failure the caller can fix.';
-export const COMMAND_FILE_EXTENSION = '.js';
 
 /** The width Prettier wraps at in this repository, and the indent of one level: a new file is written to match. */
 export const NEW_PRINT_WIDTH = 100;

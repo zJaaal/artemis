@@ -1,6 +1,6 @@
 import path from 'node:path';
 
-import { EXIT_CODE, NEXT_PREFIX } from '../constants.js';
+import { COMMAND_EXTENSION, EXIT_CODE, NEXT_PREFIX } from '../constants.js';
 import {
     createExclusive,
     isFolder,
@@ -9,16 +9,14 @@ import {
     readManifest
 } from '../edges/files.js';
 import { CommandError } from '../errors/errors.js';
-import type { NewCommandFn, NewSpec, Project } from '../models.js';
+import type { EarlierCommand, NewCommandFn, NewSpec, Project } from '../models.js';
 import { printResult } from '../run/report.js';
 import { resolveWorld } from '../run/world.js';
 import { messageOf } from '../utils/error-message.js';
-import { COMMAND_FILE_EXTENSION, NEW_HELP, NEW_WORD, TYPE_WARNING } from './constants.js';
+import { MODULE_TYPE, NEW_HELP, NEW_WORD, TYPE_WARNING } from './constants.js';
 import { checkNew, commandFile, parseNewWords, renderCommand } from './new.js';
 import { findProject, noProjectError, resolveSettings } from './settings.js';
 import { wordHelp } from './word-help.js';
-
-const MODULE_TYPE = 'module';
 
 /** The file exists: nothing is written over it. */
 const fileExists = (file: string): CommandError =>
@@ -42,16 +40,13 @@ const commandIsTopic = (file: string, prefix: string): CommandError =>
     });
 
 /** The words of the id that are already a command file, as the first of them and its file. */
-function earlierCommand(
-    commandsDir: string,
-    words: readonly string[]
-): { prefix: string; file: string } | undefined {
+function earlierCommand(commandsDir: string, words: readonly string[]): EarlierCommand | undefined {
     return words
         .slice(0, -1)
         .map((_, index) => words.slice(0, index + 1))
         .map((prefix) => ({
             prefix: prefix.join(' '),
-            file: path.join(commandsDir, ...prefix) + COMMAND_FILE_EXTENSION
+            file: path.join(commandsDir, ...prefix) + COMMAND_EXTENSION
         }))
         .find(({ file }) => pathExists(file));
 }
@@ -59,7 +54,7 @@ function earlierCommand(
 /** Refuses, with nothing written, a name that is already a command file or a topic. */
 function assertFree(commandsDir: string, words: readonly string[], file: string): void {
     const id = words.join(' ');
-    const folder = file.slice(0, -COMMAND_FILE_EXTENSION.length);
+    const folder = file.slice(0, -COMMAND_EXTENSION.length);
     const earlier = earlierCommand(commandsDir, words);
 
     if (pathExists(file)) {

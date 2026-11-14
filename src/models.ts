@@ -1677,3 +1677,9 @@ export type CmdArgumentsFn = (file: string, args: readonly string[]) => string[]
 
 /** How to start a command on this platform: as given, or through `cmd.exe` when it is a batch file on Windows. */
 export type LaunchOfFn = (request: LaunchRequest, platform?: NodeJS.Platform) => Launch;
+
+/** `--x=value` taken apart: the name, and the value when there was an equals sign. */
+export type InlineFlag = { name: string; inline: string | undefined };
+
+/** An earlier word of a new command's id that is already a command file: the words up to it, and its file. */
+export type EarlierCommand = { prefix: string; file: string };

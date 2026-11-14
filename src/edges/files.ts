@@ -251,17 +251,7 @@ export const readManifest: ReadManifestFn = (dir) => {
     return text === undefined ? undefined : parseManifest(file, text);
 };
 
-/**
- * Why a child cannot run in a folder, or undefined when it can (or when the disk says something
- * else, which the spawn then reports in its own words). Three kinds: the folder is not there, it is
- * not a folder (a file, or a parent that is one), or this user cannot enter it (EACCES or EPERM, on
- * it or on a parent).
- */
-/**
- * What a path that is not there is: missing, or "not a folder" when the nearest part of it that
- * does exist is a file. POSIX says the second with ENOTDIR; Windows says ENOENT for both, so it is
- * found by looking up the path.
- */
+/** What a path that is not there is: missing, or not a folder when the nearest part that exists is a file (Windows says ENOENT for both). */
 function missingOrBlocked(folder: string): FolderProblem {
     const parent = path.dirname(folder);
 
@@ -283,6 +273,12 @@ function missingOrBlocked(folder: string): FolderProblem {
     }
 }
 
+/**
+ * Why a child cannot run in a folder, or undefined when it can (or when the disk says something
+ * else, which the spawn then reports in its own words). Three kinds: the folder is not there, it is
+ * not a folder (a file, or a parent that is one), or this user cannot enter it (EACCES or EPERM, on
+ * it or on a parent).
+ */
 export const folderProblem: FolderProblemFn = (folder) => {
     try {
         if (!fs.statSync(folder).isDirectory()) {

@@ -443,3 +443,8 @@ export const ATOMIC_RENAME_RETRY_CODES: readonly string[] = ['EPERM', 'EACCES', 
 export const TASKKILL_COMMAND = 'taskkill';
 export const TASKKILL_ARGUMENTS: readonly string[] = ['/T', '/F'];
 export const TASKKILL_PID_FLAG = '/pid';
+
+/** The double quote that wraps an argument for `cmd.exe`. */
+export const DOUBLE_QUOTE = '"';
+/** A command with no path separator in it: a name to look up, not a path. */
+export const BARE_COMMAND_PATTERN = /^[^\\/]+$/;

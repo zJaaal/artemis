@@ -1,6 +1,7 @@
 import path from 'node:path';
 
 import {
+    BARE_COMMAND_PATTERN,
     CMD_CARET,
     CMD_DOUBLED_BACKSLASHES,
     CMD_ESCAPED_QUOTE,
@@ -11,6 +12,7 @@ import {
     CMD_SWITCHES,
     CMD_TRAILING_BACKSLASHES,
     DEFAULT_PATHEXT,
+    DOUBLE_QUOTE,
     PATHEXT_VARIABLE,
     PATH_VARIABLE,
     WINDOWS_LIST_SEPARATOR
@@ -19,9 +21,6 @@ import type { CmdArgumentsFn, EnvValueFn, WindowsCandidatesFn } from '../models.
 
 // Pure: how to hand a batch file and its arguments to `cmd.exe` so that nothing in them is interpreted,
 // and where a bare command could be on Windows. The rules are those of `cross-spawn`.
-
-const QUOTE = '"';
-const BARE_COMMAND = /^[^\\/]+$/;
 
 /** Whether a file is a batch file, which only `cmd.exe` can start. */
 export const isCmdScript = (file: string): boolean => CMD_SCRIPT_PATTERN.test(file);
@@ -39,9 +38,9 @@ export const escapeCommand = (file: string): string =>
  * escaped with `^`, and again when the file is a shim, which runs a second `cmd.exe` over it.
  */
 export function escapeArgument(argument: string, twice: boolean): string {
-    const quoted = `${QUOTE}${argument
+    const quoted = `${DOUBLE_QUOTE}${argument
         .replace(CMD_QUOTE_BACKSLASHES, CMD_ESCAPED_QUOTE)
-        .replace(CMD_TRAILING_BACKSLASHES, CMD_DOUBLED_BACKSLASHES)}${QUOTE}`;
+        .replace(CMD_TRAILING_BACKSLASHES, CMD_DOUBLED_BACKSLASHES)}${DOUBLE_QUOTE}`;
 
     const once = quoted.replace(CMD_META_CHARACTERS, CMD_CARET);
 
@@ -53,7 +52,7 @@ export const cmdArguments: CmdArgumentsFn = (file, args) => {
     const twice = isCmdShim(file);
     const line = [escapeCommand(file), ...args.map((argument) => escapeArgument(argument, twice))];
 
-    return [...CMD_SWITCHES, `${QUOTE}${line.join(' ')}${QUOTE}`];
+    return [...CMD_SWITCHES, `${DOUBLE_QUOTE}${line.join(' ')}${DOUBLE_QUOTE}`];
 };
 
 /** The value of an environment variable by name, in any case: `Path` and `PATH` are one variable on Windows. */
@@ -68,7 +67,7 @@ export const envValue: EnvValueFn = (env, name) => {
 const splitList = (list: string): string[] =>
     list
         .split(WINDOWS_LIST_SEPARATOR)
-        .map((entry) => entry.trim().replaceAll(QUOTE, ''))
+        .map((entry) => entry.trim().replaceAll(DOUBLE_QUOTE, ''))
         .filter((entry) => entry !== '');
 
 /**
@@ -77,7 +76,7 @@ const splitList = (list: string): string[] =>
  * PATHEXT. A command with a path or an extension has none: it is used as given.
  */
 export const windowsCandidates: WindowsCandidatesFn = (command, { cwd, env }) => {
-    if (!BARE_COMMAND.test(command) || path.win32.extname(command) !== '') {
+    if (!BARE_COMMAND_PATTERN.test(command) || path.win32.extname(command) !== '') {
         return [];
     }
 
